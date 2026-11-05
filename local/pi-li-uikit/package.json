@@ -1,0 +1,44 @@
+{
+  "name": "pi-li-uikit",
+  "version": "0.1.0",
+  "description": "Shared TUI components for Pi extensions.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./clipboard": "./src/clipboard.ts",
+    "./text-panel": "./src/text-overlay.ts",
+    "./text-overlay": "./src/text-overlay.ts",
+    "./editor-overlay": "./src/editor-overlay.ts",
+    "./panel-mouse": "./src/panel-mouse.ts",
+    "./editor-panel": "./src/editor-panel.ts",
+    "./panel-footer": "./src/panel-footer.ts",
+    "./inline-toast": "./src/inline-toast.ts",
+    "./collapsible-block": "./src/collapsible-block.ts",
+    "./selectable-collapsible-panel": "./src/selectable-collapsible-panel.ts",
+    "./search-select": "./src/search-select.ts",
+    "./tab-strip": "./src/tab-strip.ts",
+    "./level-slider": "./src/level-slider.ts",
+    "./multi-select-table": "./src/multi-select-table.ts",
+    "./process-panel": "./src/process-panel.ts",
+    "./conversation-panel": "./src/conversation-panel.ts",
+    "./information-panel": "./src/information-panel.ts",
+    "./image-panel": "./src/image-panel.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0",
+    "@types/node": "^26.0.0",
+    "typescript": "^7.0.0"
+  }
+}
