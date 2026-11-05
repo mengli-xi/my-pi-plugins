@@ -1,0 +1,44 @@
+{
+  "name": "pi-model-prompts",
+  "version": "0.1.0",
+  "description": "Single owner for system-prompt injection: per-model prompt files, prompt-to-model bindings with a settings panel, plus package-contributed fragments over prompt:fragments-v1.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "extension",
+    "system-prompt",
+    "model"
+  ],
+  "files": [
+    "index.ts",
+    "report.ts",
+    "contracts.ts",
+    "bindings.ts",
+    "settings.ts",
+    "storage.ts",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test --test-reporter=spec test/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "pi-li-uikit": "file:../pi-li-uikit"
+  }
+}
