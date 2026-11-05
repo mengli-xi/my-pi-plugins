@@ -1,0 +1,47 @@
+{
+  "name": "pi-effort",
+  "version": "0.1.0",
+  "description": "/effort \u2014 a Claude Code-style picker for how hard the model thinks before answering (pi's thinking level).",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "extension",
+    "thinking",
+    "reasoning",
+    "effort",
+    "tui"
+  ],
+  "files": [
+    "index.ts",
+    "levels.ts",
+    "selector.ts",
+    "ultra.ts",
+    "ripple.ts",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --import ./test/ts-resolve.mjs --test --test-reporter=spec test/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "pi-li-uikit": "file:../pi-li-uikit"
+  }
+}
