@@ -1,0 +1,30 @@
+{
+  "name": "pi-runtime-contracts",
+  "version": "0.1.0",
+  "description": "Pi-free runtime coordination contracts for local Pi packages.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./continuation-v1": "./src/continuation-v1.ts",
+    "./provider-activity-v1": "./src/provider-activity-v1.ts",
+    "./child-capabilities-v1": "./src/child-capabilities-v1.ts",
+    "./process-wait-bridge-v1": "./src/process-wait-bridge-v1.ts",
+    "./process-wait-bridge-v2": "./src/process-wait-bridge-v2.ts",
+    "./goal-continuation-obligation-v1": "./src/goal-continuation-obligation-v1.ts"
+  },
+  "imports": {
+    "#internal/*": "./src/internal/*.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --import ./test/ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^7.0.0"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "pi-runtime-contracts-abi1-fixture",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#internal/child-capability-manifest": "./src/child-capability-manifest.ts"
+  }
+}
