@@ -1,0 +1,51 @@
+{
+  "name": "pi-model-capacity",
+  "version": "0.1.0",
+  "description": "Provider-neutral capacity snapshots, polling and observation-only adapter registration for Pi.",
+  "exports": {
+    "./adapter": "./src/adapters/shared.ts",
+    "./contracts": "./src/contracts.ts",
+    "./registration": "./src/registration.ts"
+  },
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "extension",
+    "capacity",
+    "quota",
+    "codex",
+    "grok"
+  ],
+  "files": [
+    "index.ts",
+    "stats.ts",
+    "src",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --import ./test/ts-resolve.mjs --test --test-reporter=spec test/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "@earendil-works/pi-tui": "1.5.0"
+  },
+  "dependencies": {
+    "pi-li-uikit": "file:../pi-li-uikit"
+  }
+}
