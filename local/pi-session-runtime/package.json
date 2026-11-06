@@ -1,0 +1,47 @@
+{
+  "name": "pi-session-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared effective request capture and native child context for Pi session owners.",
+  "exports": {
+    "./fork-turns": "./src/fork-turns.ts",
+    "./effective-context": "./src/effective-context.ts",
+    "./native-child-context": "./src/native-child-context.ts",
+    "./session-assembly": "./src/session-assembly.ts",
+    "./factory-loader": "./src/factory-loader.ts",
+    "./sdk-provider": "./src/sdk-provider.ts",
+    "./managed-interactive": "./src/managed-interactive.ts",
+    "./process-ownership": "./src/process-ownership.ts",
+    "./terminal-owner": "./src/terminal-owner.ts",
+    "./input-policy": "./src/input-policy.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "check": "npm run typecheck && npm test"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "^1.5.0",
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@types/node": "^25.0.10",
+    "typescript": "^5.9.3",
+    "@earendil-works/pi-tui": "1.5.0"
+  },
+  "dependencies": {
+    "jiti": "2.7.0",
+    "pi-runtime-contracts": "file:../pi-runtime-contracts"
+  },
+  "imports": {
+    "#internal/magic-context-format": "./src/magic-context-format.ts",
+    "#internal/view-initialization": "./src/view-initialization.ts"
+  }
+}
