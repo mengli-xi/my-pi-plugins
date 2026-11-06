@@ -1,0 +1,36 @@
+{
+  "name": "pi-session-inject",
+  "version": "0.1.0",
+  "description": "Pi-aware live session prompt injection primitives shared by pi-scheduler and pi-subagents.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./open-tail-tool-calls-v1": "./src/open-tail-tool-calls-v1.ts",
+    "./append-at-safe-boundary-v1": "./src/append-at-safe-boundary-v1.ts",
+    "./mailbox-v1": "./src/mailbox-v1/index.ts",
+    "./mailbox-v1/schema": "./src/mailbox-v1/schema.ts",
+    "./types": "./src/types.ts",
+    "./mailbox-v1/light": "./src/mailbox-v1/light.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --import ./test/ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
+    "test:native": "node test/native/run.mjs && node test/native/cancel-projection.mjs",
+    "test:followup": "node test/native/followup.mjs",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@types/node": "^24.0.0",
+    "typebox": "^1.3.27",
+    "typescript": "^5.9.0"
+  }
+}
