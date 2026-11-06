@@ -27,11 +27,59 @@ loader copies/SDK realms and demands a fresh process after code drift.
 `session-assembly` creates a headless SDK child with its own native SessionManager,
 in-memory settings, resource loader and ModelRuntime. The owner supplies the frozen
 settings/model/tool selection, explicit extension factories, native writer and a
-child-local shutdown callback. Ambient packages, extensions and built-in extension
-owners are disabled. No cwd or process environment is changed. Compaction is always
+child-local shutdown callback. Ambient packages and extensions are disabled; built-in
+extension owners are also disabled unless explicitly approved as described below.
+No cwd or process environment is changed. Compaction is always
 enabled with deterministic child defaults: reserve=min(16384, window/8) and
 keepRecent=min(20000, window/16), including the selected model's override. Caller
 settings are deep-copied. The caller owns task admission, deadline, abort and disposal.
+
+### Explicit built-in extension assembly
+
+`ChildSessionAssemblyOptions.extensions` accepts `readonly InlineExtension[]`; existing
+plain `ExtensionFactory` functions still work. The optional
+`approvedBuiltinExtensions?: readonly ("codemode" | "tool-search" | "mcp")[]` defaults
+to an empty list. Each approved name requires exactly one matching
+`{ name, factory, builtin: true }` entry in `extensions`. Unknown or duplicate approvals,
+missing or invalid factories, duplicate built-in factories and unapproved built-in
+factories reject before any factory runs. Other built-in names, including `llama.cpp`,
+cannot be approved. Parent settings and factory metadata never grant permission.
+Explicit non-built-in inline factories retain their ordinary SDK behavior; a name alone
+does not grant built-in identity or cause another factory to be discovered.
+
+The consumer creates each factory through the canonical public SDK namespace:
+
+```typescript
+const sdk = getSessionAssemblyPublicModules()["@earendil-works/pi-coding-agent"];
+const builtinOptions = {
+  approvedBuiltinExtensions: ["codemode", "tool-search"] as const,
+  extensions: [
+    { name: "codemode", builtin: true, factory: sdk.createCodemodeExtension({ mode: "on", models: false }) },
+    { name: "tool-search", builtin: true, factory: sdk.createToolSearchExtension() },
+  ],
+  tools: ["read", "codemode", "tool_search"],
+};
+// Supply these fields with the owner's other assembleChildSession options.
+```
+
+Assembly keeps `noExtensions: true` and derives `additionalExtensionPaths` only from
+approved names as canonical `builtin:<name>` tokens. Every other built-in stays disabled;
+skills, prompts, context files and themes remain undiscovered. Pi's public resource
+loader gives the approved tools canonical built-in `sourceInfo`, rather than inline
+provenance. Approval loads a factory; the explicit `tools` selection still determines
+the initial active tools. Model scope, frozen settings, native writer and shutdown
+ownership do not change.
+
+This library does not create factories, discover configuration or authorize access to
+conversation data, credentials, files, tools or models. A `builtin: true` label or
+canonical `sourceInfo` is provenance, not a sandbox or data grant. Consumers must check
+their own authority and supply appropriately restricted factory options before assembly
+(for example `models: false` when codemode must not expose the model catalog).
+MCP is opt-in through `sdk.createMcpExtension(...)`; that SDK factory reads MCP
+configuration by default and connects on `session_start`, so the consumer owns its
+configuration and transport policy. The local regression supplies `loadConfig` with
+`{ servers: [], errors: [] }` and a rejecting transport factory; it never connects to
+real servers.
 
 ### SDK realm ownership
 

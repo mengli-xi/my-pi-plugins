@@ -3,7 +3,7 @@ import * as piAi from "@earendil-works/pi-ai";
 import * as piTui from "@earendil-works/pi-tui";
 import type {
   SettingsManager, SessionManager, AgentSessionRuntime, AgentSession,
-  ExtensionFactory, CreateAgentSessionFromServicesOptions,
+  InlineExtension, CreateAgentSessionFromServicesOptions,
 } from "@earendil-works/pi-coding-agent";
 
 type PublicModules = Readonly<{
@@ -57,7 +57,8 @@ export interface ChildSessionAssemblyOptions {
   readonly modelScope: readonly string[];
   readonly tools: readonly string[];
   readonly systemPrompt: string;
-  readonly extensions: readonly ExtensionFactory[];
+  readonly extensions: readonly InlineExtension[];
+  readonly approvedBuiltinExtensions?: readonly ("codemode" | "tool-search" | "mcp")[];
   readonly shutdown: NonNullable<ExtensionBindings["shutdownHandler"]>;
   readonly onError?: ExtensionBindings["onError"];
 }
@@ -74,14 +75,33 @@ export async function assembleChildSession(options: ChildSessionAssemblyOptions)
   const { createAgentSessionServices, createAgentSessionFromServices, createAgentSessionRuntime, SettingsManager } = getSessionAssemblyPublicModules()["@earendil-works/pi-coding-agent"];
   // Freeze at the assembly boundary; neither caller mutations nor child writes can reach Main.
   const frozenSettings = structuredClone(options.parentSettings);
-  const extensions = [...options.extensions];
+  if (options.approvedBuiltinExtensions !== undefined && !Array.isArray(options.approvedBuiltinExtensions)) throw new Error("approvedBuiltinExtensions must be an explicit array");
+  const approvedBuiltins = [...(options.approvedBuiltinExtensions ?? [])];
+  const allowedBuiltins = ["codemode", "tool-search", "mcp"] as const;
+  if (approvedBuiltins.some(name => !allowedBuiltins.includes(name))) throw new Error("Unknown approved built-in extension");
+  if (new Set(approvedBuiltins).size !== approvedBuiltins.length) throw new Error("Duplicate approved built-in extension");
+  const extensions = options.extensions.map(extension => typeof extension === "function" ? extension : { ...extension });
+  const builtinNames = new Set<string>();
+  for (const extension of extensions) {
+    if (typeof extension === "function" || extension.builtin !== true) continue;
+    if (!approvedBuiltins.includes(extension.name as typeof approvedBuiltins[number])) throw new Error(`Unapproved built-in extension factory: ${extension.name}`);
+    if (builtinNames.has(extension.name)) throw new Error(`Duplicate built-in extension factory: ${extension.name}`);
+    if (typeof extension.factory !== "function") throw new Error(`Invalid built-in extension factory: ${extension.name}`);
+    builtinNames.add(extension.name);
+  }
+  for (const name of approvedBuiltins) {
+    if (!builtinNames.has(name)) throw new Error(`Missing built-in extension factory: ${name}`);
+  }
+  // Pi 1.5 InlineExtension builtins need explicit tokens under noExtensions; never authorize from settings or sourceInfo.
+  const additionalExtensionPaths = approvedBuiltins.map(name => `builtin:${name}`);
+  const disabledBuiltinExtensions = [...allowedBuiltins, "llama.cpp"].filter(name => !builtinNames.has(name));
   return createAgentSessionRuntime(async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
     const settingsManager = SettingsManager.inMemory(structuredClone(frozenSettings), { projectTrusted: options.projectTrusted });
     const services = await createAgentSessionServices({
       cwd, agentDir, settingsManager,
       resourceLoaderOptions: {
         noExtensions: true, noSkills: true, noPromptTemplates: true, noContextFiles: true, noThemes: true,
-        disabledBuiltinExtensions: ["mcp", "codemode", "tool-search", "llama.cpp"],
+        disabledBuiltinExtensions, additionalExtensionPaths,
         systemPrompt: options.systemPrompt,
         extensionFactories: extensions,
       },
