@@ -103,7 +103,7 @@ unknown-key 拒绝，已有任一终态返回原证据，第一份持久终态�
 重获锁或 uncertain-write 必须重新读盘。SlotStorage 不在取得 writer 锁前重复读取同一 snapshot。
 Session JSONL 的解析和 entry 索引按 identity 合并并发、只保留最新版；每次核对当前文件版本和 session identity，
 追加/替换/截断或读取失败后失效，binding 退役释放。读取前后同时核对打开 inode 和路径的 dev/ino/size/mtimeNs/ctimeNs，
-不靠解析 cache 代替 native readback、writer token、业务 guard 或 fsync。
+不靠解析 cache 代替 native readback、writer token、业务 guard 或 fsync。同 inode 的增长仅标为 `read-race`，单次读取最多三次尝试取得稳定版本；不返回不稳定字节，也不放宽 header、branch、正文或 receipt 校验。持续读取竞争保留内存拒绝，在后续真实安全边界重新证明，不写持久 blocked、不自行循环调度。投影仍 abort 并清空本轮 messages；只对本轮读取竞争的内部 abort 避免误写 durable aborted，用户 abort 与真实损坏仍按原规则停用。旧版已经持久记录的 suspension 不自动清除。
 
 每个 callback 都允许同步返回或 Promise，均 await；同步 throw 与 reject 含义相同。
 callback fence 固定 `{slotKey,session,bindingGeneration,ownerEpoch,producerToken,attemptId}`，
@@ -181,7 +181,7 @@ nativeEntryIds 还须与 recorded notice 的索引顺序相符，不向 source �
 
 ## holder、三类 submitted 与命令 facade
 
-holder ABI=1，transportBuildId=`mailbox-v1.0.4`（投影拒绝/异常闭合、校验和读取状态复用；旧 compiled consumer 必须重建并新进程启动），key=`pi.session-inject.mailbox.v1`。
+holder ABI=1，transportBuildId=`mailbox-v1.0.5`（读取竞争与真正 proof 错误分开处理，保留投影闭合、校验和读取状态复用；旧 compiled consumer 必须重建并新进程启动），key=`pi.session-inject.mailbox.v1`。
 轻/重引擎的布局和 recovered 第三参要求匹配的 runtime；因此新旧 compiled bundles 混用
 必须明确拒绝，而非接入旧 holder。schema/ABI 仍为 1；整批 compiled consumers 须 rebuild 并 fresh process。
 现有 holder 的 version/build/方法必须一致，不能覆盖。只有全局属性真正缺席才创建；已有 own undefined、
