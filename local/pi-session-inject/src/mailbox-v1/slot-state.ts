@@ -43,6 +43,7 @@ export interface Run {
   readonly heldSources: Set<string>;
   assistantEntryId: string | null;
   outcome: "completed" | "aborted" | "error";
+  projectionReadRace: boolean;
 }
 
 export function diagnostic(ctx: ExtensionContext | null, error: unknown): void {
@@ -87,6 +88,7 @@ export class SlotState {
   readonly noticeFlights = new Map<string, Promise<void>>();
   readonly sourceErrors = new Map<string, string>();
   readonly proofErrors = new Map<string, string>();
+  rebuildError: string | null = null;
   readonly proofFlights = new Map<string, Promise<readonly NativeEntryRef[]>>();
   inputCandidate: "empty" | "ambiguous" | "external" | "extension" = "empty";
   acceptedUser = false;

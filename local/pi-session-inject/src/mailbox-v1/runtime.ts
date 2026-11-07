@@ -44,7 +44,7 @@ import type {
 import type { DeliverySlot } from "./engine.js";
 import { SlotState, diagnostic, type Registration } from "./slot-state.js";
 import { loadEngine, loadedEngine, checkEngineHolder } from "./engine-loader.js";
-import { MailboxError } from "./errors.js";
+import { isReadRace, MailboxError } from "./errors.js";
 import { getOrCreateRegistry } from "./registry.js";
 import { canonicalAgentDir, snapshotPath } from "./paths.js";
 import { cloneJson, same, recordKey } from "./json.js";
@@ -82,7 +82,7 @@ export class Slot extends SlotState {
   reopen(): Promise<void> {
     if (this.loading) {
       this.store = this.newStorage();
-      this.loading = this.store.acquire().then(() => this.rebuild());
+      this.loading = this.store.acquire().then(() => this.initializeProofs());
       return this.loading;
     }
     return existsSync(dirname(snapshotPath(this.agentDir, this.session.id))) ? this.ensureEngine() : Promise.resolve();
@@ -112,14 +112,14 @@ export class Slot extends SlotState {
       epoch = this.ownerEpoch;
     const disposers: (() => void)[] = [];
     this.owner = { producerToken: next.token, epoch, pi, ctx, hookDisposers: disposers };
-    const hook = async <T>(run: () => Promise<T>, onError?: () => T): Promise<T | undefined> => {
+    const hook = async <T>(run: () => Promise<T>, onError?: (error?: unknown) => T): Promise<T | undefined> => {
       if (!this.current(next, epoch)) return onError?.();
       this.critical++;
       try {
         await this.ensureEngine();
         return await run();
       } catch (error) {
-        try { return onError?.(); }
+        try { return onError?.(error); }
         finally { await this.block(error); }
       } finally {
         this.critical--;
@@ -148,11 +148,13 @@ export class Slot extends SlotState {
     );
     disposers.push(
       pi.on("context", (event, eventCtx) => {
-        const signal = eventCtx.signal;
+        const signal = eventCtx.signal, run = this.run;
         return hook(async () => {
           this.updateContext(eventCtx);
           return { messages: await this.project(event) };
-        }, () => {
+        }, (error) => {
+          if (isReadRace(error) && run && this.run === run && this.current(next, epoch)
+            && eventCtx.signal === signal && !signal?.aborted) run.projectionReadRace = true;
           // Pi 1.5 reports context-hook errors and keeps the old messages. Abort this
           // operation explicitly; also clear the visible list if abort itself fails.
           // A later run has a different signal and must not be aborted by this callback.
@@ -212,8 +214,8 @@ export class Slot extends SlotState {
         }),
       ),
     );
-    const beforeNavigation = () => hook(async () => await this.beforeNavigation());
-    disposers.push(pi.on("session_before_tree", () => hook(async () => await this.beforeNavigation(true))));
+    const beforeNavigation = () => hook(async () => await this.beforeNavigation(), () => ({ cancel: true }));
+    disposers.push(pi.on("session_before_tree", () => hook(async () => await this.beforeNavigation(true), () => ({ cancel: true }))));
     disposers.push(pi.on("session_before_switch", beforeNavigation));
     disposers.push(pi.on("session_before_fork", beforeNavigation));
     disposers.push(

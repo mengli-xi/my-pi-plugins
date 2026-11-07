@@ -44,7 +44,8 @@ import type { Slot, Hub, Registrar } from "./runtime.js";
 import { SlotState, diagnostic, type Registration } from "./slot-state.js";
 import { createMailboxCommandFacade } from "./commands.js";
 import { checkpoint } from "./checkpoint.js";
-import { MailboxError } from "./errors.js";
+import { isReadRace, MailboxError } from "./errors.js";
+import { READ_VERSION_ATTEMPTS } from "./read-version.js";
 import { SlotStorage } from "./storage.js";
 import { appendDelivery, nativeEquals, onBranch, readDiskSession, terminalIndex, verifyLegacyRequest, verifyNative } from "./proof.js";
 import { bodyKey, cloneJson, frozenMail, mailOnly, recordKey, same, sameMail } from "./validation.js";
@@ -101,7 +102,7 @@ export class DeliverySlot extends SlotState {
     return this.recoveryHeldKeys.has(recordKey(mail));
   }
   liveRecord(registration: Registration, fence: MailboxCallbackFence, mail: Mail): PendingRecord | undefined {
-    if (!this.validFence(registration, fence) || this.snapshot.suspended || this.compacting || this.held(mail)) return;
+    if (!this.validFence(registration, fence) || this.snapshot.suspended || this.rebuildError || this.compacting || this.held(mail)) return;
     const key = recordKey(mail),
       record = this.snapshot.pending.find((item) => recordKey(item) === key);
     if (
@@ -117,6 +118,10 @@ export class DeliverySlot extends SlotState {
   }
   async block(error: unknown): Promise<void> {
     diagnostic(this.owner?.ctx ?? null, error);
+    if (isReadRace(error)) {
+      this.rebuildError = String(error);
+      return; // no durable suspension, timer, or self-rescheduling retry loop
+    }
     try {
       await this.store.transact((draft) => {
         draft.suspended = { reason: "blocked", detail: String(error) };
@@ -125,11 +130,19 @@ export class DeliverySlot extends SlotState {
       /* keep original snapshot; never erase accepted intent on IO failure */
     }
   }
+  async initializeProofs(): Promise<void> {
+    try { await this.rebuild(); }
+    catch (error) {
+      if (!isReadRace(error)) throw error;
+      await this.block(error); // acquired storage survives; later boundaries must reconcile first
+    }
+  }
   async rebuild(): Promise<void> {
+    const wasUnstable = this.rebuildError !== null;
     const runnable = new Set(this.snapshot.pending.map(recordKey));
     for (const key of this.sourceErrors.keys()) if (!runnable.has(key)) this.sourceErrors.delete(key);
     for (const key of this.proofErrors.keys()) if (!runnable.has(key)) this.proofErrors.delete(key);
-    if (!this.snapshot.pending.length && !this.snapshot.terminal.length) return;
+    if (!this.snapshot.pending.length && !this.snapshot.terminal.length) { this.rebuildError = null; return; }
     const index = terminalIndex(await readDiskSession(this.session), this.session.id);
     for (const terminal of this.snapshot.terminal) {
       const persisted = index.get(recordKey(terminal.mail));
@@ -162,7 +175,8 @@ export class DeliverySlot extends SlotState {
       }
       return changed;
     });
-    if (rebuilt) this.scheduleNotices();
+    this.rebuildError = null;
+    if (rebuilt || wasUnstable) this.scheduleNotices();
   }
   schedule(): void {
     if (!this.current()) return;
@@ -186,7 +200,7 @@ export class DeliverySlot extends SlotState {
     });
   }
   scheduleNotices(): void {
-    if (this.noticesScheduled || this.critical || !this.current()) return;
+    if (this.noticesScheduled || this.critical || this.rebuildError || !this.current()) return;
     this.noticesScheduled = setImmediate(() => {
       this.noticesScheduled = null;
       if (this.critical || !this.current()) return;
@@ -274,7 +288,9 @@ export class DeliverySlot extends SlotState {
       heldSources: new Set(),
       assistantEntryId: null,
       outcome: "completed",
+      projectionReadRace: false,
     };
+    if (this.rebuildError) await this.reconcileProofs();
     const initial = await this.selected("run", await this.cutoff(), "before-seal");
     if (!this.current(undefined, epoch, generation)) return;
     for (const registration of this.registrations) {
@@ -588,7 +604,7 @@ export class DeliverySlot extends SlotState {
     // Read after producer awaits, and retry if a concurrent cancel/GC changed the
     // snapshot while reading: neither side of the receipt → snapshot handoff
     // may disappear from this projection. The final filter is synchronous.
-    for (;;) {
+    for (let attempt = 0; attempt < READ_VERSION_ATTEMPTS; attempt++) {
       const snapshot = this.snapshot;
       const disk = await readDiskSession(this.session);
       if (!this.current(undefined, epoch, generation)) throw new MailboxError("stale-binding", "mailbox projection binding changed");
@@ -622,6 +638,7 @@ export class DeliverySlot extends SlotState {
       return messages.filter(message => !blockedCarriers.some(carrier => this.messageMatches(message, carrier))
         || retainedCarriers.some(carrier => this.messageMatches(message, carrier)));
     }
+    throw new MailboxError("read-race", "mailbox snapshot kept changing during projection");
   }
   messageMatches(value: unknown, carrier: Mail["messages"][number]): boolean {
     const message = value as { role?: string; customType?: string; content?: unknown; display?: boolean; details?: unknown };
@@ -767,7 +784,9 @@ export class DeliverySlot extends SlotState {
     const epoch = this.ownerEpoch,
       generation = this.bindingGeneration;
     const run = this.run;
-    if ((event.aborted || run?.outcome === "error") && (this.snapshot.pending.length || this.snapshot.attempt))
+    // Our fail-closed context abort is not a user/producer failure. Never turn
+    // bounded read contention into a durable aborted/blocked suspension.
+    if (((event.aborted && !run?.projectionReadRace) || run?.outcome === "error") && (this.snapshot.pending.length || this.snapshot.attempt))
       await this.store.transact((draft) => {
         draft.suspended = {
           reason: event.aborted ? "aborted" : "error",
@@ -1072,7 +1091,7 @@ export class DeliverySlot extends SlotState {
   }
   async replay(registration: Registration): Promise<void> {
     await this.ready;
-    if (!this.current(registration) || this.critical) return;
+    if (!this.current(registration) || this.critical || this.rebuildError) return;
     const keys = new Set([
       ...this.snapshot.pending
         .filter((record) => !record.legacyImport && record.producer === registration.callbacks.id && record.recorded?.ack === "pending")
@@ -1195,8 +1214,14 @@ export async function attachSlot(slot: Slot): Promise<void> {
   Reflect.deleteProperty(descriptors, "constructor");
   Object.defineProperties(slot, descriptors);
   slot.store = slot.newStorage();
-  await slot.store.acquire();
-  await slot.rebuild();
+  try {
+    await slot.store.acquire();
+    await slot.initializeProofs();
+  } catch (error) {
+    try { await slot.store.close(); }
+    catch (closeError) { diagnostic(slot.owner?.ctx ?? null, closeError); }
+    throw error;
+  }
   slot.scheduleNotices();
   slot.schedule();
 }
@@ -1219,8 +1244,8 @@ export function commandFacade(hub: Hub, registrar: Registrar): MailboxCommandFac
             recoveryHeld: slot.recoveryHeld,
             suspended:
               slot.snapshot.suspended ??
-              (slot.sourceErrors.size || slot.proofErrors.size
-                ? { reason: "blocked", detail: [...slot.sourceErrors.values(), ...slot.proofErrors.values()].join("; ") }
+              (slot.rebuildError || slot.sourceErrors.size || slot.proofErrors.size
+                ? { reason: "blocked", detail: [slot.rebuildError, ...slot.sourceErrors.values(), ...slot.proofErrors.values()].filter(Boolean).join("; ") }
                 : unconfirmed
                   ? {
                       reason: "blocked",

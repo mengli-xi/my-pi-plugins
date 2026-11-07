@@ -450,4 +450,6 @@ export type MailboxErrorCode =
   | "holder-incompatible"
   | "command-collision"
   | "io-error"
+  /** No stable read within the bounded attempt; retry only at a later boundary. */
+  | "read-race"
   | "unverifiable-proof";

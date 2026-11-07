@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, FileEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
-import { MailboxError } from "./errors.js";
+import { isReadRace, MailboxError } from "./errors.js";
 import { checkpoint } from "./checkpoint.js";
-import { fileVersion, readVersionedText, sameFileVersion, type FileVersion } from "./read-version.js";
+import { fileVersion, readVersionedText, sameFileVersion, requireSameFileVersion, READ_VERSION_ATTEMPTS, type FileVersion } from "./read-version.js";
 import { MAILBOX_CUSTOM_TYPES } from "./types.js";
 import type { Mail, MailboxDeliveryReceipt, MailboxSessionIdentity, NativeEntryRef, TerminalEvidence } from "./types.js";
 import { checkEntries, cloneJson, invalid, recordKey, same, validateDefinition } from "./validation.js";
@@ -53,7 +53,7 @@ export async function readDiskSession(identity: MailboxSessionIdentity): Promise
   if (!identity.file) { releaseDiskSession(identity); return null; }
   let state = diskReads.get(identity);
   if (!state) { state = { current: undefined, reading: undefined }; diskReads.set(identity, state); }
-  for (;;) {
+  for (let attempt = 0; attempt < READ_VERSION_ATTEMPTS; attempt++) {
     const file: string = identity.file;
     const reading = state.reading ??= readSessionVersion(state, file);
     let result: DiskRead | null | undefined;
@@ -66,16 +66,15 @@ export async function readDiskSession(identity: MailboxSessionIdentity): Promise
       if (file !== identity.file || result && (result.file !== file || result.headerId !== identity.id)) {
         throw new MailboxError("unverifiable-proof", "session disk header does not match mailbox target");
       }
-      if (!sameFileVersion(result?.version ?? null, version)) {
-        if (state.current === result) state.current = undefined;
-        continue;
-      }
+      requireSameFileVersion(result?.version ?? null, version);
       return result?.disk ?? null;
     } catch (error) {
       if (state.current === result) state.current = undefined;
-      throw error;
+      if (!isReadRace(error)) throw error;
+      if (attempt === READ_VERSION_ATTEMPTS - 1) throw error;
     } finally { if (state.reading === reading) state.reading = undefined; }
   }
+  throw new MailboxError("read-race", "session kept changing while reading mailbox proof");
 }
 export function diskBranch(disk: DiskSession, leafId: string): SessionEntry[] {
   const reverse: SessionEntry[] = [], seen = new Set<string>();

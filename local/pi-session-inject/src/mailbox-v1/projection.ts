@@ -7,7 +7,7 @@ import { MailboxError } from "./errors.js";
 import { readRegistry } from "./registry.js";
 import { recordKey, same } from "./json.js";
 import { snapshotPath } from "./paths.js";
-import { fileVersion, readVersionedText, sameFileVersion, type FileVersion } from "./read-version.js";
+import { fileVersion, readVersionedText, sameFileVersion, READ_VERSION_ATTEMPTS, type FileVersion } from "./read-version.js";
 import { readDiskSession, terminalIndex, type IndexedTerminal } from "./proof.js";
 import { parseMailboxSnapshot } from "./validation.js";
 import type { BindMailboxOptions, Mail, PendingRecord, MailboxHolder, MailboxSessionIdentity, MailboxSnapshot } from "./types.js";
@@ -27,7 +27,8 @@ interface Reader {
   loading?: { path: string; promise: Promise<SnapshotRead | null> } | undefined;
 }
 const readers = new WeakMap<ExtensionContext["sessionManager"], Reader>();
-async function readSnapshot(agentDir: string, reader: Reader): Promise<MailboxSnapshot> {
+async function readSnapshot(agentDir: string, reader: Reader, attempt = 0): Promise<MailboxSnapshot> {
+  if (attempt >= READ_VERSION_ATTEMPTS) throw new MailboxError("read-race", "mailbox snapshot kept changing while reading");
   const { session } = reader, path = snapshotPath(agentDir, session.id);
   try {
     const version = await fileVersion(path);
@@ -41,7 +42,7 @@ async function readSnapshot(agentDir: string, reader: Reader): Promise<MailboxSn
       const flight = reader.loading;
       try { read = await flight.promise ?? undefined; }
       finally { if (reader.loading === flight) reader.loading = undefined; }
-      if (read && !sameFileVersion(read.version, await fileVersion(path))) return readSnapshot(agentDir, reader);
+      if (read && !sameFileVersion(read.version, await fileVersion(path))) return readSnapshot(agentDir, reader, attempt + 1);
       reader.snapshot = read;
     }
     if (!read) {
@@ -85,8 +86,9 @@ export async function filterMailboxMessages(
       || slot && (slot.retired || !slot.current(undefined, epoch, generation)))
       throw new MailboxError("stale-binding", "mailbox projection session changed while reading");
   };
-  for (;;) {
+  for (let attempt = 0; attempt < READ_VERSION_ATTEMPTS; attempt++) {
     current();
+    if (slot?.rebuildError) throw new MailboxError("read-race", slot.rebuildError);
     const snapshot = slot ? slot.snapshot : await readSnapshot(agentDir, reader);
     const disk = await readDiskSession(slot?.session ?? session);
     if (session.file && !disk && (snapshot.pending.length || snapshot.terminal.length || manager.getBranch().length))
@@ -99,6 +101,7 @@ export async function filterMailboxMessages(
         || slot.sourceErrors.has(recordKey(record)) || slot.failedIngress.has(recordKey(record))
         || !!slot.run?.heldSources.has(record.producer) || !slot.registration(record.producer));
   }
+  throw new MailboxError("read-race", "mailbox snapshot kept changing during readonly projection");
 }
 
 // Readonly policy uses persisted facts and known live refusals, never reruns producer

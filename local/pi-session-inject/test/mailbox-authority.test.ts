@@ -19,6 +19,9 @@ for (const [name, reject] of denied) test(`recorded carrier is excluded after ${
     await h.emit("session_start", { reason: "startup" });
     const mail = h.mail("pi-processes", "authority", { wake: false });
     await p.endpoint.put(mail); await until(() => !!slot(h).snapshot.pending[0]?.recorded);
+    // A real request is busy. Finish the prior idle drain before measuring
+    // readonly calls; its asynchronous guard rechecks are not readonly work.
+    h.setBusy(true); await until(() => !slot(h).draining);
     revoked = true;
     const projected = (await h.emit("context", { messages: h.messages() })).event.messages;
     assert.ok(!projected.some((m: any) => m.content === mail.messages[0]!.content));

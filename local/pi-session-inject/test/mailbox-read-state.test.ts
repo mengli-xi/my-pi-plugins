@@ -131,7 +131,7 @@ test("same-inode equal-size rewrite with restored mtime still invalidates disk h
   } finally { releaseDiskSession(identity); await rm(directory, { recursive: true, force: true }); }
 });
 
-test("a changing read is rejected before parsing and can be retried", async t => {
+test("continuous appends exhaust bounded reads without accepting unstable bytes", async t => {
   const directory = await mkdtemp(join(tmpdir(), "mailbox-read-changing-"));
   const identity = { id: "fixture", file: join(directory, "session.jsonl") };
   try {
@@ -140,13 +140,16 @@ test("a changing read is rejected before parsing and can be retried", async t =>
     const prototype = Object.getPrototypeOf(handle) as FileHandle;
     await handle.close();
     const original = prototype.readFile;
+    let reads = 0;
     const race = t.mock.method(prototype, "readFile", (async function(this: FileHandle, ...args: Parameters<FileHandle["readFile"]>) {
-      await appendFile(identity.file, `${JSON.stringify(row("a", null))}\n`);
-      return original.apply(this, args);
+      const text = await original.apply(this, args);
+      await appendFile(identity.file, `${JSON.stringify(row(`a${++reads}`, null))}\n`);
+      return text;
     }) as FileHandle["readFile"]);
-    await assert.rejects(readDiskSession(identity), { code: "unverifiable-proof" });
+    await assert.rejects(readDiskSession(identity), { code: "read-race" });
+    assert.equal(reads, 3);
     race.mock.restore();
-    assert.equal((await readDiskSession(identity))!.entries.length, 1);
+    assert.equal((await readDiskSession(identity))!.entries.length, 3);
   } finally { releaseDiskSession(identity); await rm(directory, { recursive: true, force: true }); }
 });
 

@@ -1,5 +1,5 @@
 export const MAILBOX_ABI_VERSION = 1 as const;
-export const MAILBOX_TRANSPORT_BUILD_ID = "mailbox-v1.0.4" as const;
+export const MAILBOX_TRANSPORT_BUILD_ID = "mailbox-v1.0.5" as const;
 export const MAILBOX_HOLDER_KEY = "pi.session-inject.mailbox.v1" as const;
 export const MAILBOX_PRODUCER_IDS = [
   "pi-processes",
