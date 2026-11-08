@@ -119,6 +119,7 @@ test("disposing an older Main binding preserves the single newer child lease and
   const { terminal, original, output } = memoryTerminal();
   terminal.drainInput = async () => {};
   const ui = {
+    themeWatchCapability: "pi.theme-watch.file-version.v1",
     theme: { name: "named" }, getTheme: () => ({}), onTerminalInput: () => () => {},
     setTheme: () => ({ success: true }), getAllThemes: () => [],
   };
@@ -145,7 +146,7 @@ for (const release of ["abort", "return", "dispose"] as const) test(`a ${release
   const { terminal } = memoryTerminal();
   let drains = 0, stops = 0;
   terminal.drainInput = async () => { drains++; };
-  const ui = { theme: { name: "named" }, getTheme: () => ({}), onTerminalInput: () => () => {},
+  const ui = { themeWatchCapability: "pi.theme-watch.file-version.v1", theme: { name: "named" }, getTheme: () => ({}), onTerminalInput: () => () => {},
     setTheme: () => ({ success: true }), getAllThemes: () => [] };
   const tui = { terminal, stop: () => { stops++; }, start() {}, requestRender() {} };
   const first = new TerminalOwner(tui as never, ui as never, () => "named");

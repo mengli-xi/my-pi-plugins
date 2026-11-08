@@ -1,6 +1,7 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { Terminal, TUI } from "@earendil-works/pi-tui";
 import { watchFile, unwatchFile } from "node:fs";
+import { requireThemeWatchContract } from "#internal/theme-watch-contract";
 
 /** Keep initialization frames private while still forwarding terminal queries/modes. */
 export function deferTerminalFrames(terminal: Terminal, retainForTimeout = false) {
@@ -157,7 +158,6 @@ export class TerminalOwner {
     if (!snapshot) throw new Error("Cannot enter a child view: Main theme must have a loadable public name");
     shared.owner = this;
     const generation = ++this.#leaseGeneration;
-    shared.hasManagedView = true;
     this.#restoreKeys = undefined; this.#theme = snapshot; this.#themeName = name;
     try {
       // Keep idle Main bindings SDK-free. The child mutates the canonical TUI state
@@ -165,7 +165,10 @@ export class TerminalOwner {
       const { getSessionAssemblyPublicModules } = await import("pi-session-runtime/session-assembly");
       signal?.throwIfAborted();
       if (generation !== this.#leaseGeneration || shared.owner !== this || this.#disposed) throw new Error("Terminal handoff abandoned");
-      const tui = getSessionAssemblyPublicModules()["@earendil-works/pi-tui"];
+      const modules = getSessionAssemblyPublicModules();
+      requireThemeWatchContract(this.ui, modules["@earendil-works/pi-coding-agent"]);
+      shared.hasManagedView = true;
+      const tui = modules["@earendil-works/pi-tui"];
       const keys = tui.getKeybindings();
       this.#restoreKeys = () => tui.setKeybindings(keys);
       await this.tui.terminal.drainInput(100, 20);
@@ -211,9 +214,10 @@ export class TerminalOwner {
     const path = this.ui.getAllThemes().find(theme => theme.name === name)?.path;
     if (!path) return;
     this.#watchPath = path;
-    // Pi has one global theme callback, last installed by the child mode. Its native file watcher
-    // still loads colors, but targets the stopped child TUI. Reapply through Main's public API so
-    // custom theme edits repaint Main too. This reference-owned watcher never touches Pi internals.
+    // Reapply Main's registered named cache through its public API after a file change.
+    // This is not a disk reload: the SDK theme-watch contract owns reload/invalidation.
+    // Keep the reference-owned repaint bridge across loader copies, whose callbacks/cache
+    // need not be shared; it never reads theme content or touches Pi internals.
     this.#watch = () => {
       if (this.#disposed || !this.#foreground || this.#readThemeSetting() !== name) return;
       const result = this.ui.setTheme(name);

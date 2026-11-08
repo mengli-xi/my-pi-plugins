@@ -42,6 +42,7 @@
   },
   "imports": {
     "#internal/magic-context-format": "./src/magic-context-format.ts",
-    "#internal/view-initialization": "./src/view-initialization.ts"
+    "#internal/view-initialization": "./src/view-initialization.ts",
+    "#internal/theme-watch-contract": "./src/theme-watch-contract.ts"
   }
 }

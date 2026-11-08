@@ -363,7 +363,7 @@ action matching uses the actual keybindings manager passed by the native editor 
 
 Only current presentation is retained. Child draft text survives return; child undo/history
 cursor/scroll position do not. Main editor state survives because its object stays alive.
-Pi's final theme callback may retain one stopped child mode until the next init; immediate
+Native theme callback ownership can differ across physical SDK loader copies; immediate
 heap reclamation is not promised. Rebuild compiled direct consumers after library changes.
 
 `TerminalOwner(tui, ui, readThemeSetting)` takes a live getter for Main's original
@@ -374,15 +374,36 @@ proxy, so it must never be passed back as a Theme instance. Entry snapshots a
 loadable theme through `getTheme(name)` and gives the native child the same named
 setting. Return uses `setTheme(name)` to preserve named theme file watching.
 
-Pi retains only the last native theme-change callback, which points to the stopped
-child. A reference-owned, non-persistent Node `watchFile` bridge reapplies the active
-named file through Main's public `setTheme()` when its file changes, so Main repaints
-without a key press. The path comes from public `getAllThemes()`; Main input observes
-named setting changes, and replacement/disposal removes precisely this listener and
-watcher. The process registry remembers that native callbacks have been displaced
-so a replacement Main binding also installs the bridge. No private theme/controller
-field is read or patched. Full automatic/in-memory theme support needs a public Pi
-view lifecycle or theme-state capture/restore API with owner-scoped subscriptions.
+Managed terminal handoff requires the Pi 1.5.0 theme-watch patch described in
+`host-patches/pi/v1.5.0`: the native Main `ExtensionUIContext` must expose readonly
+optional `themeWatchCapability`, and the canonical public SDK root must export
+`THEME_WATCH_CAPABILITY`, both exactly `"pi.theme-watch.file-version.v1"`.
+`src/theme-watch-contract.ts` validates these public APIs after the first-use SDK
+import, before input drain, Main stop or foreground transfer. Missing, unknown or
+mismatched markers reject visibly with installation/rebuild/restart guidance; getter
+failures retain their surface context and original error cause. This is a public
+patched SDK API contract, not a private Pi seam or private-field probe. Headless/tool-only
+assembly and Main bindings that never open a child do not require these markers.
+
+Install/upgrade the patched CLI and canonical SDK consumers together with a consistent
+Pi peer dependency graph, then restart Pi and rebuild compiled direct consumers.
+Patching only the CLI while a child resolves stock SDK peers is not supported. A
+`Child terminal handoff requires theme-watch capability` error after installation or
+upgrade means one of these two public surfaces lacks the expected patch; Main keeps
+its terminal and foreground ownership. Do not bypass the check or silently fall back
+to stock theme watching.
+
+A reference-owned, non-persistent Node `watchFile` bridge still reapplies Main's
+registered named cache through public `setTheme()` after file changes. It does not
+force disk loading: the patched SDK owns file-version reload, cache invalidation and
+native repaint. The bridge retains the existing Main repaint path across loader
+copies, whose callbacks/cache need not be shared; it is not a second theme loader.
+The path comes from public `getAllThemes()`; Main input observes named setting changes,
+and replacement/disposal removes precisely this listener and watcher. The process
+registry remembers successful managed entry so a replacement Main binding also installs
+the bridge. No private theme/controller field is read or patched. Full automatic/in-memory
+theme support needs a public Pi view lifecycle or theme-state capture/restore API with
+owner-scoped subscriptions.
 
 `ManagedInteractive(report, interrupt)` requires a session-owned Host interrupt
 port. Both interactive and headless extension abort bindings use that port; closing
@@ -405,7 +426,9 @@ to the normal Main handoff. Consumers must honor the provided AbortSignal.
 
 ## Usage regression checklist
 
-Run `npm run check` in an isolated installation with the Pi peers pinned to 1.5.0.
+Run `npm run check` in an isolated installation with the patched Pi peers pinned to 1.5.0.
+Stock 1.5.0 can typecheck and run `test/theme-watch-contract.test.ts` (which explicitly
+uses marker fixtures), but cannot pass real managed-handoff/dual-loader regressions.
 The existing fixtures use faux providers, temporary sessions and fake terminal ports;
 no remote provider, legacy producer/database or daily configuration is required.
 Use fresh processes, not `/reload`. This library has no compiled output; rebuild any

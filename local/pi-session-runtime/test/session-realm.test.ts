@@ -154,7 +154,7 @@ export function inspect(session) {
     assert.notEqual(mainKeys, otherKeys, "the two real TUI modules have distinct state cells");
     const terminal = { write() {}, setTitle() {}, setProgress() {}, setProgramStatus() {}, drainInput: async () => {} };
     const mainTui = { terminal, stop() {}, start() {}, requestRender() {} };
-    const ui = { theme: { name: "named" }, getTheme: () => ({}), onTerminalInput: () => () => {},
+    const ui = { themeWatchCapability: "pi.theme-watch.file-version.v1", theme: { name: "named" }, getTheme: () => ({}), onTerminalInput: () => () => {},
       setTheme: () => ({ success: true }), getAllThemes: () => [] };
     const nativeOwner = new TerminalOwner(mainTui as never, ui as never, () => "named");
     const jitiOwner = new alternateOwner.TerminalOwner(mainTui as never, ui as never, () => "named");

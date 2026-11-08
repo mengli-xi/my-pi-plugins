@@ -68,6 +68,7 @@ test("a cancelled terminal drain cannot stop Main or clear a newer lease when it
     drainInput: () => ++drains === 1 ? new Promise<void>(resolve => { finishDrain = resolve; startDrain(); }) : Promise.resolve(),
   };
   const ui = {
+    themeWatchCapability: "pi.theme-watch.file-version.v1",
     theme: { name: "named" }, getTheme: () => ({}), onTerminalInput: () => () => {},
     setTheme: () => ({ success: true }), getAllThemes: () => [],
   };
