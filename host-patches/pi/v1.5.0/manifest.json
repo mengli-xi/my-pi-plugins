@@ -1,0 +1,34 @@
+{
+  "upstream": {
+    "repository": "https://github.com/earendil-works/pi",
+    "tag": "v1.5.0",
+    "commit": "f9a26365568127461c47a07a37dcb42c140a3ac5",
+    "version": "1.5.0",
+    "archiveUrl": "https://codeload.github.com/earendil-works/pi/tar.gz/f9a26365568127461c47a07a37dcb42c140a3ac5",
+    "archiveSha256": "1015146ce05a9219a0256861013633b10609668c6d14187fc8f47f540befaea3",
+    "files": {
+      "packages/coding-agent/src/modes/interactive/theme/theme.ts": "d1da018dbaba222b5f477b77cb9c1c79886dbcc92856b80e1c0c7685256382cf",
+      "packages/coding-agent/src/index.ts": "ca9c1485664a24c6535635835a570e1cb3b90f828466f205460adf3c409e39e2",
+      "packages/coding-agent/src/core/extensions/types.ts": "78cfd4937aa72c02be444354ef5cb94310b9b40e20e477969630eb81c6a7391b",
+      "packages/coding-agent/src/modes/interactive/interactive-mode.ts": "ee4ba8aeee85b772aee57b342356da3030eed3b2c32656fa9c0927e6a81fbab0",
+      "package-lock.json": "802adbf0a5e093830226723f37b8971ce42eee442181a1471e0b70b1396b244a",
+      "scripts/build-coding-agent-bundle.mjs": "bb8134c84faa8b0e7d9f7af9e127b33dc09c79243ecee666e526ff43961f2335",
+      "packages/coding-agent/package.json": "990aac3caff17b717294fa792b4e3f60b991d274d9f4ab6977d6aa42aa43c95e",
+      "package.json": "68ae3efd35d534ee791d0c3c9a0ca59984806bd7754dce9823decc8ab053f2f7"
+    }
+  },
+  "modelData": {
+    "url": "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-1.5.0.tgz",
+    "sha256": "e320fe7bd2b927782ba9a37d356fe5837f1aa96a46432610e1b3b9ccb748ea5c",
+    "scope": "Only package/dist/providers/data, validated by upstream check:model-data; no theme implementation copied."
+  },
+  "buildId": "pi-1.5.0+theme-watch-file-version-v1",
+  "contract": {
+    "provider": "Pi 1.5.0 host patch",
+    "consumer": "pi-session-runtime managed UI",
+    "rootExport": "THEME_WATCH_CAPABILITY",
+    "nativeUIProperty": "themeWatchCapability",
+    "value": "pi.theme-watch.file-version.v1",
+    "policy": "Both independently must match exactly. Missing/unknown refuses managed handoff. No private consumer imports."
+  }
+}

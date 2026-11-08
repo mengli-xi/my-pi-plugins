@@ -1,0 +1,225 @@
+--- a/packages/coding-agent/src/modes/interactive/theme/theme.ts
++++ b/packages/coding-agent/src/modes/interactive/theme/theme.ts
+@@ -25,7 +25,6 @@
+ import chalk from "chalk";
+ import { getCustomThemesDir, getThemesDir } from "../../../config.ts";
+ import type { SourceInfo } from "../../../core/source-info.ts";
+-import { closeWatcher, watchWithErrorHandler } from "../../../utils/fs-watch.ts";
+ import { getHighlightLanguageCount, highlight, supportsLanguage } from "../../../utils/syntax-highlight.ts";
+ import { stripBom } from "../../../utils/text.ts";
+ import { generateSystemThemeColors, SYSTEM_THEME_NAME, terminalAppearance } from "./system-theme.ts";
+@@ -669,7 +668,15 @@
+ }
+ 
+ let currentThemeName: string | undefined;
+-let themeWatcher: fs.FSWatcher | undefined;
++/** Public host-patch contract; native UI must report the same capability independently. */
++export const THEME_WATCH_CAPABILITY = "pi.theme-watch.file-version.v1";
++
++type ThemeWatchOwner = {
++	file: string;
++	name: string;
++	callback: (current: fs.Stats, previous: fs.Stats) => void;
++};
++let themeWatcher: ThemeWatchOwner | undefined;
+ let themeReloadTimer: NodeJS.Timeout | undefined;
+ let onThemeChangeCallback: (() => void) | undefined;
+ const registeredThemes = new Map<string, Theme>();
+@@ -686,6 +693,7 @@
+ 
+ export function initTheme(themeName?: string, enableWatcher: boolean = false): void {
+ 	const name = themeName ?? SYSTEM_THEME_NAME;
++	if (currentThemeName !== name) stopThemeWatcher();
+ 	currentThemeName = name;
+ 	try {
+ 		setGlobalTheme(loadTheme(name));
+@@ -694,6 +702,7 @@
+ 		}
+ 	} catch (_error) {
+ 		// Theme is invalid - fall back to the system theme silently
++		stopThemeWatcher();
+ 		currentThemeName = SYSTEM_THEME_NAME;
+ 		setGlobalTheme(loadTheme(SYSTEM_THEME_NAME));
+ 		// Don't start watcher for fallback theme
+@@ -701,6 +710,7 @@
+ }
+ 
+ export function setTheme(name: string, enableWatcher: boolean = false): { success: boolean; error?: string } {
++	if (currentThemeName !== name) stopThemeWatcher();
+ 	currentThemeName = name;
+ 	try {
+ 		setGlobalTheme(loadTheme(name));
+@@ -713,6 +723,7 @@
+ 		return { success: true };
+ 	} catch (error) {
+ 		// Theme is invalid - fall back to the system theme
++		stopThemeWatcher();
+ 		currentThemeName = SYSTEM_THEME_NAME;
+ 		setGlobalTheme(loadTheme(SYSTEM_THEME_NAME));
+ 		// Don't start watcher for fallback theme
+@@ -737,8 +748,6 @@
+ }
+ 
+ function startThemeWatcher(): void {
+-	stopThemeWatcher();
+-
+ 	// Only watch if it's a custom theme (not built-in)
+ 	if (
+ 		!currentThemeName ||
+@@ -746,36 +755,37 @@
+ 		currentThemeName === "light" ||
+ 		currentThemeName === SYSTEM_THEME_NAME
+ 	) {
++		stopThemeWatcher();
+ 		return;
+ 	}
+-
+-	const customThemesDir = getCustomThemesDir();
+ 	const watchedThemeName = currentThemeName;
+-	const watchedFileName = `${watchedThemeName}.json`;
+-	const themeFile = path.join(customThemesDir, watchedFileName);
+-
+-	// Only watch if the file exists
++	const themeFile = path.join(getCustomThemesDir(), `${watchedThemeName}.json`);
++	// Reuse the actual target, including its pending reload and temporary deletion.
++	if (themeWatcher?.file === themeFile && themeWatcher.name === watchedThemeName) {
++		return;
++	}
++	stopThemeWatcher();
++	// Keep the existing scope: only an initially present user-theme file is watched.
+ 	if (!fs.existsSync(themeFile)) {
+ 		return;
+ 	}
+-
++	const owner: ThemeWatchOwner = { file: themeFile, name: watchedThemeName, callback: undefined! };
++	const isCurrent = () => themeWatcher === owner && currentThemeName === watchedThemeName;
+ 	const scheduleReload = () => {
++		if (!isCurrent()) return;
+ 		if (themeReloadTimer) {
+ 			clearTimeout(themeReloadTimer);
+ 		}
+ 		themeReloadTimer = setTimeout(() => {
+-			themeReloadTimer = undefined;
+-
+-			// Ignore stale timers after switching themes or stopping the watcher
+-			if (currentThemeName !== watchedThemeName) {
++			// Fence before touching the timer: an old callback cannot clear a new owner's timer.
++			if (!isCurrent()) {
+ 				return;
+ 			}
+-
++			themeReloadTimer = undefined;
+ 			// Keep the last successfully loaded theme active if the file is temporarily missing
+ 			if (!fs.existsSync(themeFile)) {
+ 				return;
+ 			}
+-
+ 			try {
+ 				// Reload the theme from disk and refresh the registry cache
+ 				const reloadedTheme = loadThemeFromPath(themeFile);
+@@ -790,39 +800,37 @@
+ 			}
+ 		}, 100);
+ 	};
+-
+-	themeWatcher =
+-		watchWithErrorHandler(
+-			customThemesDir,
+-			(_eventType, filename) => {
+-				if (currentThemeName !== watchedThemeName) {
+-					return;
+-				}
+-				if (!filename) {
+-					scheduleReload();
+-					return;
+-				}
+-				if (filename !== watchedFileName) {
+-					return;
+-				}
+-				scheduleReload();
+-			},
+-			() => {
+-				closeWatcher(themeWatcher);
+-				themeWatcher = undefined;
+-			},
+-		) ?? undefined;
+-}
+-
++	// Node watchFile follows path replacements, unlike the unreliable directory watcher here.
++	// Compare only metadata; unchanged versions never enter the existing parser/cache path.
++	// Missing/invalid versions retain the last palette; observation survives deletion/recreation.
++	owner.callback = (current, previous) => {
++		if (
++			!isCurrent() ||
++			(current.dev === previous.dev &&
++				current.ino === previous.ino &&
++				current.size === previous.size &&
++				current.mtimeMs === previous.mtimeMs &&
++				current.ctimeMs === previous.ctimeMs &&
++				current.nlink === previous.nlink)
++		) {
++			return;
++		}
++		scheduleReload();
++	};
++	themeWatcher = owner;
++	fs.watchFile(themeFile, { interval: 200, persistent: false }, owner.callback);
++}
+ export function stopThemeWatcher(): void {
++	const owner = themeWatcher;
++	themeWatcher = undefined;
+ 	if (themeReloadTimer) {
+ 		clearTimeout(themeReloadTimer);
+ 		themeReloadTimer = undefined;
+ 	}
+-	closeWatcher(themeWatcher);
+-	themeWatcher = undefined;
+-}
+-
++	if (owner) {
++		fs.unwatchFile(owner.file, owner.callback);
++	}
++}
+ // ============================================================================
+ // HTML Export Helpers
+ // ============================================================================
+--- a/packages/coding-agent/src/index.ts
++++ b/packages/coding-agent/src/index.ts
+@@ -476,6 +476,7 @@
+ } from "./modes/interactive/components/index.ts";
+ // Theme utilities for custom tools and extensions
+ export {
++	THEME_WATCH_CAPABILITY,
+ 	getLanguageFromPath,
+ 	getMarkdownTheme,
+ 	getSelectListTheme,
+--- a/packages/coding-agent/src/core/extensions/types.ts
++++ b/packages/coding-agent/src/core/extensions/types.ts
+@@ -162,6 +162,9 @@
+  * Each mode (interactive, RPC, print) provides its own implementation.
+  */
+ export interface ExtensionUIContext {
++	/** Native host theme-watch contract; absent/unknown values do not authorize managed handoff. */
++	readonly themeWatchCapability?: "pi.theme-watch.file-version.v1";
++
+ 	/** Show a selector and return the user's choice. */
+ 	select(title: string, options: string[], opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
+ 
+--- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
++++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
+@@ -188,6 +188,7 @@
+ import { type BlockedStatus, ProgramStatusReporter } from "./program-status-reporter.ts";
+ import { shareSession } from "./session-share.ts";
+ import {
++	THEME_WATCH_CAPABILITY,
+ 	getAvailableThemes,
+ 	getAvailableThemesWithPaths,
+ 	getEditorTheme,
+@@ -2731,6 +2732,7 @@
+ 
+ 	private createExtensionUIContext(): ExtensionUIContext {
+ 		return {
++			themeWatchCapability: THEME_WATCH_CAPABILITY,
+ 			select: (title, options, opts) => this.showExtensionSelector(title, options, opts),
+ 			confirm: (title, message, opts) => this.showExtensionConfirm(title, message, opts),
+ 			input: (title, placeholder, opts) => this.showExtensionInput(title, placeholder, opts),
