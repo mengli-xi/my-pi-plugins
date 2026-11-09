@@ -21,3 +21,31 @@ test("consume owner-selected content from any locator without reading its privat
   assert.equal(result.memory[0]!.contents, "OWNER_SELECTED"); assert.match(result.memory[0]!.hash, /^[a-f0-9]{64}$/);
   assert.deepEqual((await collectMaterials(memoryOwner({ sessionId: "other", memory: [{ path: "wrong", contents: "WRONG" }] }), ctx, "/unused", [])).memory, []);
 });
+
+
+test("a never-settling reply is bounded; ready replies survive and late content is ignored", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const events = createEventBus(); let late!: (value: unknown) => void;
+  events.on("cc-memory:request:materials-v1", (r: any) => {
+    r.reply(new Promise(resolve => { late = resolve; }));
+    r.reply({ version: 1, sessionId: "s", memory: [{ path: "memory://ready", contents: "READY" }] });
+  });
+  const collecting = collectMaterials({ events } as any, ctx, "/unused", []);
+  await new Promise(resolve => setImmediate(resolve));
+  t.mock.timers.tick(5000);
+  const result = await collecting;
+  assert.equal(result.memory[0]!.contents, "READY"); assert.match(result.known[0]!.statement, /timed out/);
+  late({ version: 1, sessionId: "s", memory: [{ path: "late", contents: "LATE" }] });
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(result.memory.length, 1);
+});
+
+test("cancel aborts a non-settling collection immediately and retires its timer", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const events = createEventBus(), controller = new AbortController();
+  events.on("cc-memory:request:materials-v1", (r: any) => r.reply(new Promise(() => {})));
+  const collecting = collectMaterials({ events } as any, ctx, "/unused", [], controller.signal);
+  controller.abort(new Error("user cancelled collection"));
+  await assert.rejects(collecting, /user cancelled collection/);
+  t.mock.timers.tick(5000);
+  await assert.rejects(collectMaterials({ events } as any, ctx, "/unused", [], controller.signal), /user cancelled collection/);
+});

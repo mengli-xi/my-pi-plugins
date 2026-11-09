@@ -156,7 +156,9 @@ export default function sessionCompact(pi: ExtensionAPI): void {
     const operationId = randomUUID();
     const focus = collectFocus(ctx.cwd, getAgentDir(), event.customInstructions);
 
-    const materials = await collectMaterials(pi, ctx, getAgentDir(), branch);
+    let materials: Awaited<ReturnType<typeof collectMaterials>>;
+    try { materials = await collectMaterials(pi, ctx, getAgentDir(), branch, event.signal); }
+    catch (error) { if (event.signal.aborted) return { cancel: true }; throw error; }
     const stillFrozen = () => !event.signal.aborted && epoch === frozenEpoch && ctx.sessionManager.getSessionId() === sessionId && ctx.sessionManager.getLeafId() === leaf;
     if (!stillFrozen()) return { cancel: true };
     const projection = ctx.sessionManager.buildSessionProjection();

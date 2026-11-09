@@ -7,7 +7,27 @@ export interface Materials {
   goal: unknown; memory: Array<{ path: string; hash: string; contents: string }>;
   skills: SkillMaterial[]; known: MaterialWarning[];
 }
-export async function collectMaterials(pi: ExtensionAPI, ctx: ExtensionContext, _agentDir: string, branch: SessionEntry[]): Promise<Materials> {
+type MemoryReply = { kind: "fulfilled"; payload: unknown } | { kind: "rejected" } | { kind: "timeout" };
+/** One bound for the entire collection, including failed/non-settling optional contributors. */
+function waitForMemoryReplies(replies: Promise<MemoryReply>[], signal?: AbortSignal): Promise<MemoryReply[]> {
+  signal?.throwIfAborted();
+  if (!replies.length) return Promise.resolve([]);
+  return new Promise((resolve, reject) => {
+    const settled: MemoryReply[] = [];
+    let remaining = replies.length, finished = false;
+    const cleanup = () => { finished = true; clearTimeout(timer); signal?.removeEventListener("abort", abort); };
+    const abort = () => { if (!finished) { cleanup(); reject(signal!.reason); } };
+    const timer = setTimeout(() => { if (!finished) { cleanup(); resolve([...settled, { kind: "timeout" }]); } }, 5000);
+    signal?.addEventListener("abort", abort, { once: true });
+    for (const reply of replies) void reply.then(value => {
+      if (finished) return;
+      settled.push(value);
+      if (--remaining === 0) { cleanup(); resolve(settled); }
+    });
+  });
+}
+export async function collectMaterials(pi: ExtensionAPI, ctx: ExtensionContext, _agentDir: string, branch: SessionEntry[], signal: AbortSignal | undefined = ctx.signal): Promise<Materials> {
+  signal?.throwIfAborted();
   const result: Materials = { goal: null, memory: [], skills: [], known: [] };
   // Open, synchronous material contributions. The owner proves its own loaded versions.
   let accepting = true;
@@ -28,16 +48,20 @@ export async function collectMaterials(pi: ExtensionAPI, ctx: ExtensionContext, 
     if (payload?.version === 1 && payload.sessionId === ctx.sessionManager.getSessionId() && payload.goal && typeof payload.goal.id === "string" && typeof payload.goal.text === "string" && typeof payload.goal.phase === "string") result.goal = payload.goal;
   } });
   // The memory owner chooses and reads its own storage. Accept only protocol data.
-  const replies: Promise<unknown>[] = [];
+  const replies: Promise<MemoryReply>[] = [];
   let open = true;
   const sessionId = ctx.sessionManager.getSessionId();
   try { pi.events.emit("cc-memory:request:materials-v1", { version: 1, sessionId,
     context: `${JSON.stringify(result.goal)} ${JSON.stringify(branch.filter(entry => entry.type === "message").slice(-20))}`,
-    reply: (payload: unknown) => { if (open) replies.push(Promise.resolve(payload)); },
+    reply: (payload: unknown) => { if (open) replies.push(Promise.resolve(payload).then(payload => ({ kind: "fulfilled", payload }), () => ({ kind: "rejected" }))); },
   }); } catch { result.known.push({ kind: "memory-source", statement: "Optional memory owner did not reply." }); }
   open = false;
-  for (const pending of replies) try {
-    const payload = await pending as { version?: number; sessionId?: string; memory?: Materials["memory"]; known?: MaterialWarning[] };
+  for (const reply of await waitForMemoryReplies(replies, signal)) try {
+    if (reply.kind !== "fulfilled") {
+      result.known.push({ kind: "memory-source", statement: reply.kind === "timeout" ? "Optional memory materials timed out after 5000 ms." : "Optional memory materials unavailable." });
+      continue;
+    }
+    const payload = reply.payload as { version?: number; sessionId?: string; memory?: Materials["memory"]; known?: MaterialWarning[] };
     if (payload?.version !== 1 || payload.sessionId !== sessionId) continue;
     for (const item of payload.memory ?? []) if (item && typeof item.path === "string" && typeof item.contents === "string") result.memory.push({ path: item.path, contents: item.contents, hash: hash(item.contents) });
     for (const item of payload.known ?? []) if (item && typeof item.kind === "string" && typeof item.statement === "string") result.known.push({ kind: item.kind, statement: item.statement });

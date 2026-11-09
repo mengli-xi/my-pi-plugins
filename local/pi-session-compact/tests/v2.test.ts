@@ -406,3 +406,25 @@ test("request-only skill admission follows its retained source user", async () =
     } finally { lease.retire(); }
   }
 });
+
+
+test("compaction cancellation reaches material collection before deadline creation", async () => {
+  const h = harness([{ text: "MUST_NOT_REQUEST" }]);
+  let collecting!: () => void;
+  const entered = new Promise<void>(resolve => { collecting = resolve; });
+  h.pi.events.on("cc-memory:request:materials-v1", (r: any) => { r.reply(new Promise(() => {})); collecting(); });
+  const pending = h.run(); await entered;
+  h.controller.abort(new Error("cancel materials"));
+  assert.deepEqual(await pending, { cancel: true }); assert.equal(h.count, 0);
+  assert.equal(h.sm.getBranch().some(entry => entry.type === "compaction"), false);
+});
+
+
+test("optional material timeout continues normal compaction rather than cancellation", { timeout: 15000 }, async () => {
+  const h = harness([{ text: "HANDOFF_AFTER_MATERIAL_TIMEOUT" }]);
+  h.pi.events.on("cc-memory:request:materials-v1", (r: any) => r.reply(new Promise(() => {})));
+  const result = await h.run();
+  assert.ok(result.compaction, h.notices.join("\n"));
+  assert.match(result.compaction.summary, /HANDOFF_AFTER_MATERIAL_TIMEOUT/);
+  assert.equal(h.count, 1); assert.equal(h.aborted, false);
+});
