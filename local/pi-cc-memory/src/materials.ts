@@ -3,10 +3,12 @@ import { isAbsolute, join, relative, sep } from "node:path";
 import { createHash } from "node:crypto";
 export interface MemoryMaterials { memory: { path: string; hash: string; contents: string }[]; known: { kind: string; statement: string }[] }
 /** Selection and containment belong to the memory owner, not to its consumers. */
-export async function collectMemoryMaterials(memoryDir: string, context: string): Promise<MemoryMaterials> {
+export async function collectMemoryMaterials(agentDir: string, memoryDir: string, context: string): Promise<MemoryMaterials> {
   const result: MemoryMaterials = { memory: [], known: [] };
   try {
-    const dir = await realpath(memoryDir);
+    const root = join(await realpath(agentDir), "pi-cc-memory", "projects");
+    const dir = await realpath(memoryDir), project = relative(root, dir).split(sep).join("/");
+    if (isAbsolute(project) || !/^[a-f0-9]{64}\/memory$/.test(project)) throw new Error("Memory directory outside owner's project tree");
     const file = async (name: string) => {
       const path = await realpath(join(dir, name)), rel = relative(dir, path);
       if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`)) throw new Error(`Memory file outside project: ${name}`);

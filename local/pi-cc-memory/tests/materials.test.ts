@@ -10,18 +10,18 @@ import { resolveProject } from "../src/identity.ts";
 
 test("owner selects at most eight indexed topics, ranks relevance and contains symlinks", async t => {
   const root = await mkdtemp(join(tmpdir(), "memory-material-")); t.after(() => rm(root, { recursive: true, force: true }));
-  const dir = join(root, "memory"); await mkdir(dir);
-  assert.deepEqual(await collectMemoryMaterials(dir, ""), { memory: [], known: [] });
+  const agentDir = join(root, "agent"), dir = join(agentDir, "pi-cc-memory", "projects", "a".repeat(64), "memory"); await mkdir(dir, { recursive: true });
+  assert.deepEqual(await collectMemoryMaterials(agentDir, dir, ""), { memory: [], known: [] });
   const names = Array.from({ length: 10 }, (_, i) => `topic-${i}.md`);
   await writeFile(join(dir, "MEMORY.md"), names.map(n => `- [${n}](${n})`).join("\n"));
   for (const name of names) await writeFile(join(dir, name), name);
-  const selected = await collectMemoryMaterials(dir, "topic-9");
+  const selected = await collectMemoryMaterials(agentDir, dir, "topic-9");
   assert.equal(selected.memory.length, 9); assert.ok(selected.memory[1]!.path.endsWith("topic-9.md")); assert.match(selected.known[0]!.statement, /2 indexed/);
   const outside = join(root, "private.md"); await writeFile(outside, "OUTSIDE");
   await rm(join(dir, "topic-9.md")); await symlink(outside, join(dir, "topic-9.md"));
-  const escaped = await collectMemoryMaterials(dir, "topic-9"); assert.match(escaped.known[0]!.statement, /outside project/); assert.ok(!JSON.stringify(escaped.memory).includes("OUTSIDE"));
+  const escaped = await collectMemoryMaterials(agentDir, dir, "topic-9"); assert.match(escaped.known[0]!.statement, /outside project/); assert.ok(!JSON.stringify(escaped.memory).includes("OUTSIDE"));
   await rm(join(dir, "MEMORY.md")); await symlink(outside, join(dir, "MEMORY.md"));
-  assert.equal((await collectMemoryMaterials(dir, "")).memory.length, 0);
+  assert.equal((await collectMemoryMaterials(agentDir, dir, "")).memory.length, 0);
 });
 
 test("public materials request works with no consumer, a stand-in consumer and after session retirement", async t => {
@@ -39,4 +39,21 @@ test("public materials request works with no consumer, a stand-in consumer and a
   request("other"); assert.equal(replies.length, 0); request("s");
   assert.equal((await replies[0]).memory[0].contents, "INDEX_FROM_OWNER");
   handlers.get("session_shutdown")(); request("s"); assert.equal(replies.length, 1);
+});
+
+
+test("canonical memory directory cannot escape the owner project tree through a symlink", async t => {
+  const root = await mkdtemp(join(tmpdir(), "memory-root-boundary-")); t.after(() => rm(root, { recursive: true, force: true }));
+  const agentDir = join(root, "agent"), projects = join(agentDir, "pi-cc-memory", "projects");
+  const parent = join(projects, "a".repeat(64)), dir = join(parent, "memory"), outside = join(root, "external");
+  await mkdir(parent, { recursive: true }); await mkdir(outside); await writeFile(join(outside, "MEMORY.md"), "OUTSIDE_ROOT");
+  await symlink(outside, dir);
+  let result = await collectMemoryMaterials(agentDir, dir, "");
+  assert.deepEqual(result.memory, []); assert.match(result.known[0]!.statement, /outside owner's project tree/);
+  await rm(projects, { recursive: true });
+  await mkdir(join(outside, "a".repeat(64), "memory"), { recursive: true });
+  await writeFile(join(outside, "a".repeat(64), "memory", "MEMORY.md"), "OUTSIDE_PROJECTS_ROOT");
+  await symlink(outside, projects);
+  result = await collectMemoryMaterials(agentDir, dir, "");
+  assert.deepEqual(result.memory, []); assert.match(result.known[0]!.statement, /outside owner's project tree/);
 });

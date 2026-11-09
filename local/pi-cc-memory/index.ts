@@ -100,7 +100,7 @@ export function createMemoryExtension({ role = "main" }: MemoryOptions = {}) {
       const request = raw as { version?: number; sessionId?: string; context?: string; reply?: (payload: unknown) => void };
       if (request?.version !== 1 || typeof request.reply !== "function" || typeof request.context !== "string") return;
       const current = snapshot;
-      if (current && request.sessionId === current.sessionId) request.reply(collectMemoryMaterials(current.memoryDir, request.context).then(result =>
+      if (current && request.sessionId === current.sessionId) request.reply(collectMemoryMaterials(getAgentDir(), current.memoryDir, request.context).then(result =>
         snapshot === current ? { version: 1, sessionId: current.sessionId, ...result } : { version: 1, sessionId: current.sessionId, memory: [], known: [{ kind: "memory-source", statement: "Memory session changed during collection." }] }));
       else if (unavailable && unavailable.sessionId === request.sessionId) request.reply({ version: 1, sessionId: request.sessionId, memory: [], known: [{ kind: "memory-source", statement: unavailable.reason }] });
     });
