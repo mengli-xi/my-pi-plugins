@@ -40,7 +40,7 @@ npm run build
 npm run verify-dist
 npm test
 # Managed native UI host requirements: UI_SPEC §5.
-npm run test:real-sdk-view -- /path/to/patched-pi-1.5.0
+仓库根 bun integration/subagents/real/sdk-view.mjs -- /path/to/patched-pi-1.5.0
 ```
 
 test 使用 strip-onlyTS，避免 constructorparameterproperties；followpackage 脚本的 tsresolver。real-*名称可能沿用 process-child/followup，但实际 fixture 以 SDK 同 session/generation/closed 语义为准，不能据名称推 OSbackend。fresh process 加载，不用/reload 代替 build/restart；full-settings 仅隔离副本，productionprofile/日常 auth/store 不改。旧三项 Main append private probe 已退役，适用 consumer 的 probe 另验。共享 gate 详 TEST_PLAN；本轮文档修订不运行 build/测试/安装。

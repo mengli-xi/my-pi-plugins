@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { encodeDomainId, generateDomainId } from "../../src/domain/ids.js";
 import { rootHeaderV1 } from "../../src/persistence/codecs.js";
 import { sha256CanonicalV1 } from "../../src/persistence/canonical.js";

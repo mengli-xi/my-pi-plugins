@@ -1,0 +1,28 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import test from "node:test";
+import { freshHost } from "../fixtures/fresh-host.ts";
+test("mailbox run preserves a parked Process Task until its own notification run", { timeout: 30_000 }, async t => {
+  const h = await freshHost(t, "MAILBOX_PARK_CHILD");
+  await h.rpc("prompt", { message: "FOREGROUND_CHECK" });
+  await h.until(() => h.rpc("get_state"), state => !state.isStreaming && h.records.some(event => event.type === "agent_end"), "seed settled", 5_000);
+  await h.rpc("prompt", { message: "/subagents-test-spawn" });
+  const waiting = await h.until(h.snapshot, value => value.snapshot?.agents[0]?.tasks[0]?.phase === "waiting", "Process parked", 10_000);
+  const agent = waiting.snapshot.agents[0].agent, file = join(waiting.mainRoot, agent.conversation.relative_path);
+  const entries = async () => (await readFile(file, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+  await h.control("send_input", { target: agent.agent_id, message: "MAILBOX_NOTE" });
+  await h.until(entries, value => value.some(entry => entry.message?.role === "assistant" && JSON.stringify(entry.message.content).includes("PARK_MAILBOX_SEEN")), "mailbox request", 5_000);
+  const during = await h.snapshot();
+  assert.equal(during.snapshot.agents[0].tasks[0].phase, "waiting", "mailbox response does not complete a Process wait");
+  await h.until(entries, value => value.some(entry => entry.message?.role === "assistant" && JSON.stringify(entry.message.content).includes("PARK_PROCESS_SEEN")), "Process notification request", 12_000);
+  const final = await h.settled(), native = await entries();
+  const calls = (await readFile(join(h.root, "provider.jsonl"), "utf8")).trim().split("\n").map(line => JSON.parse(line));
+  const child = calls.filter(call => call.sessionId === agent.conversation.session_id);
+  assert.equal(child.length, 4);
+  assert.equal(native.filter(entry => entry.type === "custom_message" && entry.customType === "subagent-mailbox-v1").length, 1);
+  assert.equal(native.filter(entry => entry.type === "custom_message" && entry.customType === "process-notification-batch-v1").length, 1);
+  assert.match(final.snapshot.agents[0].completions[0].final_text, /PARK_PROCESS_SEEN/);
+  t.diagnostic(JSON.stringify({ childProviderRequests: child.length, mailbox: 1, processBatch: 1, task: "settled" }));
+  await h.stop();
+});

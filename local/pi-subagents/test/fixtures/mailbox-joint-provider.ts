@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 
 /** Deterministic real-provider responses for B × C × D; no external requests. */
 export async function mailboxJointResponse(pi: any, context: any, options: any) {

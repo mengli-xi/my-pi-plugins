@@ -1,0 +1,41 @@
+# 跨插件联测
+
+全部使用 Pi 1.5 faux provider、临时 HOME/profile/session，零真实 provider 请求。
+包内只保留本包单元/合同测试及不加载协作插件的 e2e。
+
+## 降级门禁
+
+仓库根运行 `npm run test:integration`：
+
+- Compact 不加载 pi-cc-memory / pi-todo，真实阈值压缩后仍继续并完成请求；复用包内流式 fixture，不重复实现压缩算法。
+- Subagents 与 pi-bash-timeout 的仓库内 child 联测也随默认入口运行。
+- Effort 不加载 pi-model-prompts，真实 SDK 中 `/effort high`、`ultra`、`low` 改档，不隐式发请求；随后本地 faux 请求正常完成。
+
+无 pi-claude-style 的 Subagents child 视图另有显式补丁宿主入口：
+
+```sh
+PI_PATCHED_SDK=/path/to/build/source/packages/coding-agent \
+PI_PATCHED_CLI=/path/to/build/source/packages/coding-agent/dist/bundle/cli.js \
+npm run test:integration:patched-host
+```
+
+需要同次构建的完整 SDK peer graph 和真正 patched CLI，构建见
+[host patch](../host-patches/pi/v1.5.0/README.md)。没有路径就明确失败，不 skip、
+不伪造 capability。测试 loader 仅在测试进程重定向整个 Pi peer graph，不改变外部 link。
+该入口 build Subagents，再用 Bun PTY 打开原生 child 历史并返回 Main，核对 editor identity、
+任务数及 presentation registry 缺席；只加载 Subagents 和测试侧 faux provider。
+
+## 完整协作矩阵
+
+`npm run test:integration:subagents` 运行从 `local/pi-subagents/test/real` 迁出的 Node 联测。
+包括直接加载其他插件的文件，以及通过 `fresh-host` 默认加载 Processes 的文件。
+设置 `PI_REAL_BINARY`，先显式安装/构建这些测试原先依赖的 pi-processes、Goal、native-search 等协作方；
+仓库不提供这些插件的仿制实现。缺协作方或宿主时应失败，不能把默认降级门禁通过当成完整协作矩阵通过。
+原有全 profile 环境变量仍只用于显式矩阵；日常默认门禁不发现用户 profile。
+
+Subagents 的三套 Bun PTY runner 在 `subagents/real/sdk-{child-view,statusline,initialization}.mjs`，
+从仓库根 `bun <runner> <patched-cli>` 运行；须同时配置匹配的 patched SDK。
+CC 的 child/provider renderer 联测与 Compact/statusline 联测在 `claude-style/`，
+入口为 `bun integration/claude-style/child-ui.mjs <pi>`、
+`bun integration/claude-style/context-compact.mjs <pi>`。这些矩阵保留原有断言及额外依赖，
+不属于 stock 降级门禁。原 statusline 文档中的旧命令位置以本页为准。

@@ -508,7 +508,7 @@ import 边界不变；`dist/config-storage.cjs` 不导入任何 Pi class，刻�
 证据：同一 stock 1.5.0 fresh process 中，source `.ts` 的 Assistant/User component identity 与 host 相同，旧 Bun
 `.js` 产物不同；改用 Bun `.ts` 产物后恢复相同。此前“16 eager probes 都通过但 patch 错了 class”的误绿已由
 `scripts/check-internals-host.mjs` 封住：它同时断言最终 CLI 的 component identity 和 compact patch 实际安装状态。
-`npm run check-internals:host -- /path/to/pi-1.5.0` 是可重复门禁；`test:child-ui` 另验证 Main/child 的真实
+`npm run check-internals:host -- /path/to/pi-1.5.0` 是可重复门禁；根 `integration/claude-style/child-ui.mjs` 另验证 Main/child 的真实
 identity、单次 ownership 与 teardown。无效后缀导致的降级不能用 source probe 或只改 snapshot 冒充通过。
 
 ```sh
@@ -608,7 +608,7 @@ custom message/entry renderer 的组件由 facade 自己带 owner scope，`Custo
 
 ```sh
 npm run build
-npm run test:child-ui -- /path/to/pi-1.5.0
+仓库根运行：bun integration/claude-style/child-ui.mjs /path/to/pi-1.5.0
 ```
 
 集成测试用公开 SDK、faux provider 和真正的 Pi binary 创建两个 session；Bun PTY/xterm
@@ -625,7 +625,7 @@ compaction/branch summary 与 skill invocation 检查正文、invalidate，并�
 状态读写、private class receiver 和实际 VStack symbol 协议；真实 SGR 聚焦后分别输入、点击失焦，
 对照 entry/message 两路的 native control 与正式 SDK renderer。经真实 v1 delegate 转发 `handleMouse` 且无
 handleInput 的两路用例能点击打开正文，且不会被鼠标分发选成 focusTarget。
-Magic Context 专属 production renderer fixture 已移除；legacy `ctx-status` 的 provider 及通用 lazy delegate
+Magic Context 专属 production renderer fixture 已移除；legacy `ctx-status` 的 provider 及公开 registry
 仍有独立回归，但不声称验证已退役 package 的生产 renderer。
 另验证 native /session、Main model selector、通知、clipboard Markdown transformer 和真实 PNG
 read 的 View Image 点击（fixture 显式设 `terminal.showImages=false`）。保留 lazy message delegate 的 render→click、provider 替换后点击、activity Thinking 的围栏隐藏、idle
@@ -666,7 +666,7 @@ order and working-row/divider handoff. No historical timing is invented on entry
 
 Above-editor widget 非空时，CC 用一个受 probe 保护的 `renderWidgetContainer` 包装去掉 Pi 的 leading Spacer(1)，让 Working、工具行与 Todo 连在一起；空容器和 below-editor 行保持原生行为。Main、Side、子 agent 共享该窄补丁；宿主形状变化时跳过安装、原生空行恢复。
 
-测试/离线 probe 的 npm scripts 经 `scripts/isolated-agent.mjs` 在 import 之前设置临时 HOME 与 PI_CODING_AGENT_DIR；不要直接从默认 agent 目录运行会 import internals.ts 的测试。
+测试/离线 probe 的 npm scripts 经 根 `scripts/isolated-agent.mjs` 在 import 之前设置临时 HOME 与 PI_CODING_AGENT_DIR；不要直接从默认 agent 目录运行会 import internals.ts 的测试。
 
 置顶条在 Pi 原生选区着色后会恢复未被面板覆盖的那一行，所以正文选区滚到顶边时不会给问题条染色；选区与复制文本仍由 Pi 维护。浮动补全要等有效布局才隐藏 native 列表，帧接缝失配时退回原生补全。`/cc-style config set layout.enabled|stickyUserMessage|floatAutocomplete` 补全 true/false；`layout.popupGap` 为 0..100 整数，`layout.minViewportRows` 为 1..1000 整数，补全描述会提示范围。
 

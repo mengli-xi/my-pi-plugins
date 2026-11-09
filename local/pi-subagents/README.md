@@ -24,6 +24,8 @@ Tool authority 由 role 与 parent 当前 active tools 共同收窄：Pi 基础�
 
 ## 开发
 
+跨插件与降级用例入口见 [根 integration](../../integration/README.md)。
+
 包内 Wake 合同用公开 continuation registry 的 claim/receipt 对端驱动，只验证本包投递、重试、持久化和 barrier，不验证外部 Goal 的命令或排程。
 
 ```bash
@@ -31,13 +33,8 @@ npm install
 npm run check
 # Core fresh-host tests use the official Pi 1.5.0 CLI explicitly.
 export PI_REAL_BINARY=/path/to/pi-1.5.0
-npm run test:real-main
-npm run test:real-spawn
-npm run test:full-settings
-npm run test:real-lifecycle
-node --import ./test/ts-resolve.mjs --experimental-strip-types --test test/real/followup-e2e.test.ts
-# Managed native UI tests require the patched CLI and matching SDK capability.
-npm run test:real-sdk-view -- /path/to/patched-pi-1.5.0
+npm run test:real # 本包 e2e；只加载 Subagents 与测试侧 faux provider
+# 跨插件/SDK PTY 联测从仓库根运行
 ```
 
 修改 TypeScript 或已迁入的 source-only 依赖后必须重建直接 compiled consumer；Subagents 运行 `npm run build`，Pi 加载逐文件 `dist/index.js` 与按需 SDK module，小型 fork grammar 单独 bundle；build 先清理旧 dist。mailbox transport build 为 `mailbox-v1.0.6`，相关 compiled consumer 必须重新 build 并 fresh process，不能混用旧 bundle。Main `/reload` 会 force-close 旧 Main tree，未结束的 Task 结算为 interrupted；`resume_agent` 恢复为 idle execution，并使用新的 runtime generation，另发输入才启动新 Task。
@@ -143,14 +140,14 @@ Shared handoff behavior is owned by `pi-session-runtime`, including Terminal gat
 public process-listener reference differences, and headless rebinding. There are
 no new private Pi names; managed native UI requires the explicit host patch above.
 Run the real compiled-binary PTY gate with
-`npm run test:real-sdk-view -- /path/to/patched-pi-1.5.0`; its faux provider makes no external
+`根 integration/subagents/real/sdk-view.mjs -- /path/to/patched-pi-1.5.0`; its faux provider makes no external
 model requests. IME/real kitty terminal coverage is separate from PTY validation.
-`npm run test:real-sdk-statusline -- /path/to/patched-pi-1.5.0` separately gates ten view
+`根 integration/subagents/real/sdk-statusline.mjs -- /path/to/patched-pi-1.5.0` separately gates ten view
 handoffs with a failing first statusline command, read-only CC footer ownership,
 Main CP/MEM/cache restoration and stable listeners/presentation owners.
 It replays every committed synchronized-output frame from PTY takeover, so even
 a transient native footer before session_start fails the gate.
-`npm run test:real-sdk-initialization -- /path/to/patched-pi-1.5.0` holds the real view-read
+`根 integration/subagents/real/sdk-initialization.mjs -- /path/to/patched-pi-1.5.0` holds the real view-read
 callback and first/second extension bindings: the 2000 ms fallback reveals a view,
 Alt+/ returns without releasing the callback, and late completions preserve Main.
 

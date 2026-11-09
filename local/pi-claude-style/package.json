@@ -10,22 +10,21 @@
     ]
   },
   "scripts": {
-    "test": "node scripts/isolated-agent.mjs node --experimental-strip-types --test test/*.test.ts test/**/*.test.ts",
+    "test": "node ../../scripts/isolated-agent.mjs node --experimental-strip-types --test test/*.test.ts test/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json --noEmit && node scripts/build.mjs",
     "check": "npm run typecheck && npm run build && npm test",
     "prepare": "npm run build",
-    "check-internals": "node scripts/isolated-agent.mjs node --experimental-strip-types scripts/check-internals.ts",
+    "check-internals": "node ../../scripts/isolated-agent.mjs node --experimental-strip-types scripts/check-internals.ts",
     "check-internals:host": "node scripts/check-internals-host.mjs",
     "check-retry-child:host": "node scripts/check-retry-child-host.mjs",
     "check-provider-errors:host": "node scripts/check-provider-errors-host.mjs",
-    "benchmark:monitor": "node scripts/isolated-agent.mjs node --experimental-strip-types scripts/benchmark-monitor.ts",
-    "test:child-ui": "node scripts/isolated-agent.mjs bun test/integration/child-ui.mjs",
-    "test:main-statusline": "node scripts/isolated-agent.mjs bun test/integration/main-statusline.mjs",
-    "test:host-fixtures": "node scripts/isolated-agent.mjs bun test/integration/host-fixtures.mjs",
-    "test:history:host": "node scripts/isolated-agent.mjs bun test/integration/full-history.mjs",
+    "benchmark:monitor": "node ../../scripts/isolated-agent.mjs node --experimental-strip-types scripts/benchmark-monitor.ts",
+    "test:main-statusline": "node ../../scripts/isolated-agent.mjs bun test/integration/main-statusline.mjs",
+    "test:host-fixtures": "node ../../scripts/isolated-agent.mjs bun test/integration/host-fixtures.mjs",
+    "test:history:host": "node ../../scripts/isolated-agent.mjs bun test/integration/full-history.mjs",
     "benchmark:long-write": "bun scripts/benchmark-long-write.mjs",
-    "benchmark:write-preview": "node scripts/isolated-agent.mjs bun scripts/benchmark-write-preview.ts"
+    "benchmark:write-preview": "node ../../scripts/isolated-agent.mjs bun scripts/benchmark-write-preview.ts"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "^1.5.0",

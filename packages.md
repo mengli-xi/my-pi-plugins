@@ -8,3 +8,5 @@
 | [pi-session-runtime](local/pi-session-runtime/README.md) | source-only shared library，无 extension registration/独立 build。仅 managed UI handoff 要求双面 `pi.theme-watch.file-version.v1`；缺失/未知拒绝交接，tool-only/headless 不受影响。改库后重建直接 compiled consumer，并启动 fresh Pi process。 |
 
 能力 owner、consumer 与验证边界见 [`docs/pi/dependencies.json`](docs/pi/dependencies.json)。本登记不代表未迁 consumer 或完整发行 profile 已通过验收。
+
+跨插件测试入口见 [integration](integration/README.md)；包内测试与特殊宿主的划分遵守 [CONTRIBUTING](CONTRIBUTING.md)。

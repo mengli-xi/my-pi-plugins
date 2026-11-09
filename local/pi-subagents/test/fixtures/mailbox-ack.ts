@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { MAILBOX_HOLDER_KEY } from "pi-session-inject/mailbox-v1/light";
 import { harness, tick, until } from "../../../pi-session-inject/test/mailbox-harness.ts";
 import { mainKey, encodeDomainId } from "../../src/domain/ids.js";

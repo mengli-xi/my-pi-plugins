@@ -9,8 +9,8 @@
 | 领域/类型 | Subagents npm run typecheck、npm test（unit/contract） |
 | 产物/按需 | source-only 依赖已迁入；npm run build、verify-dist；mailbox-v1.0.5 相关 compiled consumers 新 build/fresh process；无 child/supervisor、cold service/store/SDK 不创建 |
 | public Host | Main append 只走公开 mailbox/readonly session API；旧 appendCustomMessageEntry/getEntry/getEntries 三 probe 已退役 |
-| freshSDK 控制流 | 适用 test:real-* /隔离 fauxfixture，native session ID/generation/unique writer |
-| native TTY | test:real-sdk-view、test:real-sdk-statusline、test:real-sdk-initialization -- <patched-binary>，匹配具备 UI host-capability 的 SDK；Main 真实 PTY+faux，不当 AgentPTYbackend |
+| freshSDK 控制流 | 适用 test:real /隔离 fauxfixture，native session ID/generation/unique writer |
+| native TTY | 根 integration/subagents/real/sdk-{child-view,statusline,initialization}.mjs -- <patched-binary>，匹配具备 UI host-capability 的 SDK；Main 真实 PTY+faux，不当 AgentPTYbackend |
 | sharedconsumer | session-runtime check；Side typecheck/test+两 probe+test:sdk-view；Compact check；Processes/CC 在目标外从真实源码构建，仅作所需测试依赖，不迁入/提交，不算它们验收 |
 | workspace | node scripts/check-dependencies.mjs；node scripts/check-command-completions.mjs；git diff --check |
 
