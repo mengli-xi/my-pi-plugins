@@ -41,6 +41,9 @@ function assistantUsageEntry(
   };
 }
 
+// These UI fixtures only need stdin draining and a counter. Shell builtins
+// avoid two extra cat processes per refresh. Under full-suite load those child
+// starts can outlive the frame deadline even while the parent loop is responsive.
 function writeFlakyCommand(dir: string, failures: number): string {
   const counter = join(dir, "runs");
   const script = join(dir, "statusline.sh");
@@ -48,8 +51,8 @@ function writeFlakyCommand(dir: string, failures: number): string {
     script,
     [
       "#!/bin/sh",
-      "cat > /dev/null",
-      `n=$(cat "${counter}" 2>/dev/null || echo 0)`,
+      "while IFS= read -r line; do :; done",
+      `n=0; if [ -r "${counter}" ]; then IFS= read -r n < "${counter}" || :; fi`,
       "n=$((n+1))",
       `printf '%s' "$n" > "${counter}"`,
       `[ "$n" -le ${failures} ] && exit 1`,
@@ -71,7 +74,9 @@ function makeWorkspace(failures: number): string {
     JSON.stringify({
       statusLine: {
         type: "command",
-        command,
+        // The PID written by the script is then Node's direct child, not an
+        // orphaned nested shell whose reaping belongs to the operating system.
+        command: `exec "${command}"`,
         placement: "widget",
         widgetPlacement: "belowEditor",
         padding: 0,
@@ -222,7 +227,7 @@ test.after(() => {
 test("the Subagent statusline keeps read-only model and effort slots without Main contributors", async (t) => {
   const cwd = workspace(t, 0);
   const script = join(cwd, "statusline.sh");
-  writeFileSync(script, ["#!/bin/sh", "cat > /dev/null", "printf '[[pi:slot:model]] [[pi:slot:effort]] [[pi:slot:path-short]]\\n'", ""].join("\n"), "utf8");
+  writeFileSync(script, ["#!/bin/sh", "while IFS= read -r line; do :; done", "printf '[[pi:slot:model]] [[pi:slot:effort]] [[pi:slot:path-short]]\\n'", ""].join("\n"), "utf8");
   const pi = session(t, cwd, { interactiveSlots: false, acceptContributions: false });
   await pi.emit("session_start", { reason: "startup" });
   const expected = `\x1b[1m\x1b[35mtest-model(test)\x1b[0m \x1b[34mmedium\x1b[0m ${basename(cwd)}`;
@@ -246,7 +251,7 @@ test("a child mounts its own read-only first frame synchronously and keeps it on
   assert.deepEqual(pi.widget(), expected, "command failure must retain the CC frame");
   assert.equal(pi.click(0, 0), false);
   assert.deepEqual(pi.eventChannels(), []);
-  writeFileSync(join(cwd, "statusline.sh"), "#!/bin/sh\ncat >/dev/null\nprintf 'ready\\n'\n");
+  writeFileSync(join(cwd, "statusline.sh"), "#!/bin/sh\nwhile IFS= read -r line; do :; done\nprintf 'ready\\n'\n");
   await pi.emit("turn_end", {});
   await waitForFrame(pi, ["ready"]);
 });
@@ -269,7 +274,7 @@ test("Main mounts a synchronous CC fallback and keeps live contributions when it
 
 test("Main updates its fallback cache slot before a slow command returns", async (t) => {
   const cwd = workspace(t, 0);
-  writeFileSync(join(cwd, "statusline.sh"), "#!/bin/sh\ncat >/dev/null\nsleep 30\n");
+  writeFileSync(join(cwd, "statusline.sh"), "#!/bin/sh\nwhile IFS= read -r line; do :; done\nsleep 30\n");
   const branch = [assistantUsageEntry("a", { input: 2_000, cacheRead: 8_000, cacheWrite: 0 }, 1_000)];
   const pi = harness(cwd, branch);
   t.after(async () => pi.emit("session_shutdown", { reason: "quit" }));
@@ -324,7 +329,7 @@ test("Main fallback retains Todo updates, withdrawal and completed-list clicks w
 test("disposing a view waits for its in-flight command group to exit", async (t) => {
   const cwd = workspace(t, 0), pidFile = join(cwd, "command.pid");
   writeFileSync(join(cwd, "statusline.sh"), `#!/bin/sh
-cat >/dev/null
+while IFS= read -r line; do :; done
 trap '' TERM
 echo "$$" > "${pidFile}"
 sleep 30
@@ -401,7 +406,7 @@ process.exit(0);
 test("session_shutdown does not poll group existence forever after SIGKILL", { skip: process.platform === "win32", timeout: 10_000 }, async (t) => {
   const cwd = workspace(t, 0), pidFile = join(cwd, "command.pid");
   writeFileSync(join(cwd, "statusline.sh"), `#!/bin/sh
-cat >/dev/null
+while IFS= read -r line; do :; done
 trap '' TERM
 echo "$$" > "${pidFile}"
 exec sleep 30
@@ -459,7 +464,7 @@ test("the selected working-directory slot is clickable and opens the full path",
   const script = join(cwd, "statusline.sh");
   writeFileSync(
     script,
-    ["#!/bin/sh", "cat > /dev/null", "printf '[[pi:slot:path-short]]\\n'", ""].join("\n"),
+    ["#!/bin/sh", "while IFS= read -r line; do :; done", "printf '[[pi:slot:path-short]]\\n'", ""].join("\n"),
     "utf8",
   );
   const pi = session(t, cwd);
@@ -478,7 +483,7 @@ test("the model slot opens Pi's native model selector action", async (t) => {
   const script = join(cwd, "statusline.sh");
   writeFileSync(
     script,
-    ["#!/bin/sh", "cat > /dev/null", "printf '[[pi:slot:model]]\\n'", ""].join("\n"),
+    ["#!/bin/sh", "while IFS= read -r line; do :; done", "printf '[[pi:slot:model]]\\n'", ""].join("\n"),
     "utf8",
   );
   const pi = session(t, cwd);
@@ -494,7 +499,7 @@ test("a right-aligned cache slot opens its active-branch panel", async (t) => {
   const script = join(cwd, "statusline.sh");
   writeFileSync(
     script,
-    ["#!/bin/sh", "cat > /dev/null", "printf 'left\\t[[pi:slot:cache-quality]]\\n'", ""].join("\n"),
+    ["#!/bin/sh", "while IFS= read -r line; do :; done", "printf 'left\\t[[pi:slot:cache-quality]]\\n'", ""].join("\n"),
     "utf8",
   );
   writeFileSync(
@@ -542,7 +547,7 @@ test("a shortened active branch rebuilds the cache slot instead of retaining rem
   const script = join(cwd, "statusline.sh");
   writeFileSync(
     script,
-    ["#!/bin/sh", "cat > /dev/null", "printf '[[pi:slot:cache-quality]]\\n'", ""].join("\n"),
+    ["#!/bin/sh", "while IFS= read -r line; do :; done", "printf '[[pi:slot:cache-quality]]\\n'", ""].join("\n"),
     "utf8",
   );
   const branch = [

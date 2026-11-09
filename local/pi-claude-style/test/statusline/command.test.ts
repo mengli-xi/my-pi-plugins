@@ -85,7 +85,8 @@ setInterval(() => {}, 1000);
     writeFileSync(script, `cat >/dev/null
 echo "$$" > "$1.group"
 ${quote(process.execPath)} ${quote(join(root, "worker.cjs"))} "$1" "$2" >/dev/null 2>&1 &
-wait
+worker=$!
+wait "$worker" || exit $?
 printf 'late output\\n'
 `);
     // A process in the test runner's group must survive command-group cleanup.

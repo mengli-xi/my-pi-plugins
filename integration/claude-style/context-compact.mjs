@@ -29,7 +29,7 @@ for (const custom of [false, true]) {
   if (custom && patch) execFileSync("patch", ["--batch", "--forward", "statusline.mjs", patch], { cwd: root });
   writeFileSync(join(root, "command.cjs"), `const fs=require('node:fs');let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{
 fs.appendFileSync(${JSON.stringify(join(root, "payloads.jsonl"))}, input+'\\n');
-const result=require('node:child_process').spawnSync(${JSON.stringify(join(root, "statusline.mjs"))},[],{input,encoding:'utf8'});
+const result=require('node:child_process').spawnSync(process.execPath,[${JSON.stringify(join(root, "statusline.mjs"))}],{input,encoding:'utf8'});
 process.stdout.write(result.stdout??'');process.exitCode=result.status??1;});`);
   writeFileSync(join(root, "agent/settings.json"), JSON.stringify({ quietStartup: true, cacheWarming: "off",
     compaction: { enabled: false, reserveTokens: 20_000, keepRecentTokens: 50 },
@@ -54,7 +54,7 @@ process.stdout.write(result.stdout??'');process.exitCode=result.status??1;});`);
   const send = async (text) => { proc.terminal.write(text); await delay(40); proc.terminal.write("\r"); };
   const snapshot = (name) => writeFileSync(join(root, `${name}.txt`), screen());
   const env = { ...process.env, HOME: join(root, "home"), XDG_CONFIG_HOME: join(root, "home/.config"),
-    PI_CODING_AGENT_DIR: join(root, "agent"), MY_PI_STATUSLINE_CACHE_DIR: join(root, "statusline-cache"), PI_OFFLINE: "1", PI_TELEMETRY: "0", TERM: "xterm-256color", CC_CONTEXT_COMPACT_ROOT: root };
+    PI_CODING_AGENT_DIR: join(root, "agent"), PI_CLAUDE_STYLE_STATUSLINE_CACHE_DIR: join(root, "statusline-cache"), PI_OFFLINE: "1", PI_TELEMETRY: "0", TERM: "xterm-256color", CC_CONTEXT_COMPACT_ROOT: root };
   for (const key of ["TMUX", "TMUX_PANE", "STY", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM",
     "KITTY_WINDOW_ID", "GHOSTTY_RESOURCES_DIR", "WEZTERM_PANE", "ITERM_SESSION_ID", "WT_SESSION"]) delete env[key];
   try {

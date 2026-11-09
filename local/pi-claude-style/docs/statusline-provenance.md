@@ -60,3 +60,5 @@ POSIX command 以独立 session/process group 启动，TERM/KILL 发给该组。
 ## 验证入口
 
 `test/statusline/{config,install,command,command-deadline,external-script,payload}.test.ts` 覆盖默认/用户命令选择、显式关闭、payload/缓存/首帧/进程树边界。在包目录运行 `node scripts/isolated-agent.mjs node --experimental-strip-types --test test/statusline/*.test.ts`，其中 `sdk-default.test.ts` 使用临时 agent directory、Pi 1.5 SDK 与 faux provider，检查同步兜底后出现默认脚本独有的 token/cache accounting，并断言 provider 调用数为零。运行命令前确认包内资产和依赖存在，不把缺失资产或零测试当通过。
+
+`bun test/integration/context-compact.mjs /path/to/pi` 用隔离 profile 和 faux provider 检查原生/extension compaction。fixture 复制包内 `assets/statusline.mjs`，通过 Node 执行，缓存固定到该 profile 的 `statusline-cache/`。`CC_CONTEXT_STATUSLINE` 可指定另一个 Node 脚本，`CC_CONTEXT_STATUSLINE_PATCH` 定制 custom 场景；`CC_CONTEXT_COMPACT_ARTIFACTS` 指定产物目录。
