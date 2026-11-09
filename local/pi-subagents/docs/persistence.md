@@ -139,7 +139,7 @@ interface MainOwnerV1 {
 }
 ```
 
-新 namespace 为 store-v2，但 marker/codec/checkpoint entity version 仍 1（代码 STORE_VERSION=1），journal anchor 为 3（§14），不是 schemaVersion 2 的配置 version。没有 v1 reader/转换；旧存储不读、不转换、不删除，profile 切换另行验收。
+新 namespace 为 store-v2，但 marker/codec/checkpoint entity version 仍 1（代码 STORE_VERSION=1），journal anchor 为 3（§14），不是 schemaVersion 2 的配置 version。没有 v1 reader/转换；旧存储不读、不转换、不删除。
 
 这两个 marker 本身都不授予权威。活动中的 Pi binding 必须提供完全相同的 Main session ID，并且获取 writer lock。
 
@@ -292,7 +292,18 @@ interface RoleSnapshotV1 {
   sha256: string;
 }
 
+interface ExecutionFactoryProofV1 {
+  version: 1;
+  canonical_path: string;
+  sha256: string;
+  exports: string[];
+}
+interface BuiltinExtensionProofV1 { version: 1; pi_version: string }
+
 interface CapabilityEntryV1 {
+  builtin_proof?: BuiltinExtensionProofV1;
+  execution_factory?: ExecutionFactoryProofV1;
+  sdk_provider?: import("pi-session-runtime/sdk-provider").SdkProviderProofV1;
   owner: string;
   main_entrypoint: string;
   child_entrypoint: string;
@@ -333,7 +344,7 @@ interface FrozenProfileV1 {
 }
 ```
 
-Capability/path 语义由 `CAPABILITY_SPEC.md` 定义；persistence 会验证其封闭的序列化形状和 digests，但不会重新发现 capabilities。
+三个可选 proof 都进入能力指纹。`builtin_proof` 核对 canonical Pi.VERSION，不读物理文件；`execution_factory` 校验实际 factory 文件和导出；`sdk_provider` 保存独立 grant 对应的完整批准证明（见 [SDK provider](sdk-providers.md)）。旧 profile 缺 proof 仍能读历史，但不能补授权执行。Capability/path 语义由 [架构合同](architecture.md) 定义；persistence 会验证其封闭的序列化形状和 digests，但不会重新发现 capabilities。
 
 ### 7.2 Agent
 
@@ -1088,9 +1099,9 @@ V1 在某个 per-Main store 目录第一次完成 Agent admission 之后，绝�
 
 journal 格式 1 的 Root put 带完整 Root，格式 2/3 只带 RootHeader。打开旧 1/2 时按原规则完整回放；仅格式 1 的 Root put 抽取头字段，然后必须通过既有 checkpoint/CURRENT 原子切换到 anchor 3，成功后才允许新语义写入。升级失败即拒绝打开，不追加新语义到旧 anchor。旧 reader 只接受 anchor 1/2，遇 3 明确报不支持；若先解码已含新字段的 checkpoint，也会按未知字段/状态拒读，不能归一掉 handled。
 
-升级必须重建 compiled consumers 并新开 process；A 的共享 transportBuildId 同步为 mailbox-v1.0.5，混合旧 bundle 明确拒绝。回滚不能通过改 pending.json、checkpoint、journal anchor 或删除债务来伪装兼容；本次不提供 downgrade converter，不部署或修改日常 store。
+升级必须重建 compiled consumers 并新开 process；A 的共享 transportBuildId 同步为 mailbox-v1.0.6，混合旧 bundle 明确拒绝。回滚不能通过改 pending.json、checkpoint、journal anchor 或删除债务来伪装兼容；不提供降级转换器。
 
-旧 store-v1 不读、不转换、不删除；本轮迁移只交付源码与现行规范，不授权清理任何 profile 的旧数据。正式 profile 切换另行验收，边界见 OPERATIONS。正常启动、close/resume 不删除 v2 历史，不在代码中加入 migration pointer、自动重建旧 ID 或重放旧 Task。
+旧 store-v1 不读、不转换、不删除；旧 namespace 不自动清理；切换与备份见 [维护](maintenance.md)。正常启动、close/resume 不删除 v2 历史，不在代码中加入 migration pointer、自动重建旧 ID 或重放旧 Task。
 
 codec 保留的少量既有 Outbox 可选字段归一只作用于该 v2 namespace 的当前记录，不表示支持旧 store-v1。未来若需要新的存储格式必须另行设计与批准，本文不定义 speculative converter、copy-on-write pointer 或通用 downgrade 协议。
 

@@ -1,6 +1,6 @@
 # pi-runtime-contracts · Continuation V1 规范 API
 
-该 package 是不依赖 Pi 的原创私有 library。初始 public export 只有：
+该 package 是不依赖 Pi 的原创私有 library。本文定义的 public export 为：
 
 ```text
 pi-runtime-contracts/continuation-v1
@@ -70,6 +70,8 @@ interface WakeOfferSnapshotV1 {
   offerId: string;
   offerGeneration: number;
   createdAt: number;
+  ownerId: string;
+  logicalKey: string;
   reason: string;
   outcome: LeaseOutcome;
   releasedLease?: BlockingLeaseSnapshotV1;
@@ -77,11 +79,20 @@ interface WakeOfferSnapshotV1 {
   state: "open" | "claimed" | "committed" | "aborted";
 }
 
+interface WakeConsumerReceiptV1 {
+  version: 1;
+  consumerId: string;
+  consumerGeneration: number;
+  continuationId: string;
+  scheduling: "scheduled" | "coalesced";
+}
+
 interface WakeSettlementV1 {
   offer: WakeOfferSnapshotV1;
   state: "committed" | "aborted";
   delivery?: DeliveryOutcome;
   message?: string;
+  consumerReceipt?: WakeConsumerReceiptV1;
 }
 ```
 
@@ -178,6 +189,10 @@ interface WakeProducerTransactionV1 {
 
 interface WakeClaimHandleV1 {
   snapshot(): WakeOfferSnapshotV1;
+  consumerIdentity(): Readonly<{ consumerId: string; consumerGeneration: number }>;
+  onSettledWithReceipt(
+    listener: (settlement: WakeSettlementV1) => WakeConsumerReceiptV1 | undefined,
+  ): Result<DisposableV1>;
   onSettled(listener: (settlement: WakeSettlementV1) => void): Result<DisposableV1>;
 }
 ```
@@ -235,3 +250,20 @@ factory composition 中设置的一个 internal diagnostic callback；library �
 - producer commit 前不得 continuation；只有committed `delivery:"delivered"`允许consumer按policy调度，`skipped`与`delivery-failed`绝不调度；blocking lease release在domain notification artifact持久化后必须使用`delivered`，只有standalone offer可以使用`skipped`；
 - 每个 open offer 都会由 owner commit/abort；
 - runtime implementation 中不得 import 或提及 process/goal/Pi。
+
+## 同步 receipt 合同
+
+每个 claim 最多注册一个 `onSettledWithReceipt` provider；重复注册返回 `invalid-input`。
+`consumerIdentity()` 返回冻结的 claimant 身份。旧 generation、已终态 offer 的注册分别返回
+`consumer-replaced`、`already-settled`。disposer 幂等，只撤回自己的 provider。
+
+`commit()` 先提交 registry 状态并移除 offer，再同步调用 receipt provider，然后调用普通
+`onSettled` listener。provider 收到不带 receipt 的基础 settlement，只在 committed 时调用；
+`abort()` 不调用它。provider 必须同步返回 receipt 或 `undefined`，不能返回 Promise。
+只有调度方实际安排或合并 continuation 后，才能报告 `scheduled` 或 `coalesced`。
+
+receipt 精确包含五个字段；version 必须为 1，consumerId/generation 必须与 claim 一致，
+generation 为正安全整数，continuationId 为 1..256 UTF-8 字节的安全单行。
+无效返回或抛错只记诊断，不回滚 settlement，不阻止普通 listener，也不伪造 receipt。
+有效 receipt 被复制、冻结并放进 `WakeSettlementV1.consumerReceipt`，producer 的
+`commit()` 返回同一证据。receipt 不代替领域自己的持久化；缺失时由 producer 按自身协议降级。

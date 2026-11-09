@@ -3,7 +3,7 @@
 Source-only shared library for Pi 1.5 session owners, not a standalone extension.
 Subagents and Side Chat share its capture, selection, seed, SDK assembly and managed
 view APIs; Session Compact consumes capture/selection without creating child views.
-Consumers use `file:../pi-session-runtime` and TypeScript subpath exports. There is
+Consumers use `pi-session-runtime` and TypeScript subpath exports. There is
 no build, root barrel or Pi registration. Install consumers separately; this library
 does not register commands, start tasks or discover external providers on its own.
 

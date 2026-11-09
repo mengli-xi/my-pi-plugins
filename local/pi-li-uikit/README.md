@@ -1,6 +1,6 @@
 # pi-li-uikit
 
-Pi 1.5.0 extension 共用的 TUI component。私有包，通过 `file:` 使用。
+Pi 1.5.0 extension 共用的 TUI component。私有包，通过 workspace 依赖 使用。
 
 ## 应放在这里的内容
 
@@ -31,7 +31,7 @@ Pi 1.5.0 extension 共用的 TUI component。私有包，通过 `file:` 使用�
 该包以 `pi-runtime-contracts` 为模型：`private: true`、没有 build step、`exports` 直接指向 `.ts` source。每一项都是必要约束。
 
 - **不 build。** public exports 直接解析到 source，不要求预先生成本库 `dist/`。compiled consumer 可能内联组件，也可能保留 bare-package import；须按消费者实际构建方式重建并启动 fresh process，不能把更新库文件等同于所有 bundle 已更新。不在本库添加伪 build step 或提交生成物。
-- **`private: true` 与 `file:`。** 消费者应明确引用本 checkout 的共享源码，不能假设 registry 中另一个同名/同版本的 copy 包含尚未发布的 API。保留 manifest/lock 的本地 dependency，安装后核对实际解析位置。
+- **`private: true` 与 workspace 依赖。** 消费者应明确引用本 checkout 的共享源码，不能假设 registry 中另一个同名/同版本的 copy 包含尚未发布的 API。保留 manifest/lock 的本地 dependency，安装后核对实际解析位置。
 - **subpath exports，不设 root barrel。** consumer 只 import 实际需要的 component，例如 `pi-li-uikit/text-panel`；export 直接解析到 source。UIKit 的 bundler-mode TypeScript 可通过显式 `.ts` import 组合 shared component（例如 ProcessPanel 使用 EditorPanel 和 SearchSelect），而 compiled consumer 会解析并 bundle public subpath。root barrel 会过早耦合原本独立的 component。
 
   `text-overlay` subpath 暂时保留给仍有引用的 consumer；`info-panel` 和无消费者的旧 show helper 已删除。

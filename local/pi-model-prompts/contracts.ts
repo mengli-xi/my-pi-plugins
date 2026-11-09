@@ -5,7 +5,7 @@
  * fight over the tail of the prompt or silently double up. Contributors do
  * NOT import this file — per the workspace's event-bus convention they copy
  * the channel string and the payload shape and annotate the owner, so load
- * order and bundling stay irrelevant. See docs/pi/events.md.
+ * order and bundling stay irrelevant. See 根 README.md 的能力协议表.
  *
  * The handshake is pull-based: the owner emits the request synchronously at
  * `before_agent_start`, contributors call `contribute()` during that emit,

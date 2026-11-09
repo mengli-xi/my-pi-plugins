@@ -1,9 +1,7 @@
 # mailbox-v1 · 冻结接口与 A1 运行时
 
-本文件对应 `design-agent-mailbox.md` 第 3 轮 §4.2–4.5、§6.1、§7–7.1、§11。
-**A0 冻结接口，A1 实现持久接管、原生投递、可重放通知与稳定命令。**
-producer、迁移和回退 gate 全部通过后才允许启用完整 profile；本包测试不替代 full-profile gate。
-旧 safe-append API 保持原状，迁移 producer 不得把它当 A0 的运行时 fallback。
+本合同定义持久接管、原生投递、可重放通知与稳定命令。
+producer 使用 mailbox 交付；safe-append API 只保留底层原语，不是绕过 mailbox 的回退路径。
 
 ## 入口与用法
 

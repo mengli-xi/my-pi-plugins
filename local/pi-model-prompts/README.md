@@ -102,7 +102,7 @@ An actual final-request inspection requires a separate, explicitly chosen probe.
 Use an isolated HOME/config/cache and official Pi 1.5.0 dependencies:
 
 ```sh
-npm ci --ignore-scripts --registry=https://registry.npmjs.org --replace-registry-host=always
+npm ci # 在仓库根运行
 npm run typecheck
 npm test
 ```

@@ -29,7 +29,7 @@ Subagents/Side 的 SDK view 交接由 `pi-session-runtime` 的 `pi.session-runti
 
 本包保持 Pi-free：manifest、lockfile 与生产源码均不依赖 `@earendil-works/*`，因此不需要 Pi 版本适配。消费者升级到 Pi 1.5.0 时仍使用现有 registry、contract version 和 durable receipt；各消费者负责自己的 Pi lifecycle 接入。
 
-安装：`npm install --ignore-scripts --registry=https://registry.npmjs.org --replace-registry-host=always`。lockfile 使用公开 npm registry，保留现有非 Pi 依赖版本。
+安装：`npm ci # 在仓库根运行`。lockfile 使用公开 npm registry，保留现有非 Pi 依赖版本。
 
 验证：`npm run typecheck`、`npm test`。测试只用本地 fixture，并在 fresh Node process 中检查全部六个公开 subpath export；不发送真实 provider 请求。没有 build step；导出直接指向 TypeScript source。
 

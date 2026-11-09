@@ -134,9 +134,9 @@ registry conflict、target/package/export/hash 不匹配拒绝，不能扫描 Ma
 
 ## 2. Tool closure
 
-Main active tools、registered definitions 与 role allowlist 共同决定 child 工具。普通 read/bash/edit/find/grep/ls/write 保持同 public API。本轮 builtin extension consumer 仅 codemode/tool-search 的 canonical factory，前端 `builtin:<owner>` 准入与后端受控装配一致，仍受 role/tools fences；未知 owner、定义漂移或不支持的公开合同拒绝，不以 ambient discovery 补齐。共享 Runtime 的通用显式 Builtin 接口默认全禁，其可选 MCP 能力不等于本 consumer 支持。未选中的 builtin 不启用，llama.cpp 不是工具，本轮不启服务。role tools=*只选可证明 owner 的当前 active 工具，未知 SDK/未声明工具跳过并 diagnostic；显式列出不 active/undeclared 工具拒绝，不扩权。
+Main active tools、registered definitions 与 role allowlist 共同决定 child 工具。普通 read/bash/edit/find/grep/ls/write 保持同 public API。当前 builtin extension consumer 仅 codemode/tool-search 的 canonical factory，前端 `builtin:<owner>` 准入与后端受控装配一致，仍受 role/tools fences；未知 owner、定义漂移或不支持的公开合同拒绝，不以 ambient discovery 补齐。共享 Runtime 的通用显式 Builtin 接口默认全禁，其可选 MCP 能力不等于本 consumer 支持。未选中的 builtin 不启用，llama.cpp 不是工具，不启服务。role tools=*只选可证明 owner 的当前 active 工具，未知 SDK/未声明工具跳过并 diagnostic；显式列出不 active/undeclared 工具拒绝，不扩权。
 
-当前 MCP owner 是 pi-mcp-adapter，不是 stock MCP。child 继承须由 adapter 自己明确能力声明/工厂，并经后续独立迁移验收，现在不宣称支持；不使用 native MCP 替代、不解析 stock MCP 配置或冻结 raw 凭据，也不增加配置 pinning。
+当前 MCP owner 是 pi-mcp-adapter，不是 stock MCP。child 继承须由 adapter 自己明确能力声明/工厂，并通过独立集成验证，现在不宣称支持；不使用 native MCP 替代、不解析 stock MCP 配置或冻结 raw 凭据，也不增加配置 pinning。
 
 mandatory collaboration tools 包含 send_input/wait/list/model/role 查询及允许 depth 的 spawn，child finish_task。close/resume 永远 Main-only；达到 ceiling 从 registered definitions、active tools、profile、fingerprint 与 prompt 同时去 spawn，Host 复核 persistent 结构 depth 和 min(frozen ceiling,current maxDepth)。默认 maxDepth 1，可配置 2，孙 Agent 始终不能再 spawn。
 
@@ -160,7 +160,7 @@ execution 使用 public services/session runtime，独立 SettingsManager.inMemo
 
 resume 核对 frozen artifact/hash/model/credential/factory，只恢复目标 idle，零 Task/lease/provider/compact。超窗 preflight 必须在真实 Task grant 后，无法安全 summarize 拒绝并推荐 none；用户打开 closed history 可以用 provider-only/presentation 和 tools=[]的 in-memory runtime，不允许 fallback model 执行旧 Agent。
 
-CC execution assembly 安装轻 recorder，Detached 仍写真实 run metrics；UI 每 view attach/detach。CC 只接受 `dist/child.js` 与空 tools/providers/commands 的纯 presentation descriptor，不注册 builtin execution；标准 Main profile 显式选择七个内置工具。现有 CC presentation 是 native child view 的必需依赖；本轮不迁入、不提交 Processes/CC，仅在目标外使用真实源码构建产物作为所需测试依赖，不算它们验收。缺席时如实拒绝该视图，不删功能或将 fallback 当完整验收。Main completion append 只用公开 branch API 与 mailbox，没有旧三项 private seam；Side 两 visibility probe 属于 Side，不当 SDK 能力 attestation。
+CC execution assembly 安装轻 recorder，Detached 仍写真实 run metrics；UI 每 view attach/detach。CC 只接受 `dist/child.ts` 与空 tools/providers/commands 的纯 presentation descriptor，不注册 builtin execution；标准 Main profile 显式选择七个内置工具。CC presentation 可选；有合法能力时装配其显式 factory，缺席时使用 Pi 原生消息渲染，输入、历史与生命周期不变。Main completion append 只用公开 branch API 与 mailbox，没有旧三项 private seam；Side 两 visibility probe 属于 Side，不当 SDK 能力 attestation。
 
 assembly、approved factories、managed view 共用 `getSessionAssemblyPublicModules()` 的进程级 immutable Pi coding-agent/ai/tui 表；同版本不同 physical copy 不能当作同一 class identity。同一 factory 路径切 realm 在 import/cache 前拒绝，readonly history 也用 canonical SDK 创建。TerminalOwner 在 acquire 首次使用时保存并恢复 canonical TUI 的原始 keybindings 引用，await 后重验取消与 lease。协议与双 loader 回归见 [session-runtime](../../pi-session-runtime/README.md)。
 
@@ -222,11 +222,11 @@ SDK child 使用隔离内存 settings，compaction 固定 enabled；reserveToken
 
 ## 5. 加载与验证边界
 
-轻量 fork grammar inline 到 cold schema/parser；provider capture 的重模块与 selection/seed 在首次有效请求/实际 fork 按需加载。空 Main 会话不创建 service/store/SDK session。Subagents 和 Side 默认且唯一 SDK；Side/BTW 使用 capture/selection/seed，Side 另消费共享 native view，native-record fallback 仍每次打开显式接受。Session Compact 新增 public capture/select consumer，前缀不可靠/完整材料超窗转 small，不新增 privatecapture。source-only 依赖已迁入；正式 profile、真实 provider/cache、人工 TUI 与规模验收尚未完成。旧存储不读、不转换、不删除。
+轻量 fork grammar inline 到 cold schema/parser；provider capture 的重模块与 selection/seed 在首次有效请求/实际 fork 按需加载。空 Main 会话不创建 service/store/SDK session。Subagents 和 Side 默认且唯一 SDK；Side/BTW 使用 capture/selection/seed，Side 另消费共享 native view，native-record fallback 仍每次打开显式接受。Session Compact 新增 public capture/select consumer，前缀不可靠/完整材料超窗转 small，不新增 privatecapture。共享库通过 workspace 依赖解析；faux 测试不证明真实 provider/cache、人工 TUI 或规模性能。旧存储不读、不转换、不删除。
 
 核心验证在 `local/pi-session-runtime` 的 `npm run check`：fork matrix、stable prefix、fresh seed roundtrip、capture ownership/fence/invalidation、nested provenance，以及真实 public Pi SDK/faux provider 的 Main/native-callback negative controls。Subagents 的 typecheck/build/verify-dist 与 context contract tests 验证接线；这些不证明 remote cache hit 或实际 Magic DB 行为。
 
-Magic Context 相关逻辑仅保留已捕获旧格式的兼容解码，当前共享库测试覆盖 legacy tags、temporal/preamble、多段文本/图片及有歧义的历史映射拒绝。没有迁入 Magic Context producer、配置或数据库，不执行其 DB allocation/accounting、完整 pipeline 或 DB-backed renderer；旧的直接发布产物耦合与 merge gate 描述不作为本基线验收依据。共享库升级仍运行 `npm --prefix local/pi-session-runtime run check`，不能据 hash、静态 fixture 或 faux 结果声称覆盖真实 DB/pipeline。
+Magic Context 相关逻辑仅保留已捕获旧格式的兼容解码，当前共享库测试覆盖 legacy tags、temporal/preamble、多段文本/图片及有歧义的历史映射拒绝。不加载 Magic Context producer、配置或数据库。共享库升级运行 `npm run check -w pi-session-runtime`（仓库根），不能据 hash、静态 fixture 或 faux 结果声称覆盖真实 DB/pipeline。
 
 # pi-subagents · 信任与故障边界
 
@@ -240,7 +240,7 @@ Magic Context 相关逻辑仅保留已捕获旧格式的兼容解码，当前共
 
 HostCaller 只由实际 Main/child/UI/recovery adapter 构造，模型 schema 不含 kind/generation/session 身份。Host 复核 binding/manager/runtime、Task ID、lifecycle/revision 与 Main owner；child 只操作直接 child 且 close/resume 仅 Main/可信用户。maxDepth 默认 1/max2，注册/active tools/profile/fingerprint/prompt/Host 全部执行 ceiling；不能通过手工 tool name 或伪 depth 越层。
 
-创建冻结 role body/provenance/hash、model scope/model/effort/tier、cwd/trust/settings snapshot/delegation ceiling、tools/definition/approved factory hash；resume 不能读取变更 role 扩权、用 fallback model 执行或复制未知 Main plugin。public namespaces/factory module cache 不共享 runtime instance/options，provider auth 只在公开 ModelRuntime 解析，不持久 secret。closed history 仅 in-memory read view/空 tool，不自动 resume/模型请求。本轮 builtin consumer 仅 codemode/tool-search canonical factory，前端/后端一致且受 role/tools fences；`builtin_proof={version,pi_version}` 核对 canonical Pi.VERSION，不对 builtin 标识做物理文件 SHA 读取。其他 builtin 默认不启用，llama.cpp 非工具、不启服务；未知 owner 拒绝而非扫描 ambient paths。非 builtin Search/Processes 的 `execution_factory` proof 才直接读取实际物理 factory 文件做 SHA 校验，wrapper hash 不证明未校验文件可信；旧 profile 可读历史，缺 proof 不执行。
+创建冻结 role body/provenance/hash、model scope/model/effort/tier、cwd/trust/settings snapshot/delegation ceiling、tools/definition/approved factory hash；resume 不能读取变更 role 扩权、用 fallback model 执行或复制未知 Main plugin。public namespaces/factory module cache 不共享 runtime instance/options，provider auth 只在公开 ModelRuntime 解析，不持久 secret。closed history 仅 in-memory read view/空 tool，不自动 resume/模型请求。当前 builtin consumer 仅 codemode/tool-search canonical factory，前端/后端一致且受 role/tools fences；`builtin_proof={version,pi_version}` 核对 canonical Pi.VERSION，不对 builtin 标识做物理文件 SHA 读取。其他 builtin 默认不启用，llama.cpp 非工具、不启服务；未知 owner 拒绝而非扫描 ambient paths。非 builtin Search/Processes 的 `execution_factory` proof 才直接读取实际物理 factory 文件做 SHA 校验，wrapper hash 不证明未校验文件可信；旧 profile 可读历史，缺 proof 不执行。
 
 当前 MCP 来自 pi-mcp-adapter；child 继承需 adapter 自己明确能力声明/工厂及后续独立验收，现在不宣称支持。不以 stock MCP 替代，不解析其配置、冻结 raw 凭据或增加配置 pinning。共享 Runtime 通用显式 Builtin 接口仍默认全禁，保留的可选 MCP 支持不授权本 consumer。
 
@@ -248,7 +248,7 @@ HostCaller 只由实际 Main/child/UI/recovery adapter 构造，模型 schema �
 
 agent-dir 走公开 Pi API/PI_CODING_AGENT_DIR。store-v2 只读自身 closed-layout、same UID、no-follow 目录/文件，directory0700/file0600，单 writer lock、canonical JSON/digest/CRC/journal 连续 revision 保护 metadata authority；symlink/malformed/identity 不明保 bytes 并 degraded/unavailable，不能猜损坏或覆盖。native JSONL 和 journal 独立提交域，ID/hash proof 对账才能认 append，不从 text 猜成功。
 
-prepare token 仅 live 内存，磁盘 hash 不授 commit 或 lease authority；before commit frozen artifacts 和 owner lease 完整验证，uncertain commit 保留 prepare/lease 并 fence，不能静默 retry。log 只 bounded code/correlation/health，不记 prompt、正文、tool args/results、credential、token 或完整 private path。旧存储不读、不转换、不删除。历史报告随原仓归档，未迁入，不是生产 diagnostic ABI 或新验收证据。
+prepare token 仅 live 内存，磁盘 hash 不授 commit 或 lease authority；before commit frozen artifacts 和 owner lease 完整验证，uncertain commit 保留 prepare/lease 并 fence，不能静默 retry。log 只 bounded code/correlation/health，不记 prompt、正文、tool args/results、credential、token 或完整 private path。旧存储不读、不转换、不删除。
 
 ## 4. 生命周期与取消
 

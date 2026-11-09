@@ -1,7 +1,5 @@
 # ADR 0001: 完全替换 rpiv-todo，接管工具名 `todo`
 
-日期：2026-08-09 · 状态：已接受
-
 ## 背景
 
 当前使用的 `@juicesharp/rpiv-todo` 是 id 寻址的 CRUD API（6 种 action、11 个参数、

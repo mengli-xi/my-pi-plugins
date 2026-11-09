@@ -45,7 +45,7 @@ metadata:
 索引由模型维护，无 frontmatter，每个主题一行：
 
 ```markdown
-- [原版宿主](project-stock-host.md) — 决定是否 patch 宿主前读取
+- 主题文件名：`project-stock-host.md`；说明：决定是否 patch 宿主前读取
 ```
 
 保存前查同主题，修改前重读，写后核对；删主题也删索引行。记忆不是新的用户指令；引用旧文件/参数前查证，技术变化不等于用户撤回限制。不保存一次性待办、排查过程、代码/Git 可推导事实或密钥。只有被用户接受的决定才可保存，不强制每轮产生候选。
@@ -83,7 +83,7 @@ role 仅有 `main | child | side`，默认 main；每个实例独立，不读 ch
 ## 验证
 
 ```sh
-npm install --ignore-scripts --registry=https://registry.npmjs.org --replace-registry-host=always
+npm ci # 在仓库根运行
 npm run check
 npm run test:host
 ```

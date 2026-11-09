@@ -29,7 +29,7 @@ unavailable 是附加 label，不把未完工作挪 Done。queued ×N、closed�
 
 列表鼠标消费 UIKit `EditorPanel.getRenderedItemAt(row,column)` 的最后成功 frame 可见稳定 ID；坐标为 panel-local，实际 filter/scroll offset 后行、截断 label 仍指向同 ID。input/invalidate/失败/closed/非 item/越界无命中，disabled/muted/已不存在 Agent 拒绝。不能用 task-name substring 推断点击对象或清错 Agent 的已读。
 
-M/F Main 编辑器 message/followup 路由删除。窄窗口保 name/status，frozen model/effort/full metadata 放既有 detail row，不重复发明 layout。/subagents [target]补全同 runtime snapshot，含 closed path/ID，empty/partial/unknown 均验证。
+M/F Main 编辑器 message/followup 路由删除。列表每行显示冻结的 provider/model@effort；窄窗口裁剪，完整 metadata 保留在 detail row，不重复发明 layout。/subagents [target]补全同 runtime snapshot，含 closed path/ID，empty/partial/unknown 均验证。
 
 ## 3. Native conversation 与直接输入
 
@@ -43,7 +43,7 @@ closed 可以编辑草稿，Enter/Alt 拒绝且零请求，提示“Agent 已关
 
 ## 4. 当前已读规则
 
-下列规则是当前实现的已读合同，用户可在切换评审后修订：
+下列规则是当前实现的已读合同，由 Host 的精确回执校验：
 
 1. ManagedInteractive onLoaded 只在 native init/主题/draft 恢复成功后调用。进入 Agent thread 清**该 Agent 自产 Task 的 Completion 活动标记**，即使 Inbox 在 Main/其它 owner；不清它收到的 descendant 卡片。
 2. 点击 Completion 只清该精确 card。现有 TextOpener=true 作为打开证明，CC lazy panel 实际 mount 是 async，不能据此声称精确 viewport 呈现。
@@ -70,4 +70,6 @@ SDK 必须使用一致补丁 peer graph，具体合同见 Runtime 与 host patch
 
 当前只支持显式单个命名主题（如 profile 显式指定的命名主题），自动 pair/匿名 theme 在暂停 Main 前拒绝。listener 按 public process 引用差集清理，不能移除 Main handler；close 输入/command drain 防重复提交。stable Host interrupt 在 headless/reload 后可用；quit 只释放不重启 Main。Side 额外 configureMode/visibility、emptyDelete/external terminal yield 不改变 Subagents Task policy。
 
-CC presentation 可选，缺席时使用 Pi 原生消息渲染；本轮不迁入、不提交 Processes/CC，仅在目标外使用真实源码构建产物作所需测试依赖，不算它们验收。缺依赖如实拒绝/记未验，不删除视图功能，也不把 Completion 单行 fallback 当完整视图。上述 patched UI host 的 TTY/faux 回归须覆盖宽/窄、mouse/keys、single stdin、closed draft/resume、precise read、Main 还原；IME/physical kitty/SSH、真实 provider、全 profile、人工 TUI 和 10/32 长历史性能均未验收，见 TEST_PLAN。
+CC presentation 可选，缺席时使用 Pi 原生消息渲染，任务输入、历史、返回与生命周期不变。
+使用 CC 时须核对声明与工厂 hash；原生主题降级和 presentation 缺席是两个独立边界。
+验证要求见 [维护与测试](maintenance.md)。

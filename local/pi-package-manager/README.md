@@ -45,7 +45,7 @@ manager 会阻止在 UI 中停用自身。若确实要停用 manager 本身，�
 TypeScript 直接加载，无 build 或 dist。先在相邻 `pi-li-uikit` 安装其开发依赖，再在本包执行：
 
 ```bash
-npm ci --ignore-scripts --registry=https://registry.npmjs.org --replace-registry-host=always
+npm ci # 在仓库根运行
 npm run check
 ```
 

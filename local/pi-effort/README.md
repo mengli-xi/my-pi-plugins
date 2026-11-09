@@ -83,7 +83,7 @@ pi install /path/to/my-pi/local/pi-effort
 在隔离 HOME/config/cache 中安装官方 Pi 1.5.0 锁定依赖，不读取日常配置：
 
 ```bash
-npm ci --ignore-scripts --registry=https://registry.npmjs.org --replace-registry-host=always
+npm ci # 在仓库根运行
 npm run typecheck
 npm test
 ```

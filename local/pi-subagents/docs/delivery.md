@@ -1,6 +1,6 @@
 # pi-subagents · 交付协议 V1
 
-本文档规定 Task 结算、Completion/Inbox/Outbox、Agent Barrier、runtime-contract Wake 仲裁与已读确认。统一 mailbox 的现行 transport、stable keys、导入与 child 取消顺序见 [mailbox v1](./mailbox-v1.md)，目标 transport build 为 mailbox-v1.0.5，须配套 rebuild/fresh process；本文中旧的直接 native send/append、timeout scan、SDK resume trigger 与递增 epoch 重投描述由该合同取代，不再作为运行路径。持久化 schema 和状态有效性由 [`PERSISTENCE_FORMAT.md`](./persistence.md) 负责；可信 caller/prepare/lease 与同进程端口由 [`HOST_API.md`](./architecture.md)负责。旧 Supervisor/Owner IPC 的有效 application/ACK 约束迁入§14，唯一 SDK 无 OS transport。
+本文档规定 Task 结算、Completion/Inbox/Outbox、Agent Barrier、runtime-contract Wake 仲裁与已读确认。统一 mailbox 的现行 transport、stable keys、导入与 child 取消顺序见 [mailbox v1](./mailbox-v1.md)，目标 transport build 为 mailbox-v1.0.6，须配套 rebuild/fresh process；本文中旧的直接 native send/append、timeout scan、SDK resume trigger 与递增 epoch 重投描述由该合同取代，不再作为运行路径。持久化 schema 和状态有效性由 [`PERSISTENCE_FORMAT.md`](./persistence.md) 负责；可信 caller/prepare/lease 与同进程端口由 [`HOST_API.md`](./architecture.md)负责。旧 Supervisor/Owner IPC 的有效 application/ACK 约束迁入§14，唯一 SDK 无 OS transport。
 
 ## 1. 权限边界与保证
 
@@ -353,7 +353,7 @@ interface GoalWakeProofV1 extends WakeConsumerReceiptV1 {
 }
 ```
 
-Goal claim handle 最多允许一个 receipt provider。它只会在仍 active 的 Goal generation 为 completion-driven continuation 同步注册/合并后返回该值。`pi-goal-local` 是为兼容已持久化 receipt 保留的稳定 token，不是 package 名或目录路径；当前 package 路径是 `fork/pi-goal`。runtime-contract registry 在将其包含于 producer 返回的 settlement 前，校验 claim consumer identity/generation 和 closed bound。缺失/无效 receipt 不是 proof；producer 应走 fallback/reconciliation，绝不发起 `pi.events` request。Proof 不包含 goal/prompt/result text；`continuationId` 是 Goal 自有 opaque marker。
+Goal claim handle 最多允许一个 receipt provider。它只会在仍 active 的 Goal generation 为 completion-driven continuation 同步注册/合并后返回该值。`pi-goal-local` 是为兼容已持久化 receipt 保留的稳定 token，不是 package 名或目录路径；该 token 不约束包路径。runtime-contract registry 在将其包含于 producer 返回的 settlement 前，校验 claim consumer identity/generation 和 closed bound。缺失/无效 receipt 不是 proof；producer 应走 fallback/reconciliation，绝不发起 `pi.events` request。Proof 不包含 goal/prompt/result text；`continuationId` 是 Goal 自有 opaque marker。
 
 Receipt field 精确如下：
 
@@ -535,7 +535,7 @@ Wake:
              └→ aborted
 ```
 
-`consumer-deferred` 曾在一个 commit 里短暂存在过，现已按 D-007 撤销。它没有写入路径；codec 仍能读出旧 store 里的这个值，recovery 在打开时把它归一成 `not-offered` 并丢掉 `wake_deferral`，下一个边界按正常流程重投一次。
+`consumer-deferred` 只保留旧格式读取兼容。它没有写入路径；codec 仍能读出旧 store 里的这个值，recovery 在打开时把它归一成 `not-offered` 并丢掉 `wake_deferral`，下一个边界按正常流程重投一次。
 
 有效 field combination 精确由 `PERSISTENCE_FORMAT.md §7.7` 定义。`wake_epoch` 只在创建新 offer object 后递增。`delivered` 要求同一 metadata transaction 中有匹配 Wake receipt。
 
@@ -665,7 +665,7 @@ Delivery proof 是 native active-branch/latest-compaction lineage 加 durable In
 
 在 §9.2 的每一行前后注入故障，包含 journal sync、Pi append proof、offer creation、epoch commit、claim/fallback selection、runtime commit、Goal proof reply、Wake receipt transaction、binding replacement 与 model start。断言没有丢失 Completion、没有无 receipt 的 terminal Outbox、不会 reacquire settled Task lease、不会 replay provider work，并且只有明确不可避免的 crash window 才存在逻辑重复 continuation。
 
-## 14. 同进程 OwnerEvent application 与 ACK（迁自旧 Owner 合同）
+## 14. 同进程 OwnerEvent application 与 ACK
 
 ### 14.1 Identity 与应用证明
 

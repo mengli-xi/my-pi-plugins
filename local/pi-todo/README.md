@@ -48,7 +48,7 @@
 要求 Pi 1.5.0。status schema 用 TypeBox `Type.Enum` 保留 plain JSON enum 和静态类型。
 
 ```
-npm ci --ignore-scripts --registry=https://registry.npmjs.org --replace-registry-host=always
+npm ci # 在仓库根运行
 npm run check   # tsc --noEmit + node --test
 ```
 

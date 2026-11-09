@@ -56,7 +56,7 @@ export interface InboxRecordV1 { version: 1; record_revision: number; inbox_id: 
 export interface ViewedInboxReceiptV1 { inbox_id: string; completion_id: string; projection_sha256: string; entry_id: string }
 export type OutboxKindV1 = "completion-wake" | "barrier-wake" | "barrier-catch-up";
 export type OutboxDeliveryStateV1 = "pending" | "delivering" | "cards-appended" | "wake-settlement-pending" | "delivered" | "handled" | "delivery-failed";
-// `consumer-deferred` 与 `wake_deferral` 只保留兼容读取：31b22bf 短暂写过它们，D-007 之后没有任何写入
+// `consumer-deferred` 与 `wake_deferral` 只保留兼容读取：旧版本写过它们，当前没有任何写入
 // 路径。recovery 在 store 打开时把这种记录映射回 not-offered 并剥掉 wake_deferral，新记录绝不写出。
 export type OutboxWakeStateV1 = "not-offered" | "foreground-pending" | "open" | "claimed" | "consumer-deferred" | "fallback-appended" | "settled" | "aborted";
 /** 被 claim 的 consumer 明确不给 continuation proof 时记录的 offer 身份、epoch 与原因；DELIVERY_PROTOCOL §7.6。 */

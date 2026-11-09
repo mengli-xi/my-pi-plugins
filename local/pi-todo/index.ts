@@ -94,7 +94,7 @@ function summary(): string {
  * session restores). Payload: `{ todos: { id, content, status, activeForm }[] }`
  * — the same shape as the tool result's details. Consumers (pi-claude-style's
  * under-spinner list) subscribe instead of scraping tool results; the list is
- * authoritative from the owner. See docs/pi/events.md.
+ * authoritative from the owner. See 根 README.md 的能力协议表.
  */
 const TODO_CHANGED_CHANNEL = "todo:changed";
 const TODO_SNAPSHOT_CHANNEL = "todo:snapshot-v1";

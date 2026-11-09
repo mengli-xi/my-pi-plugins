@@ -15,7 +15,7 @@
 从 package 目录运行：
 
 ```sh
-npm ci --ignore-scripts --registry=https://registry.npmjs.org --replace-registry-host=always
+npm ci # 在仓库根运行
 npm run typecheck
 npm test
 ```

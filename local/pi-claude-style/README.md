@@ -242,7 +242,7 @@ Pi fullscreen 拥有鼠标解码、滚轮与选区。CC 只把命中 overlay 之
 
 **拖动进行选择，松开进行复制。** 拖动时选区会以反色显示；拖过顶部或底部边缘后，正文会继续在选区下方滚动；进入剪贴板的是显示出来的选中文本——escape code 会被去除，右边缘会被裁剪。由于选区以正文坐标而非屏幕坐标保存，滚动会让文本在选区下方移动，而不会丢失选区。面板选区由 UIKit 维护，transcript 选区由 Pi 维护。
 
-选择需要 motion report，因此启用 mouse 的 TextOverlay 在打开期间会同时请求 `?1002` 和 `?1000`/`?1006`。
+选择由宿主的鼠标事件驱动，TextOverlay 不开启终端鼠标模式。
 
 `y`（或 `c`）则会复制**全部内容**，并且取的是*源内容*而非屏幕内容——一次运行的 Markdown、一次调用的参数和结果——所以可以粘贴到编辑器而非 terminal 中。footer 右下角会说明结果（`Copied 123 chars to clipboard`），直到下一次按键恢复提示。
 
@@ -568,7 +568,7 @@ Main 在 `session_start` 用公开 `setFooter` 同步挂载同一模板，预留
 CP/MEM、cache 和第三行贡献项的布局；贡献项照常更新，不等 shell 成功。
 Main 模板也保留 Fast 与 Todo slot；命令持续失败时，完成 Todo 的计数仍可点击展开完成列表。
 命令成功后替换为真实输出，失败、超时或空输出保留上次成功帧；尚未成功时保留兜底帧。
-Main 冷启动在 `session_start` 之前仍可能显示原生 footer；本轮没有增加私有启动接口。
+Main 冷启动在 `session_start` 之前仍可能显示原生 footer；不增加私有启动接口。
 `npm run test:main-statusline -- /path/to/pi-1.5.0` 使用隔离 profile 与零请求 fixture，
 覆盖持续超时、成功后失败/空输出/超时、持续成功及 CP/MEM 更新；逐帧单独记录冷启动限制，
 并要求 `session_start` 后的原生 footer 为零帧。
@@ -682,7 +682,7 @@ Above-editor widget 非空时，CC 用一个受 probe 保护的 `renderWidgetCon
 
 置顶条在 Pi 原生选区着色后会恢复未被面板覆盖的那一行，所以正文选区滚到顶边时不会给问题条染色；选区与复制文本仍由 Pi 维护。浮动补全要等有效布局才隐藏 native 列表，帧接缝失配时退回原生补全。`/cc-style config set layout.enabled|stickyUserMessage|floatAutocomplete` 补全 true/false；`layout.popupGap` 为 0..100 整数，`layout.minViewportRows` 为 1..1000 整数，补全描述会提示范围。
 
-长工具参数流式呈现只使用 Pi 公开的 renderer `state`、`argsComplete` 与 `executionStarted`：折叠摘要复用同一组件及其 wrap cache；`write`/`write_file` 的 native 或 inline 内容预览在参数未完成时最多展示前 4096 个 UTF-16 code unit 加省略号，截点避开高代理字符，前缀相同就复用组件。以每行 state 为弱键分别保存原生 call/result child 和 CC 包装；交给原生 renderer 的 `lastComponent` 始终是它自己的 child。完成、执行开始、路径或展开状态变化会重新渲染；完整参数始终交给执行器和 transcript。真实 Pi 1.4.0 write renderer 与公开 `ToolExecutionComponent` 的回归覆盖完成、执行、结果及 invalidate，并逐行对比 `7405261` 的最终基线（规范化终端样式、链接 escape 和行尾空格）。没有额外配置、timer 或 Pi private seam。
+长工具参数流式呈现只使用 Pi 公开的 renderer `state`、`argsComplete` 与 `executionStarted`：折叠摘要复用同一组件及其 wrap cache；`write`/`write_file` 的 native 或 inline 内容预览在参数未完成时最多展示前 4096 个 UTF-16 code unit 加省略号，截点避开高代理字符，前缀相同就复用组件。以每行 state 为弱键分别保存原生 call/result child 和 CC 包装；交给原生 renderer 的 `lastComponent` 始终是它自己的 child。完成、执行开始、路径或展开状态变化会重新渲染；完整参数始终交给执行器和 transcript。真实 Pi 1.4.0 write renderer 与公开 `ToolExecutionComponent` 的回归覆盖完成、执行、结果及 invalidate，并逐行对比固定快照（规范化终端样式、链接 escape 和行尾空格）。没有额外配置、timer 或 Pi private seam。
 
 ## 交互回归清单
 

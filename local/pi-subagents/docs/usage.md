@@ -39,7 +39,7 @@ Task timeout 优先显式 spawn > role > config > default，在 Agent profile �
 
 open 计 lifecycle 不等于 closed，含 idle/waiting/queued/closing；prepared spawn 有效 reservation 计入准入。Task 完成保持 open，只有 close 收口释放名额。active 只计已 grant 执行，waiting 释放、activation 排位，未 drain 取消不释放。配置收紧不能中断已 accepted 工作，只阻止新准入/grant 超过新限制；无 resident/LRU/idle timer。
 
-profile.settings_snapshot 持久保存 allowlisted 公开 Pi settings，execution 深拷贝并固定 native compaction enabled、冻结 model 当前 window 预算；Main settings 不变，resume 不触发 compact。UI 使用 Main 已有 CC 配置，无 liveView override；旧 Pinned entry 只忽略、不加载。source-only 依赖已迁入，修改它或 compiled 源码后须重建直接 consumer；mailbox-v1.0.5 必须配套新 build/fresh process，不能用 /reload 代替。本同步不修改真实 profile，旧存储不读、不转换、不删除。
+profile.settings_snapshot 持久保存 allowlisted 公开 Pi settings，execution 深拷贝并固定 native compaction enabled、冻结 model 当前 window 预算；Main settings 不变，resume 不触发 compact。UI 使用 Main 已有 CC 配置，无 liveView override；旧 Pinned entry 只忽略、不加载。共享库使用 workspace 依赖，修改它或 compiled 源码后须重建直接 consumer；mailbox-v1.0.6 必须配套新 build/fresh process，不能用 /reload 代替。本同步不修改真实 profile，旧存储不读、不转换、不删除。
 
 # pi-subagents · 模型工具合同
 
