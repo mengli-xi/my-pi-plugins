@@ -15,6 +15,20 @@ import { createChildTools, type ChildHostPort } from "./child-tools.js";
 import { childExecutionFactories, childPresentationFactories } from "./factory-catalog.js";
 import { cancelChildProcessAdmission } from "../child/lifecycle.js";
 
+/** Native view lifecycle is independent of optional transcript presentation factories. */
+export function childViewExtension(view: Pick<ManagedInteractive, "prepare" | "extension">): import("@earendil-works/pi-coding-agent").ExtensionFactory {
+  let prepared = false;
+  return pi => {
+    pi.registerMessageRenderer("subagent-task-resume", (message, _options, theme) =>
+      new Text(theme.fg("muted", String(message.content)), 0, 0));
+    view.prepare = async () => {
+      if (prepared) return;
+      view.extension(pi);
+      prepared = true;
+    };
+  };
+}
+
 export class ChildSession {
   readonly identity: ChildHostPort["identity"];
   readonly runtime: AgentSessionRuntime;
@@ -88,19 +102,8 @@ export class ChildSession {
     const view = new ManagedInteractive(input.host.report, input.host.interrupt);
     const taskName = input.host.tools.identity().taskPath.split("/").at(-1)!;
     // CC's light run recorder belongs to execution, even before the first UI. Its renderer stays detached.
-    const claude = input.profile.capabilities.entries.some(entry => entry.owner === "pi-claude-style")
-      ? await childPresentationFactories(input.profile, view.lifecycle, taskName) : [];
-    let presentationLoaded = false;
-    const presentation: import("@earendil-works/pi-coding-agent").ExtensionFactory = pi => {
-      pi.registerMessageRenderer("subagent-task-resume", (message, _options, theme) =>
-        new Text(theme.fg("muted", String(message.content)), 0, 0));
-      view.prepare = async () => {
-        if (presentationLoaded) return;
-        if (!claude.length) throw new Error("capability-unavailable: missing child presentation pi-claude-style");
-        view.extension(pi);
-        presentationLoaded = true;
-      };
-    };
+    const presentations = await childPresentationFactories(input.profile, view.lifecycle, taskName);
+    const presentation = childViewExtension(view);
     const prompt = await readFile(input.systemPromptFile);
     if (prompt.byteLength !== input.profile.system_prompt_bytes || createHash("sha256").update(prompt).digest("hex") !== input.profile.system_prompt_sha256) throw new Error("capability-drift: system prompt changed");
     const manager = getSessionAssemblyPublicModules()["@earendil-works/pi-coding-agent"].SessionManager.open(input.sessionFile, dirname(input.sessionFile));
@@ -114,7 +117,7 @@ export class ChildSession {
       projectTrusted: input.profile.project_trusted, sessionManager: manager, provider: input.profile.provider, model: input.profile.model,
       thinkingLevel: input.profile.reasoning_effort, modelScope: input.profile.model_scope, tools: [...active], systemPrompt: effectivePrompt,
       approvedBuiltinExtensions,
-      extensions: [frozenToolFenceV1(input.profile, active), ...claude, tools.extension, ...extensions, presentation, pi => { pi.on("session_start", () => { observedTools = () => pi.getAllTools(); }); }],
+      extensions: [frozenToolFenceV1(input.profile, active), ...presentations, tools.extension, ...extensions, presentation, pi => { pi.on("session_start", () => { observedTools = () => pi.getAllTools(); }); }],
       shutdown: view.requestReturn, onError: input.host.report }).catch(error => { cleanup(); throw error; });
     try {
       const registered = new Map(observedTools().map(tool => [tool.name, tool]));

@@ -97,7 +97,7 @@ Completion, lease release and ACK can still drain during closing.
 Quit, new session, switch, and reload force-close the previous Main's complete tree.
 Reopening metadata never schedules old work. Each resumed agent must receive input
 before execution. SDK children use `pi-session-runtime` assembly and lazy audited
-Processes/native-search and explicitly approved provider factories; CC provides presentation and fullscreen adaptations. The existing CC presentation factory is required for native child views. Processes/CC/Goal/native-search are not migrated or committed in this round; required joint tests use them only as external-to-target dependencies built from real source, not as acceptance of those packages. Do not remove view features to claim this package passed. Native
+Processes/native-search and explicitly approved provider factories; CC provides presentation and fullscreen adaptations. 展示按 `presentation/claude-style-v1` 能力选择，不按 owner 名选择；能力缺失时 child 视图使用 Pi 原生消息渲染，任务输入、历史、返回与生命周期功能不变。 Processes/CC/Goal/native-search are not migrated or committed in this round; required joint tests use them only as external-to-target dependencies built from real source, not as acceptance of those packages. Do not remove view features to claim this package passed. Native
 settlement at `agent_settled` owns final text and usage. Cold recovery treats
 unfinished ownerless work as interrupted and closes it; assistant tail is not a
 completion proof.
@@ -105,8 +105,7 @@ completion proof.
 ### SDK child views
 
 `/subagents [target]` (Agent ID or task path) and Tree Enter open a
-second native `InteractiveMode` in the same process. CC uses its
-explicit presentation factories; no transcript, viewport, or history renderer is
+second native `InteractiveMode` in the same process. 展示能力存在时使用其显式 presentation factory，缺失时使用 Pi 原生渲染； no transcript, viewport, or history renderer is
 copied. Main keeps its editor object and only pauses its public TUI. Returning
 saves the child draft, detaches presentation, binds the runtime headless, and
 resumes Main without another Main session_start.

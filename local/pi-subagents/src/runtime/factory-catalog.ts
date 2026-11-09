@@ -27,16 +27,16 @@ import { builtinRoleApiV1, validateBuiltinEntryV1 } from "../capabilities/builti
 // fail closed. Retired Pinned entries keep the same empty presentation shape:
 // skip them without reading their deleted entrypoint or treating them as tools.
 function isPresentationEntry(entry: FrozenProfileV1["capabilities"]["entries"][number]) {
-  return ["pi-claude-style", "pi-pinned-layout"].includes(entry.owner) && entry.providers.length === 0
+  return entry.hooks.some(hook => hook.startsWith("presentation/")) && entry.providers.length === 0
     && entry.hooks.every(hook => hook.startsWith("presentation/"))
     && entry.tools.length === 0;
 }
 
 export async function childPresentationFactories(profile: FrozenProfileV1, lifecycle: ViewLifecycle, taskName: string): Promise<ExtensionFactory[]> {
   const result: ExtensionFactory[] = [];
-  for (const owner of ["pi-claude-style"]) {
-    const entry = profile.capabilities.entries.find(item => item.owner === owner);
-    if (!entry || !isPresentationEntry(entry)) throw new Error(`capability-unavailable: missing child presentation ${owner}`);
+  for (const entry of profile.capabilities.entries.filter(item => item.hooks.includes("presentation/claude-style-v1"))) {
+    const owner = entry.owner;
+    if (!isPresentationEntry(entry)) throw new Error("capability-unavailable: invalid child presentation capability");
     const path = entry.child_entrypoint, directory = dirname(path);
     // CC's precompiled .ts entry keeps Pi 1.5 loader/host component identity.
     // Only this audited dist target is accepted; other suffixes fail closed.
