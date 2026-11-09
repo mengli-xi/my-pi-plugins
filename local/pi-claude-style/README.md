@@ -658,7 +658,7 @@ order and working-row/divider handoff. No historical timing is invented on entry
 
 新增私有边界 `history.renderEntries` 行为校验 `renderSessionEntries` 及现有 compaction dispatch 两个分支的同步 clear/render，真实 dispatch 也检查同步次数；读取 mode 的 `session/sessionManager/renderer`。`session` 只用于通过公开 `AgentSession.extensionRunner` 和已注册 Markdown transformer 识别 `/reload` 重画早于 `session_start` 的归属。`history.selectionAnchors` 校验补载涉及的 `selectionAnchor/selectionFocus/selectionInitialRange/lastClick` 内容坐标。复用已登记的 `chatContainer/addMessageToChat`、`handleEvent` 和 fullscreen frame/scroll metadata；两项均进入 `check-internals:host`，总数仍为 25。安装后运行中失配同样完整回退：取消补载、撤掉窗口和加载行，在 idle 且原生 dispatch 完成后，先恢复选区方法，再按 `buildContextEntries()` 同步 GroupStore/Activity 两份 projection 并调用原生 renderer；`/internals` 记录失配，regular 不受影响。
 
-`bun test/integration/full-history.mjs /path/to/pi-1.5.0` 用合成会话和 faux provider 检查完整历史、补载选区/视口、两类现场压缩、reload、settings rebuild、tree、fork、new、resume、输入历史与运行中回退；另用 2800 余条记录检验卸载、双向重载、折叠状态、选区保护和多次压缩。`bun scripts/measure-history.mjs <pi> <extension> <fixture-dir> <results.json>` 使用临时 HOME 内可写的真实会话副本，只输出数字指标；副本 header 的 cwd 改到隔离工作目录，防止发现源项目资源。基线传改动前构建的 extension，改后传 `dist/index.ts`，记录 dist 内容 hash；一路访问开头后回到底部，滚动与打字阶段分别固定底部/跟随状态，记录实际帧数、峰值采样 RSS 与尾部 RSS 样本。不提交真实会话或终端文本。
+`bun test/integration/full-history.mjs /path/to/pi-1.5.0` 用合成会话和 faux provider 检查完整历史、补载选区/视口、两类现场压缩、reload、settings rebuild、tree、fork、new、resume、输入历史与运行中回退；另用 2800 余条记录检验卸载、双向重载、折叠状态、选区保护和多次压缩。
 
 `src/host/fullscreen/` 提供精确 editor geometry、面板外部点击关闭、每帧钩子、浮动补全、置顶问题与主题选区色。置顶问题直接合入帧，不建立 Pi overlay，所以滚动中的 transcript 选区仍跟随内容。深路径 layout import 失败时几何退回 UIKit 估算；选区 probe 失配退回原生反色。Main 与 child view 共用实现，detach 释放各自 owner。
 
@@ -671,10 +671,6 @@ Above-editor widget 非空时，CC 用一个受 probe 保护的 `renderWidgetCon
 置顶条在 Pi 原生选区着色后会恢复未被面板覆盖的那一行，所以正文选区滚到顶边时不会给问题条染色；选区与复制文本仍由 Pi 维护。浮动补全要等有效布局才隐藏 native 列表，帧接缝失配时退回原生补全。`/cc-style config set layout.enabled|stickyUserMessage|floatAutocomplete` 补全 true/false；`layout.popupGap` 为 0..100 整数，`layout.minViewportRows` 为 1..1000 整数，补全描述会提示范围。
 
 长工具参数流式呈现只使用 Pi 公开的 renderer `state`、`argsComplete` 与 `executionStarted`：折叠摘要复用同一组件及其 wrap cache；`write`/`write_file` 的 native 或 inline 内容预览在参数未完成时最多展示前 4096 个 UTF-16 code unit 加省略号，截点避开高代理字符，前缀相同就复用组件。以每行 state 为弱键分别保存原生 call/result child 和 CC 包装；交给原生 renderer 的 `lastComponent` 始终是它自己的 child。完成、执行开始、路径或展开状态变化会重新渲染；完整参数始终交给执行器和 transcript。真实 Pi 1.4.0 write renderer 与公开 `ToolExecutionComponent` 的回归覆盖完成、执行、结果及 invalidate，并逐行对比 `7405261` 的最终基线（规范化终端样式、链接 escape 和行尾空格）。没有额外配置、timer 或 Pi private seam。
-
-`npm run benchmark:long-write -- /path/to/pi-1.5.0` 在独立 fresh process 的临时 HOME/agent/cwd 内运行中文 50/100/200KB `write`，覆盖 native、CC Main、CC SDK child 与 CC + pi-perf。只生成本地 faux Responses 事件，调用原版 `processResponsesStream`，不访问真实模型或源 agent directory；普通 faux provider 不逐步解析 arguments，不能用于复现这个热点。每个 delta 强制一次 root TUI layout，终端输出只保留 38 行的 headless terminal 当前网格，记录 parser/delivery/layout、RSS/heap/external 与最终文件 hash；它是压力基准，不代表真实网络耗时。`CC_LONG_WRITE_ARTIFACTS` 指定产物目录，`CC_LONG_WRITE_SIZES`、`CC_LONG_WRITE_SCENARIOS` 选择矩阵，`CC_LONG_WRITE_DELAY` 添加每 delta 间隔；`CC_LONG_WRITE_PARSER=bypass` 只用于隔离插件成本，不能当宿主修复。benchmark-only import 的 pi-perf owner 仍拥有测量 registry/timer，不改变生产加载关系。
-
-`npm run benchmark:write-preview` 独立量化 native 内容 formatter 的工作量：每 64 字符一帧，累计 5 万/10 万/20 万字符，重复 3 次取中位数，检查最终完整渲染相等；不包含 provider/parser 或 TUI 绘制成本。
 
 ## 交互回归清单
 
@@ -689,7 +685,3 @@ Above-editor widget 非空时，CC 用一个受 probe 保护的 `renderWidgetCon
 7. `/session`、`/tree`、`/reload`，以及新进程 resume：检查历史、Thinking、grouped 详情与图片入口；改变源码后先 build 并重启，不以 reload 代替。
 
 Delegate 的状态来源、args 省略和 pending 规则见 [工具呈现 contract](./docs/important-tool-presentation-spec.md#delegate-ui)。shell 的权限、会话路径及取消限制见 [statusline contract](./docs/statusline-provenance.md)。
-
-### SDK/TUI 基准采集
-
-SDK/TUI 基准的 `previewRows` 在最后一个 delta 后、toolcall_end 前采集，`finalRows` 在 prompt 完成且短暂的展示层 typewriter 排空后重新采集；两者通过公开 `renderNow` 后的实际终端网格采集，时间戳独立记录，检查执行后的 assistant 回复已结束、原生 renderer 无异常，并记录回复是否位于当前可见 viewport。`CC_LONG_WRITE_PRESENTATION=native|inline` 在隔离配置中启用 CC 的真实 native/inline 展开分支，可分别配合 `CC_LONG_WRITE_SCENARIOS=main,child` 验证 Main 与 SDK child；默认仍为原来的折叠矩阵。

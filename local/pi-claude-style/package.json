@@ -19,12 +19,9 @@
     "check-internals:host": "node scripts/check-internals-host.mjs",
     "check-retry-child:host": "node scripts/check-retry-child-host.mjs",
     "check-provider-errors:host": "node scripts/check-provider-errors-host.mjs",
-    "benchmark:monitor": "node ../../scripts/isolated-agent.mjs node --experimental-strip-types scripts/benchmark-monitor.ts",
     "test:main-statusline": "node ../../scripts/isolated-agent.mjs bun test/integration/main-statusline.mjs",
     "test:host-fixtures": "node ../../scripts/isolated-agent.mjs bun test/integration/host-fixtures.mjs",
-    "test:history:host": "node ../../scripts/isolated-agent.mjs bun test/integration/full-history.mjs",
-    "benchmark:long-write": "bun scripts/benchmark-long-write.mjs",
-    "benchmark:write-preview": "node ../../scripts/isolated-agent.mjs bun scripts/benchmark-write-preview.ts"
+    "test:history:host": "node ../../scripts/isolated-agent.mjs bun test/integration/full-history.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "^1.5.0",

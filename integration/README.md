@@ -27,7 +27,7 @@ npm run test:integration:patched-host
 
 ## 完整协作矩阵
 
-`npm run test:integration:subagents` 运行从 `local/pi-subagents/test/real` 迁出的 Node 联测。
+`npm run test:integration:subagents` 运行 `integration/subagents/real` 下的 Node 联测。
 包括直接加载其他插件的文件，以及通过 `fresh-host` 默认加载 Processes 的文件。
 设置 `PI_REAL_BINARY`，先显式安装/构建这些测试原先依赖的 pi-processes、Goal、native-search 等协作方；
 仓库不提供这些插件的仿制实现。缺协作方或宿主时应失败，不能把默认降级门禁通过当成完整协作矩阵通过。

@@ -140,14 +140,14 @@ Shared handoff behavior is owned by `pi-session-runtime`, including Terminal gat
 public process-listener reference differences, and headless rebinding. There are
 no new private Pi names; managed native UI requires the explicit host patch above.
 Run the real compiled-binary PTY gate with
-`根 integration/subagents/real/sdk-view.mjs -- /path/to/patched-pi-1.5.0`; its faux provider makes no external
+`bun integration/subagents/real/sdk-child-view.mjs /path/to/patched-pi-1.5.0`; its faux provider makes no external
 model requests. IME/real kitty terminal coverage is separate from PTY validation.
-`根 integration/subagents/real/sdk-statusline.mjs -- /path/to/patched-pi-1.5.0` separately gates ten view
+`bun integration/subagents/real/sdk-statusline.mjs /path/to/patched-pi-1.5.0` separately gates ten view
 handoffs with a failing first statusline command, read-only CC footer ownership,
 Main CP/MEM/cache restoration and stable listeners/presentation owners.
 It replays every committed synchronized-output frame from PTY takeover, so even
 a transient native footer before session_start fails the gate.
-`根 integration/subagents/real/sdk-initialization.mjs -- /path/to/patched-pi-1.5.0` holds the real view-read
+`bun integration/subagents/real/sdk-initialization.mjs /path/to/patched-pi-1.5.0` holds the real view-read
 callback and first/second extension bindings: the 2000 ms fallback reveals a view,
 Alt+/ returns without releasing the callback, and late completions preserve Main.
 

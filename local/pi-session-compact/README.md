@@ -59,12 +59,10 @@ Validation:
 ```sh
 npm run check
 PI_COMPACT_HOST_BINARY=/absolute/path/to/pi-1.5.0 node scripts/check-host.mjs
-PI_COMPACT_HOST_BINARY=/absolute/path/to/pi-1.5.0 node scripts/check-reserve-host.mjs
 node --experimental-strip-types scripts/replay-saved.mjs /path/to/copied-inputs /path/to/evidence
-node scripts/compare-runs.mjs /path/to/run.json
 ```
 
-The host checks require an explicit Pi 1.5.0 executable (stock or the compatible theme-patched build) and use temporary HOME/profile/session, faux responses, real skill/todo owners and zero real model requests. `PI_COMPACT_HOST_ARTIFACTS` saves payload/session/run evidence. Offline replay accepts only explicit copied inputs (`runs/` and `sessions/`), never reads daily agent directories and never imports a network runner. It reconstructs file paths against the copied session header's cwd and verifies recovery with the matching persisted compaction's actual owner appendix/system message and saved request-only accounting. Missing or inconsistent material is reported as `originalCutWindowUnverified`, never as a full recovery pass; summary-output acceptance remains a separate result. Real-model quality/cache/throughput evaluation and full-profile rollout are separate work. `tests/fixtures/eval-real/cells.json`, `branch-prefix.jsonl` and `tests/fixtures/json-repair/` are neutralized legacy samples with synthetic document-edit tasks, identifiers, models and paths. The five cells retain main/small legacy structures, the JSON fence variant and the same prose-extraction assertions; the repair example deliberately retains its malformed quotation marks. These fixtures require no provider package, credential, user runtime data or network and are not production defaults or a supported provider contract.
+The host checks require an explicit Pi 1.5.0 executable (stock or the compatible theme-patched build) and use temporary HOME/profile/session, faux responses, real skill/todo owners and zero real model requests. `PI_COMPACT_HOST_ARTIFACTS` saves payload/session/run evidence. Offline replay accepts only explicit copied inputs (`runs/` and `sessions/`), never reads daily agent directories and never imports a network runner. It reconstructs file paths against the copied session header's cwd and verifies recovery with the matching persisted compaction's actual owner appendix/system message and saved request-only accounting. Missing or inconsistent material is reported as `originalCutWindowUnverified`, never as a full recovery pass; summary-output acceptance remains a separate result. Real-model quality/cache/throughput evaluation and full-profile rollout are separate work. `tests/fixtures/eval-real/cells.json` 保留被测试引用的合成交接样本，只验证 legacy prose 提取，不发 provider 请求。
 
 ## Usage regression
 
