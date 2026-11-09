@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
@@ -56,4 +58,31 @@ test("canonical memory directory cannot escape the owner project tree through a 
   await symlink(outside, projects);
   result = await collectMemoryMaterials(agentDir, dir, "");
   assert.deepEqual(result.memory, []); assert.match(result.known[0]!.statement, /outside owner's project tree/);
+});
+
+
+test("a dangling indexed topic records a warning without dropping later topics", async t => {
+  const root = await mkdtemp(join(tmpdir(), "memory-topic-dangling-")); t.after(() => rm(root, { recursive: true, force: true }));
+  const dir = join(root, "pi-cc-memory", "projects", "a".repeat(64), "memory"); await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, "MEMORY.md"), "[a](a-missing.md)\n[b](b-kept.md)");
+  await symlink(join(dir, "nonexistent"), join(dir, "a-missing.md")); await writeFile(join(dir, "b-kept.md"), "KEPT");
+  const result = await collectMemoryMaterials(root, dir, "");
+  assert.deepEqual(result.memory.map(item => item.contents), ["[a](a-missing.md)\n[b](b-kept.md)", "KEPT"]);
+  assert.equal(result.known.length, 1); assert.match(result.known[0]!.statement, /a-missing.md.*ENOENT/);
+});
+
+test("deletion after scanning reports the missing topic and continues remaining reads", async t => {
+  const root = await mkdtemp(join(tmpdir(), "memory-topic-deleted-")); t.after(() => rm(root, { recursive: true, force: true }));
+  const dir = join(root, "pi-cc-memory", "projects", "a".repeat(64), "memory"); await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, "MEMORY.md"), "[a](a-deleted.md)\n[b](b-kept.md)");
+  await writeFile(join(dir, "a-deleted.md"), "DELETED"); await writeFile(join(dir, "b-kept.md"), "KEPT");
+  const readdir = fs.readdir;
+  t.mock.method(fs, "readdir", async (...args: Parameters<typeof readdir>) => {
+    const listed = await readdir(...args);
+    await rm(join(dir, "a-deleted.md"));
+    return listed;
+  });
+  syncBuiltinESMExports(); t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  const result = await collectMemoryMaterials(root, dir, "");
+  assert.equal(result.memory.at(-1)!.contents, "KEPT"); assert.match(result.known[0]!.statement, /a-deleted.md.*ENOENT/);
 });

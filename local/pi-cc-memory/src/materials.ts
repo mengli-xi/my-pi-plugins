@@ -22,10 +22,13 @@ export async function collectMemoryMaterials(agentDir: string, memoryDir: string
     const text = context.toLowerCase();
     const names = (await readdir(dir)).filter(name => name !== "MEMORY.md" && /^[a-z0-9-]+\.md$/.test(name) && referenced.has(name));
     names.sort((a, b) => Number(text.includes(b.slice(0, -3))) - Number(text.includes(a.slice(0, -3))) || a.localeCompare(b));
-    for (const name of names.slice(0, 8)) result.memory.push(await file(name));
+    for (const name of names.slice(0, 8)) {
+      try { result.memory.push(await file(name)); }
+      catch (error) { result.known.push({ kind: "memory-source", statement: `Memory topic ${name} read failed: ${String(error)}` }); }
+    }
     if (names.length > 8) result.known.push({ kind: "memory-coverage", statement: `${names.length - 8} indexed memory topics were not read; relevance selection is heuristic.` });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") result.known.push({ kind: "memory-source", statement: `Current memory read failed: ${String(error)}` });
+    result.known.push({ kind: "memory-source", statement: `Current memory read failed: ${String(error)}` });
   }
   return result;
 }
