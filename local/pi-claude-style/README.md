@@ -446,7 +446,7 @@ todo provider 也可以使用自己的视觉语言，在编辑器旁保留自己
 ### Legacy Magic Context 展示
 
 本仓不安装或迁移 Magic Context，也不依赖其源码、dist 或数据库。以下名称 adapter 和 `ctx-status` provider
-只用于显示旧 session；通用 delegate 回归复用 Processes 的现有实现，不复制 Magic Context 的生产实现。
+只用于显示旧 session；包内测试直接调用公开 presentation registry，不加载外部插件。
 
 旧 `@cortexkit/pi-magic-context` 工具记录使用自己的词汇分类，而不是回退到 `Searched for N patterns` / `Ran N tools`：
 

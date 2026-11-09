@@ -157,7 +157,7 @@ test("a captured tool mismatch retains its old failure path instead of rebuildin
   assert.equal(h.calls[0]!.model, "fake/small");
 });
 
-test("Side invalidation of a real fingerprint mismatch cannot turn it into rebuildable absence", async (t) => {
+test("another capture consumer recording a fingerprint mismatch cannot turn it into rebuildable absence", async (t) => {
   const h = harness({ shadow: false, system: true }), lease = seedPrefix(h, false, true);
   t.after(() => lease.retire());
   h.ctx.modelRegistry.getRegisteredProviderIds = () => [];

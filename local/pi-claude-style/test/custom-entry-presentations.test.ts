@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { click } from "./native-mouse.ts";
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { createCustomEntryDelegate } from "../../pi-processes/src/integrations/custom-entry-delegate.ts";
 import {
   CtxStatusPresentationComponent,
   installCtxStatusPresentationProvider,
@@ -272,21 +271,6 @@ test("the command label is brighter and distinct from dim separators", () => {
   assert.ok(calls.some(([color, text]) =>
     color === "customMessageText" && text === "The historian timed out."
   ));
-});
-
-test("generic consumer components adopt and release the legacy ctx-status provider", () => {
-  const fallback = { render: () => ["fallback"], invalidate() {} };
-  const delegate = createCustomEntryDelegate(
-    CTX_STATUS_CUSTOM_ENTRY_TYPE,
-    request(false),
-    fallback,
-  );
-  assert.deepEqual(delegate.render(80), ["fallback"]);
-
-  const registration = installCtxStatusPresentationProvider(() => false);
-  assert.equal(delegate.render(80)[0], "! /ctx-embed · The historian timed out.");
-  registration.dispose();
-  assert.deepEqual(delegate.render(80), ["fallback"]);
 });
 
 test("runtime replacement leases cannot remove the newer provider", () => {

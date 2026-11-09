@@ -1,14 +1,13 @@
-import { goalMailboxSourceDouble } from "../fixtures/goal-mailbox.js";
+import { wakePeer } from "../fixtures/wake-peer.ts";
 import { nativeMailboxDouble } from "../fixtures/mailbox.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import {
   getContinuationRegistryV1,
-  type WakeSettlementV1,
 } from "pi-runtime-contracts/continuation-v1";
 import { encodeDomainId } from "../../src/domain/ids.ts";
 import { AgentHostCoreV1 } from "../../src/host/core.ts";
@@ -24,10 +23,6 @@ import type {
   NormalizedStoreStateV1,
   OutboxRecordV1,
 } from "../../src/persistence/types.ts";
-
-// 真实 Goal extension 按源码加载，与 paused-goal-wake-recovery.test.ts 同一条 test-scope
-// direct-source 边（docs/pi/dependencies.json）；production import 边界不变。
-const GOAL_ROOT = new URL("../../../../fork/pi-goal/", import.meta.url).href;
 
 const AT = "2027-04-01T00:00:00.000Z";
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -49,7 +44,6 @@ interface TranscriptEntry {
   readonly message?: unknown;
 }
 
-/** Main 的 native transcript：Goal state entry 与 Subagent card 共用同一条 branch。 */
 class FakeMainTranscript {
   readonly entries: TranscriptEntry[] = [];
   readonly #sessionId: string;
@@ -215,127 +209,6 @@ async function seedRunningTasks(
   });
 }
 
-interface GoalHarness {
-  readonly mock: {
-    pi: never;
-    sentUserMessages: { text: string }[];
-    commands: Map<string, { handler: (args: string, ctx: unknown) => unknown }>;
-    events: Map<string, ((event: unknown, ctx: unknown) => unknown)[]>;
-    rawPi: { appendEntry: (customType: string, data: unknown) => void };
-  };
-  command(args: string): Promise<void>;
-  shutdown(): Promise<void>;
-  /** Main 是否空闲；置 false 表示模型还在跑一个 turn。 */
-  setIdle(idle: boolean): void;
-  /** Goal 自主推进的 prompt 文本，与 producer 的模型通知 turn 分开计数。 */
-  goalPromptTexts(): string[];
-  goalPrompts(): number;
-  goalStatus(): string | undefined;
-  /** 触发 Pi 的 agent_settled 安全边界。 */
-  settle(): Promise<void>;
-  /** 让排队中的 Goal prompt 真正开跑，关闭当前这个处理边界。 */
-  startQueuedTurn(): Promise<void>;
-}
-
-async function startGoal(transcript: FakeMainTranscript, settingsPath: string): Promise<GoalHarness> {
-  const support = (await import(`${GOAL_ROOT}test/support.ts`)) as {
-    createMockPi: (options: Record<string, unknown>) => GoalHarness["mock"];
-    createMockContext: (overrides: Record<string, unknown>) => { ctx: unknown };
-  };
-  const goalModule = (await import(`${GOAL_ROOT}extensions/pi-goal/src/goal.ts`)) as {
-    default: (pi: never, options: Record<string, unknown>) => void;
-  };
-  const mock = support.createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
-  const nativeAppend = mock.rawPi.appendEntry.bind(mock.rawPi);
-  mock.rawPi.appendEntry = (customType: string, data: unknown) => {
-    nativeAppend(customType, data);
-    transcript.entries.push({
-      id: `goal-${transcript.entries.length + 1}`,
-      parentId: transcript.getLeafId(),
-      type: "custom",
-      customType,
-      data: structuredClone(data),
-    });
-  };
-  const sourceMailbox = goalMailboxSourceDouble(transcript);
-  goalModule.default(mock.pi, { settingsPath, mailbox: sourceMailbox.binding });
-  let idle = true;
-  const context = support.createMockContext({
-    // C's support factory spreads this value, so methods must be own properties.
-    sessionManager: {
-      getSessionId: () => transcript.getSessionId(), getLeafId: () => transcript.getLeafId(),
-      getHeader: () => transcript.getHeader(), getSessionFile: () => transcript.getSessionFile(),
-      getBranch: () => transcript.getBranch(), getEntries: () => transcript.getEntries(),
-      getEntry: (id: string) => transcript.getEntry(id),
-    },
-    isIdle: () => idle,
-    hasPendingMessages: () => false,
-  });
-  for (const handler of mock.events.get("session_start") ?? []) await handler({ type: "session_start", reason: "startup" }, context.ctx);
-  const goalPromptTexts = () =>
-    sourceMailbox.texts();
-  return {
-    mock,
-    async command(args: string) {
-      await mock.commands.get("goal")?.handler(args, context.ctx);
-    },
-    async shutdown() {
-      for (const handler of mock.events.get("session_shutdown") ?? []) await handler({ type: "session_shutdown", reason: "quit" }, context.ctx);
-    },
-    setIdle(next: boolean) {
-      idle = next;
-    },
-    goalPromptTexts,
-    goalPrompts() {
-      return goalPromptTexts().length;
-    },
-    goalStatus() {
-      return (
-        transcript.entries.filter((entry) => entry.customType === "goal-state").at(-1)?.data as
-          | { goal?: { status?: string } }
-          | undefined
-      )?.goal?.status;
-    },
-    async settle() {
-      for (const handler of mock.events.get("agent_settled") ?? []) await handler({ type: "agent_settled", aborted: false }, context.ctx);
-      await sourceMailbox.settled(context.ctx);
-    },
-    async startQueuedTurn() {
-      await sourceMailbox.start(context.ctx);
-    },
-  };
-}
-
-/** Process producer：只用 pi-runtime-contracts 的公共 lease/offer 面，与 pi-processes host 同一契约。 */
-function processProducer(sessionId: string, key: string) {
-  const registry = getContinuationRegistryV1();
-  const acquired = registry.acquireBlocking({
-    sessionId,
-    ownerId: "pi-processes",
-    logicalKey: key,
-    reason: `Process '${key}' is waiting for exit`,
-  });
-  if (!acquired.ok) throw new Error(acquired.message);
-  let released = false;
-  return {
-    releaseAndCommit(): WakeSettlementV1 {
-      const offer = acquired.value.releaseAndOfferWake({
-        outcome: "ready",
-        reason: `Process '${key}' exited`,
-      });
-      if (!offer.ok) throw new Error(offer.message);
-      released = true;
-      // 真实 producer 在 offer 与 commit 之间持久化自己的 notification artifact。
-      const settled = offer.value.commit("delivered");
-      if (!settled.ok) throw new Error(settled.message);
-      return settled.value;
-    },
-    dispose() {
-      if (!released) acquired.value.releaseWithoutWake({ outcome: "cancelled", reason: "test end" });
-    },
-  };
-}
-
 interface Scenario {
   readonly store: MainStoreV1;
   readonly host: AgentHostCoreV1;
@@ -475,25 +348,19 @@ interface Fixture {
   readonly root: string;
   readonly sessionId: string;
   readonly transcript: FakeMainTranscript;
-  readonly goal: GoalHarness;
+  readonly peer?: ReturnType<typeof wakePeer>;
   readonly scenario: Scenario;
-  readonly kickoffPrompts: number;
+  
 }
 
-async function activeGoalFixture(
+async function claimedWakeFixture(
   t: TestContext,
   input: { readonly prefix: string; readonly children: readonly SeedChild[] },
 ): Promise<Fixture> {
   const root = await fixtureRoot(input.prefix);
   const sessionId = `${input.prefix}${crypto.randomUUID()}`;
-  const settingsPath = join(root, "goal-settings.json");
-  await writeFile(settingsPath, '{"toolVisibility":"always"}\n');
-  const transcript = new FakeMainTranscript(sessionId);
-  const goal = await startGoal(transcript, settingsPath);
-  await goal.command("finish the background work");
-  const kickoffPrompts = goal.mock.sentUserMessages.length;
-  assert.equal(kickoffPrompts, 1, "goal kickoff is a distinct user-owned prompt");
-  assert.equal(goal.goalStatus(), "active");
+    const transcript = new FakeMainTranscript(sessionId);
+  const peer = wakePeer(sessionId);
   const scenario = await openScenario({
     agentDirectory: root,
     sessionId,
@@ -503,10 +370,10 @@ async function activeGoalFixture(
   t.after(async () => {
     scenario.releaseHeldLeases();
     await scenario.close().catch(() => undefined);
-    await goal.shutdown().catch(() => undefined);
+    peer?.dispose();
     await rm(root, { recursive: true, force: true });
   });
-  return { root, sessionId, transcript, goal, scenario, kickoffPrompts };
+  return { root, sessionId, transcript, peer, scenario };
 }
 
 /** 真实 settlement + card 追加，返回该 completion 的 Outbox ID。 */
@@ -533,133 +400,22 @@ async function settleAndAppendCards(
   return outboxId;
 }
 
-function goalReceipt(settlement: WakeSettlementV1) {
-  const receipt = settlement.consumerReceipt;
-  assert.ok(receipt, "an active Goal must return a synchronous consumer receipt");
-  assert.equal(receipt.consumerId, "pi-goal-local");
-  return receipt;
-}
-
-/** ① D-008：两个独立 producer 在同一个安全边界完成，Goal 恰好排一次 turn（scheduled + coalesced）。 */
-for (const order of ["process-first", "subagent-first"] as const) {
-  test(`independent Process and Subagent completions on one safe boundary coalesce into a single Goal turn (${order})`, async (t) => {
-    const prefix = `wake-coalesce-${order}-`;
-    const fixture = await activeGoalFixture(t, {
-      prefix,
-      children: [{ agentId: AGENT_A, taskId: TASK_A, name: "a", order: 1 }],
-    });
-    const { goal, scenario, sessionId } = fixture;
-    const process = processProducer(sessionId, "proc-1");
-    t.after(() => process.dispose());
-
-    const subagentOutbox = await settleAndAppendCards(scenario, AGENT_A, TASK_A);
-    const continuationIds = new Set<string>();
-
-    const runProcess = (expected: "scheduled" | "coalesced") => {
-      const settlement = process.releaseAndCommit();
-      const receipt = goalReceipt(settlement);
-      assert.equal(receipt.scheduling, expected);
-      continuationIds.add(receipt.continuationId);
-      return settlement;
-    };
-    const runSubagent = async () => {
-      const settled = await scenario.engine.settleWake(subagentOutbox);
-      assert.deepEqual(settled, { state: "delivered", kind: "goal-claimed" });
-      const receipt = scenario.receipts().at(-1);
-      assert.ok(receipt, "a claimed Subagent Wake persists a goal-claimed receipt");
-      continuationIds.add(receipt.continuation_identity);
-      return receipt;
-    };
-
-    if (order === "process-first") {
-      const first = runProcess("scheduled");
-      assert.equal(first.offer.remainingBlocking, 1, "the Subagent lease is still live on the first release");
-      await runSubagent();
-    } else {
-      await runSubagent();
-      const second = runProcess("coalesced");
-      assert.equal(second.offer.remainingBlocking, 0);
-    }
-
-    // 一个 continuation 身份、一条 Goal prompt：第一个完成先唤醒，第二个只 coalesce。
-    assert.equal(continuationIds.size, 1, "both releases share one Goal continuation identity");
-    assert.equal(goal.goalPrompts(), 1, "the same safe boundary produces exactly one Goal turn");
-    assert.equal(
-      goal.mock.sentUserMessages.length,
-      fixture.kickoffPrompts,
-      "custom continuation does not add another user prompt",
-    );
-    // 三类计数分开：Goal 自主推进 / Subagent producer 通知 turn / 终态 card。
-    assert.equal(scenario.notifyTurns(), 0, "a claimed Subagent offer never adds a producer turn");
-    assert.equal(fixture.transcript.cards("subagent-continuation-v1").length, 0);
-    assert.equal(fixture.transcript.cards("subagent-completion-v1").length, 1, "one durable completion card");
-    const receipts = scenario.receipts();
-    assert.equal(receipts.length, 1);
-    assert.equal(receipts[0]!.kind, "goal-claimed");
-    assert.equal(receipts[0]!.claimant_owner_id, "pi-goal-local");
-    assert.equal(goal.goalStatus(), "active");
-  });
-}
-
-/** ② D-008 ①：一个 producer 先完成时 Main 正忙，continuation 意图不得在下一个 agent_settled 被另一个 lease 抹掉。 */
-test("a partial completion recorded while Main is busy still wakes the Goal at the next settled boundary", async (t) => {
-  const fixture = await activeGoalFixture(t, {
-    prefix: "wake-busy-partial-",
-    children: [{ agentId: AGENT_A, taskId: TASK_A, name: "a", order: 1 }],
-  });
-  const { goal, scenario, sessionId } = fixture;
-  const process = processProducer(sessionId, "proc-busy");
-  t.after(() => process.dispose());
-
-  // Main 正在跑一个 turn：既不 idle，也没有可插入的安全点。
-  goal.setIdle(false);
-  const settlement = process.releaseAndCommit();
-  const receipt = goalReceipt(settlement);
-  assert.equal(receipt.scheduling, "scheduled", "the claimed offer records a fresh continuation intent");
-  assert.equal(settlement.offer.remainingBlocking, 1, "the Subagent lease is untouched");
-  assert.equal(goal.goalPrompts(), 0, "a busy Main receives no prompt yet");
-
-  // Main 到达安全边界。Subagent lease 仍然存活，但那是另一件事的等待，不该吃掉已完成结果的 turn。
-  goal.setIdle(true);
-  await goal.settle();
-
-  assert.equal(goal.goalPrompts(), 1, "the finished Process result gets its own turn");
-  assert.equal(goal.goalPromptTexts()[0]?.includes(receipt.continuationId), true, "same continuation identity");
-  assert.equal(scenario.notifyTurns(), 0, "the Subagent producer sends nothing");
-  assert.equal(
-    getContinuationRegistryV1().snapshot(sessionId).blocking.length,
-    1,
-    "the still running Subagent keeps its blocking lease",
-  );
-  assert.equal(
-    scenario.host.snapshot().agents.find((item) => item.agent.agent_id === AGENT_A)!.tasks[0]!.phase,
-    "running",
-    "the unfinished Subagent Task is never disturbed",
-  );
-
-  // 这一轮开跑之后再 settle，不会凭空多一条 prompt。
-  await goal.startQueuedTurn();
-  await goal.settle();
-  assert.equal(goal.goalPrompts(), 1, "a live lease still defers ordinary Goal continuation");
-});
-
 /** ③ WAKE-004：A 走普通 settlement 并已投递，B 仍在跑，再 wait_agents([A,B])。 */
 test("wait_agents arms over an already delivered child without duplicating its completion vehicle", async (t) => {
-  const fixture = await activeGoalFixture(t, {
+  const fixture = await claimedWakeFixture(t, {
     prefix: "wake-mixed-barrier-",
     children: [
       { agentId: AGENT_A, taskId: TASK_A, name: "a", order: 1 },
       { agentId: AGENT_B, taskId: TASK_B, name: "b", order: 2 },
     ],
   });
-  const { goal, scenario, sessionId } = fixture;
+  const { scenario, sessionId } = fixture;
 
   // A 走完整的普通路径：settlement → card → Wake settle。
   const outboxA = await settleAndAppendCards(scenario, AGENT_A, TASK_A);
   assert.deepEqual(await scenario.engine.settleWake(outboxA), { state: "delivered", kind: "goal-claimed" });
   assert.equal(fixture.transcript.cards("subagent-completion-v1").length, 1);
-  assert.equal(goal.goalPrompts(), 1, "A 的完成独立唤醒一次");
-  await goal.startQueuedTurn();
+  
 
   const caller = {
     kind: "main-model" as const,
@@ -737,18 +493,18 @@ test("wait_agents arms over an already delivered child without duplicating its c
 
 /** ③ 续：B 完成才 satisfy barrier，并只为 B 投递一次聚合结果。 */
 test("the mixed barrier only releases when the remaining child settles", async (t) => {
-  const fixture = await activeGoalFixture(t, {
+  const fixture = await claimedWakeFixture(t, {
     prefix: "wake-mixed-release-",
     children: [
       { agentId: AGENT_A, taskId: TASK_A, name: "a", order: 1 },
       { agentId: AGENT_B, taskId: TASK_B, name: "b", order: 2 },
     ],
   });
-  const { goal, scenario, sessionId } = fixture;
+  const { scenario, sessionId } = fixture;
 
   const outboxA = await settleAndAppendCards(scenario, AGENT_A, TASK_A);
   assert.deepEqual(await scenario.engine.settleWake(outboxA), { state: "delivered", kind: "goal-claimed" });
-  await goal.startQueuedTurn();
+  
 
   const armed = await scenario.host.waitAgents({
     request_id: uuid(2),
@@ -789,12 +545,11 @@ test("the mixed barrier only releases when the remaining child settles", async (
   });
   assert.equal(fixture.transcript.cards("subagent-completion-v1").length, 2, "A、B 各一张 card，A 不重发");
   assert.equal(scenario.notifyTurns(), 0, "两次 Wake 都由 Goal claim");
-  assert.equal(goal.goalPrompts(), 2, "两个独立的安全边界各一次 Goal turn");
 });
 
 /** ④ 一个 partition 只保留最新 Barrier：上一个 barrier 交付过的 Completion 不能因为被顶替而失去载体。 */
 test("a second barrier can arm after the previous one was satisfied", async (t) => {
-  const fixture = await activeGoalFixture(t, {
+  const fixture = await claimedWakeFixture(t, {
     prefix: "wake-sequential-barrier-",
     children: [
       { agentId: AGENT_A, taskId: TASK_A, name: "a", order: 1 },
@@ -823,7 +578,7 @@ test("a second barrier can arm after the previous one was satisfied", async (t) 
     fixture.scenario.outboxes().find((outbox) => outbox.outbox_id === aggregateA)!.kind,
     "barrier-wake",
   );
-  await fixture.goal.startQueuedTurn();
+  
 
   // 第二个 barrier 顶替第一个：A 的 completion 只剩 barrier-wake 这一条载体，仍然合法。
   const second = await fixture.scenario.host.waitAgents({

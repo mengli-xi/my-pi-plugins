@@ -54,6 +54,8 @@ Deadline planning retains the existing generic estimates (2,000 input and 120 ou
 
 Validation:
 
+包内 recovery/material 测试只发送公开协议 DTO；不读取其他插件的私有 binding，也不模拟其注入或恢复实现。
+
 ```sh
 npm run check
 PI_COMPACT_HOST_BINARY=/absolute/path/to/pi-1.5.0 node scripts/check-host.mjs

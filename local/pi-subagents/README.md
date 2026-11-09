@@ -24,6 +24,8 @@ Tool authority 由 role 与 parent 当前 active tools 共同收窄：Pi 基础�
 
 ## 开发
 
+包内 Wake 合同用公开 continuation registry 的 claim/receipt 对端驱动，只验证本包投递、重试、持久化和 barrier，不验证外部 Goal 的命令或排程。
+
 ```bash
 npm install
 npm run check
