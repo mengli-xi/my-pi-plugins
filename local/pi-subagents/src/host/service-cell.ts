@@ -1,10 +1,7 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { ProcessMainBindingV1 } from "./process-service.js";
 import type { SubagentProcessServiceV1 } from "./process-service.js";
 
 const SERVICE = Symbol.for("pi.subagents.process-service.v1");
 interface Cell {
-  bindingAccess?: Map<string, (ctx: ExtensionContext) => Promise<ProcessMainBindingV1>>;
   promise?: Promise<SubagentProcessServiceV1>;
   service?: SubagentProcessServiceV1;
 }

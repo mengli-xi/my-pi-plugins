@@ -21,7 +21,7 @@ test("real Subagent child rejects missing bash timeout and executes a corrected 
   await writeFile(session, `${JSON.stringify({ type: "session", version: 3, id: sessionId, timestamp: new Date().toISOString(), cwd })}\n`, { mode: 0o600 });
   const storeRoot = join(agentDir, "pi-subagents", "store-v2", "mains", mainKey(sessionId));
   t.after(async () => { await rm(home, { recursive: true, force: true }); });
-  const child = spawn(pi, ["--mode", "rpc", "--session", session, "--no-extensions", "-e", join(cwd, "dist", "index.js"), "-e", join(cwd, "test/fixtures/test-commands.ts"), "-e", extension, "-e", join(cwd, "test", "fixtures", "faux-subagent-provider.ts"), "--provider", "fixture", "--model", "faux-1", "--thinking", "off"], {
+  const child = spawn(pi, ["--mode", "rpc", "--session", session, "--no-extensions", "-e", join(cwd, "test/fixtures/test-commands.ts"), "-e", extension, "-e", join(cwd, "test", "fixtures", "faux-subagent-provider.ts"), "--provider", "fixture", "--model", "faux-1", "--thinking", "off"], {
     cwd,
     env: { ...process.env, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: agentDir, HOME: home, PI_SUBAGENTS_TEST_TIMEOUT_MS: "30000", PI_SUBAGENTS_TEST_MESSAGE: "BASH_TIMEOUT_CHILD" },
     stdio: ["pipe", "pipe", "pipe"],

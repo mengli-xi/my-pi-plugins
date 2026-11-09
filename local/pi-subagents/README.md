@@ -195,4 +195,4 @@ Main append 现只通过公开 mailbox/readonly session API；旧三项 Main pri
 
 可选 Compact 的同步 `pi-session-compact:collect-recovery-v1` 协议在提交前收集本包现有恢复文本，回复声明 `order: 40`，不依赖固定 owner 名单。协议缺席时保留原有独立恢复路径；version 1 的 `compactionEntry.details.recovery` 包含本包 owner/customType 时跳过重复消息，无标记的旧记录仍走原路径。开放排序、请求和 details 兼容由 [pi-session-compact](../pi-session-compact/README.md) 定义；无需安装该插件，收集不改变任务准入、中止围栏或完成投递。
 
-测试命令只由 `test/fixtures/test-commands.ts` 额外 extension 注册，生产入口不读取 `PI_SUBAGENTS_TEST_HOOKS`。同进程 owner 导出 `getSubagentBindingForContext(ctx)`，仅返回当前 session 的 fenced binding；尚未就绪时沿用惰性初始化，退役后拒绝。此导出不绕过 Task、provider、工具或会话权限校验。
+测试入口 `test/fixtures/test-commands.ts` 包装生产 extension 的已有 `list_agents` 工具完成惰性初始化，再从已有 service-cell 取本会话 binding，并在测试侧核对 session lifecycle。测试 profile 只加载此包装入口，不重复加载生产入口；生产代码不提供测试专用 binding 导出、resolver 映射或环境开关。

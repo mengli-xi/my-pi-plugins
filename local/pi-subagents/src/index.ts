@@ -34,15 +34,6 @@ interface SessionStateV1 {
   terminalOwner?: TerminalOwner;
 }
 
-const bindingAccess = getProcessServiceCellV1().bindingAccess ??= new Map<string, (ctx: ExtensionContext) => Promise<ProcessMainBindingV1>>();
-const bindingKey = (ctx: ExtensionContext): string => JSON.stringify([ctx.sessionManager.getSessionId(), ctx.sessionManager.getSessionFile() ?? null]);
-/** Explicit owner access for same-process extensions; the resolver retains all session/lifecycle fences. */
-export function getSubagentBindingForContext(ctx: ExtensionContext): Promise<ProcessMainBindingV1> {
-  const resolve = bindingAccess.get(bindingKey(ctx));
-  if (!resolve) return Promise.reject(new Error("Subagent session is unavailable."));
-  return resolve(ctx);
-}
-
 export default function subagentsExtension(pi: ExtensionAPI, bind: typeof bindMailbox = bindMailbox): void {
   let backendError: string | undefined;
   try { assertSdkOnlyBackend(); } catch (error) { backendError = error instanceof Error ? error.message : String(error); }
@@ -107,7 +98,6 @@ export default function subagentsExtension(pi: ExtensionAPI, bind: typeof bindMa
       retired: false, runActive: false,
     };
     current = state;
-    bindingAccess.set(bindingKey(ctx), ensureForContext);
     await mailbox.bindContext(ctx);
     assertCurrent(state);
   });
@@ -141,7 +131,6 @@ export default function subagentsExtension(pi: ExtensionAPI, bind: typeof bindMa
       }
     },
   }, bind);
-  const ensureForContext = (ctx: ExtensionContext): Promise<ProcessMainBindingV1> => ensureReady(stateForContext(ctx));
   const openManager = async (state: SessionStateV1, target?: string): Promise<void> => {
     try {
       const binding = await ensureReady(state);
@@ -275,7 +264,6 @@ export default function subagentsExtension(pi: ExtensionAPI, bind: typeof bindMa
   pi.on("session_before_fork", () => reclaimView());
   pi.on("session_before_tree", () => reclaimView());
   pi.on("session_shutdown", async (event, ctx) => {
-    if (bindingAccess.get(bindingKey(ctx)) === ensureForContext) bindingAccess.delete(bindingKey(ctx));
     const closeReason = event.reason === "quit" ? "quit" : "return";
     await reclaimView(closeReason);
     const sessionId = ctx.sessionManager.getSessionId();

@@ -19,7 +19,7 @@ test("late Process terminal cannot start a second settled Subagent turn", { time
 
   const agentDir = await prepareFreshProfile(home); const child = spawn(pi, [
     "--mode", "rpc", "--session", session, "--no-extensions",
-    "-e", join(process.cwd(), "dist", "index.js"), "-e", join(process.cwd(), "test", "fixtures", "test-commands.ts"),
+    "-e", join(process.cwd(), "test", "fixtures", "test-commands.ts"),
     "-e", join(process.cwd(), "..", "pi-processes", "dist", "index.js"),
     "-e", join(process.cwd(), "test", "fixtures", "faux-subagent-provider.ts"),
     "--no-skills", "--no-prompt-templates", "--no-context-files",

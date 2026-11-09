@@ -20,7 +20,7 @@ test("finish_task settles the Task while a Process wait is still blocking", { ti
 
   const agentDir = await prepareFreshProfile(home); const child = spawn(pi, [
     "--mode", "rpc", "--session", session, "--no-extensions",
-    "-e", join(process.cwd(), "dist", "index.js"), "-e", join(process.cwd(), "test", "fixtures", "test-commands.ts"),
+    "-e", join(process.cwd(), "test", "fixtures", "test-commands.ts"),
     "-e", join(process.cwd(), "..", "pi-processes", "dist", "index.js"),
     "-e", join(process.cwd(), "test", "fixtures", "faux-subagent-provider.ts"),
     "--no-skills", "--no-prompt-templates", "--no-context-files",

@@ -4,13 +4,13 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import extension, { getSubagentBindingForContext } from "../../src/index.ts";
-import { registerTestCommands } from "../fixtures/test-commands.ts";
+import extension from "../../src/index.ts";
+import { installTestCommands } from "../fixtures/test-commands.ts";
 import { mainKey } from "../../src/domain/ids.ts";
 import { getProcessServiceCellV1 } from "../../src/host/service-cell.ts";
 import { hasStoredMainV1 } from "../../src/host/recovery-presence.ts";
 
-async function fixture(t: test.TestContext) {
+async function fixture(t: test.TestContext, withTestCommands = false) {
   const root = await mkdtemp(join(tmpdir(), "subagents-startup-"));
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = root;
@@ -42,7 +42,8 @@ async function fixture(t: test.TestContext) {
     async endMainSession() { calls.push("detach"); }, detach() { calls.push("detach"); }, async close() { calls.push("close"); },
     signalMainRunStarted() { calls.push("run-start"); },
   };
-  extension(pi, emptyMailboxBinding);
+  if (withTestCommands) await installTestCommands(pi, api => extension(api, emptyMailboxBinding));
+  else extension(pi, emptyMailboxBinding);
   const start = () => events.get("session_start")({}, ctx);
   const stop = () => events.get("session_shutdown")({ reason: "quit" }, ctx);
   const list = () => tools.get("list_agents").execute("call", {}, undefined, undefined, ctx);
@@ -142,21 +143,32 @@ test("unknown Agent target explains scope without claiming old storage was delet
 });
 
 
-test("production ignores test env; an explicit test extension registers commands and retains owner fences", async t => {
+test("production ignores test env; test wrapper initializes through list_agents without a production export", async t => {
   const previous = process.env.PI_SUBAGENTS_TEST_HOOKS;
   process.env.PI_SUBAGENTS_TEST_HOOKS = "1";
   t.after(() => { if (previous === undefined) delete process.env.PI_SUBAGENTS_TEST_HOOKS; else process.env.PI_SUBAGENTS_TEST_HOOKS = previous; });
-  const f = await fixture(t);
-  assert.deepEqual([...f.commands.keys()], ["subagents"]);
-  await assert.rejects(getSubagentBindingForContext(f.ctx), /unavailable/);
-  registerTestCommands(f.pi, getSubagentBindingForContext);
+  const production = await fixture(t);
+  assert.deepEqual([...production.commands.keys()], ["subagents"]);
+  const f = await fixture(t, true);
   for (const name of ["followup", "send", "spawn"]) assert.ok(f.commands.has(`subagents-test-${name}`));
+  const command = f.commands.get("subagents-test-followup");
+  await assert.rejects(command.handler("", f.ctx), /unavailable/);
   await f.start(); f.cell.promise = Promise.resolve(f.service);
-  assert.equal(await getSubagentBindingForContext({ ...f.ctx, sessionManager: { ...f.ctx.sessionManager } }), f.binding);
   let followup: any;
   f.binding.host.snapshot = () => ({ agents: [{ agent: { task_path: "/worker" } }] });
   f.binding.host.followupTask = async (request: any) => { followup = request; return { ok: true }; };
-  await f.commands.get("subagents-test-followup").handler("", f.ctx);
-  assert.equal(followup.input.target, "/worker");
-  await f.stop(); await assert.rejects(getSubagentBindingForContext(f.ctx), /unavailable/);
+  await command.handler("", f.ctx);
+  assert.equal(followup.input.target, "/worker"); assert.deepEqual(f.calls, ["attach", "list_agents"]);
+  await f.stop(); await assert.rejects(command.handler("", f.ctx), /unavailable/);
+  assert.equal("bindingAccess" in f.cell, false);
+  const exports = await import("../../src/index.ts"); assert.equal("getSubagentBindingForContext" in exports, false);
+});
+
+test("retired test wrapper cannot initialize against a replacement owner on same-session reload", async t => {
+  const old = await fixture(t, true); await old.start();
+  const oldCommand = old.commands.get("subagents-test-followup");
+  await old.stop();
+  const replacement = await fixture(t, true); await replacement.start(); replacement.cell.service = replacement.service;
+  await assert.rejects(oldCommand.handler("", old.ctx), /unavailable/);
+  assert.deepEqual(replacement.calls, []);
 });
