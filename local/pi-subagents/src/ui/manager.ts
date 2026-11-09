@@ -109,6 +109,7 @@ export class SubagentManagerV1 implements Component, Focusable {
       initialSelected: initial, statusLine: `${this.notice ? this.notice + " · " : ""}Enter opens Subagent Pi · X interrupt · C close · D delete${selected?.partition.agent.lifecycle === "closed" ? " · R resume" : ""} · ${layoutSubagentStripV1(count,120)}`,
       choices:this.presentation.tabs[this.tab].map(row => ({ value:row.partition.agent.agent_id, label:row.muted?this.theme.fg("muted",label(row)):label(row), badge:row.muted?undefined:row.labels.map(item=>this.theme.fg(item.tone,item.text)).join(" · "), disabled:row.muted,
         rightText:row.muted?undefined:`${tokens(usage(row))} · ${elapsed(row)}`,
+        description:`${row.partition.agent.profile.provider}/${row.partition.agent.profile.model}@${row.partition.agent.profile.reasoning_effort}`,
         detail:row.muted?"ancestor":`${row.partition.agent.task_path} · ${row.partition.agent.profile.provider}/${row.partition.agent.profile.model} · effort ${row.partition.agent.profile.reasoning_effort} · ${row.labels.map(item=>item.text).join(" · ")} · ${usage(row)} tokens · ${elapsed(row)}`,tab:this.tab })),
       tabs:{items:[{value:"running",label:"Running",count:count.active},{value:"done",label:"Done",count:count.done}],selected:this.tab,onChange:value=>this.changeTab(value as AgentTab),hint:"Tab/←/→ pages"}, emptyText:"No matching Subagents.", onPick:id=>this.done({action:"conversation",agentId:id}) });
   }

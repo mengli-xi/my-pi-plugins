@@ -50,6 +50,8 @@ Main 首帧同步注册工具 schema、命令、message renderer 和隐藏的 st
 
 `spawn_agent.fork_turns` 默认 `none`，也支持 `all` 或 `1..100000`。三种模式都通过共享有效上下文 selector 和 native seed builder；旧 raw branch builder 已删除。all 保留最近一次有效请求加稳定的新尾部；N 只取能可靠映射的最近 N 个完整业务 turn（user、bash/custom 输入、branch summary），只跨 turn 保留明确的 summary/memory/system preamble，正在执行的未配对工具批次不继承。seed 的隐藏 provenance 记录使用 fresh entry ID，让下一层 capture/N 保持摘要与业务 turn 的区别，boundary 只算附属正文。native-only 在 fork 时按当前 capture 验证，后续请求/失效即撤销旧结论；Magic 注册/marker、未知请求层变换或 capture 缺失时，all/N 返回结构化 `effective-context-unavailable`，模型应改用 none。schema 的 canonical keyword 候选、数字 grammar 与说明来自共享库。`/subagents [target]` 无参数打开管理入口，可选 target 为当前 Main 的 Agent ID 或 task path，动态补全来自同一 runtime 集合，包含 closed Agent。
 
+管理器的 Running / Done 列表每行直接显示该 Agent 冻结的 `provider/model@effort`，不需要先选中查看详情，也不从当前 Main 模型猜值。状态 badge、tokens/耗时、完整详情和选择/鼠标语义保持不变。使用时可创建不同模型/effort 的两个 Agent，在两个 tab 对照列表身份；窄屏沿用现有裁剪，不改变执行配置。
+
 ## SDK execution and lifecycle
 
 Subagents use the Pi 1.5.0 public in-process SDK owner; managed native views

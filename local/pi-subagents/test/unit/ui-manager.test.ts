@@ -21,6 +21,16 @@ test("list routes Enter/X/C/D, ignores M/F, and only closed rows expose R",()=>{
   panel.handleInput("\t");f.task.phase="settled";f.task.outcome="interrupted";f.partition.agent.current_task_id=undefined;f.partition.agent.lifecycle="closed";panel.render(100);panel.handleInput("r");assert.deepEqual(result,{action:"resume",agentId:"agt"});
  }finally{panel.dispose();}
 });
+test("list rows expose each frozen provider/model@effort in Running and Done, not only selected detail",()=>{
+ const f=fixture(),second=structuredClone(f.partition);second.agent.agent_id="agt2";second.agent.task_name="second";second.agent.task_path="/root/second";second.agent.profile={provider:"alternate",model:"chosen",reasoning_effort:"high"};second.tasks[0].admission_order=2;f.snapshot.agents.push(second);
+ const panel=new SubagentManagerV1(tui,theme,f.binding,()=>{});panel.focused=true;
+ try{
+  const check=()=>{const rows=panel.render(100);assert.match(rows.find(line=>/worker\s+\[/.test(line))??"",/fixture\/faux@off/);assert.match(rows.find(line=>/second\s+\[/.test(line))??"",/alternate\/chosen@high/);};
+  check();assert.equal(panel.selectedId,"agt","the unselected row must also show its own model");
+  for(const row of f.snapshot.agents){row.tasks[0].phase="settled";row.tasks[0].outcome="completed";row.agent.current_task_id=undefined;}
+  panel.handleInput("\t");check();
+ }finally{panel.dispose();}
+});
 test("C idle closes without confirm; busy uses explicit force confirmation and defaults cancel",async()=>{
  const f=fixture(),questions:any[]=[];const ctx:any={ui:{notify(){},select:async(...q:any[])=>{questions.push(q);return "Cancel";}}};
  assert.equal(await runAgentActionV1(ctx,f.binding,"agt","close-agent"),"Cancelled.");assert.equal(f.calls.length,0);assert.match(questions[0][0],/1 Task.*0 descendant/);
