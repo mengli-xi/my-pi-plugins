@@ -92,4 +92,6 @@ host 脚本默认使用本包安装的 `node_modules/.bin/pi`，可用 `PI_MEMOR
 
 `PI_MEMORY_HOST_ARTIFACTS=<目录>` 可保存 host 请求、session 与检查结果。结束会等待本次启动的 Pi process 退出并删除临时目录，不碰其他进程。旧 `--full-profile` / `PI_MEMORY_HOST_AGENT` 模式已移除。
 
-本包独立实现，未复制 draft 或 Claude Code 产品提示词/代码。唯一的跨 package runtime contract 是同步 request `cc-memory:request:project-v1`（`{version:1,sessionId,reply}`）：按本会话冻结 snapshot 回复 `{version:1,sessionId,memoryDir,identity}`，无可用项目时回复 `memoryDir:null` 和 `reason`，sessionId 不符不回复；pi-session-compact 用它找记忆目录，详见 `docs/pi/events.md`。无 private Pi seam 或 probe；仅依赖公开 Pi 1.5 API。
+本包独立实现，未复制 draft 或 Claude Code 产品提示词/代码。公开协议 `cc-memory:request:materials-v1` 面向任意只读消费者：请求 `{version:1,sessionId,context:string,reply}`，handler 在 emit 栈上回复 Promise，结果为 `{version:1,sessionId,memory:[{path,hash,contents}],known:[{kind,statement}]}`。从当前 session 的项目读取完整 MEMORY.md，再从索引链接中最多选八个主题；优先文件名出现在 context 中的主题，其余按文件名排序。索引及主题 realpath 必须留在记忆目录内，失败以 known 说明，不取消消费者操作。此读取不改变冻结系统快照。其他 session 不回复，读取期间 snapshot 退役则不给出旧内容；没有消费者时不额外读取。Compact 缺席不影响记忆，记忆缺席时消费者应使用空材料。
+
+旧同步 `cc-memory:request:project-v1` 保留读取兼容：`{version:1,sessionId,reply}` 按冻结 snapshot 回复 `{version:1,sessionId,memoryDir,identity}`，无可用项目时回复 null/reason。它不授权消费者依赖私有目录布局；Compact 不再使用此目录接口。无 private Pi seam 或 probe，仅依赖公开 Pi 1.5 API。

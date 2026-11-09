@@ -1,3 +1,4 @@
+import { collectMemoryMaterials } from "./src/materials.ts";
 import { mkdir, readFile } from "node:fs/promises";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createProjectResolver } from "./src/identity.ts";
@@ -94,6 +95,15 @@ export function createMemoryExtension({ role = "main" }: MemoryOptions = {}) {
         request.reply({ version: 1, sessionId: unavailable.sessionId, memoryDir: null, reason: unavailable.reason });
       }
     });
+    // Reply on the emit stack with an asynchronous result; no consumer knows our directory layout.
+    pi.events.on("cc-memory:request:materials-v1", raw => {
+      const request = raw as { version?: number; sessionId?: string; context?: string; reply?: (payload: unknown) => void };
+      if (request?.version !== 1 || typeof request.reply !== "function" || typeof request.context !== "string") return;
+      const current = snapshot;
+      if (current && request.sessionId === current.sessionId) request.reply(collectMemoryMaterials(current.memoryDir, request.context).then(result =>
+        snapshot === current ? { version: 1, sessionId: current.sessionId, ...result } : { version: 1, sessionId: current.sessionId, memory: [], known: [{ kind: "memory-source", statement: "Memory session changed during collection." }] }));
+      else if (unavailable && unavailable.sessionId === request.sessionId) request.reply({ version: 1, sessionId: request.sessionId, memory: [], known: [{ kind: "memory-source", statement: unavailable.reason }] });
+    });
     const publish = (ctx: ExtensionContext) => {
       statusCtx = ctx;
       // Display only: a failure here must not skip the injection in the same handler.
@@ -107,7 +117,7 @@ export function createMemoryExtension({ role = "main" }: MemoryOptions = {}) {
     };
     pi.on("session_start", async (_event, ctx) => { resolveProject = createProjectResolver(); await capture(ctx, true); publish(ctx); });
     pi.on("session_tree", async (_event, ctx) => { await capture(ctx, true); publish(ctx); });
-    pi.on("session_shutdown", () => { resolveProject = createProjectResolver(); statusCtx = undefined; try { pi.events.emit(STATUS_LINE_ROW_CHANNEL, memoryStatusPayload(undefined)); } catch {} });
+    pi.on("session_shutdown", () => { resolveProject = createProjectResolver(); snapshot = undefined; unavailable = undefined; statusCtx = undefined; try { pi.events.emit(STATUS_LINE_ROW_CHANNEL, memoryStatusPayload(undefined)); } catch {} });
     pi.on("before_agent_start", async (event, ctx) => {
       // These two keys are exclusively owned here. Remove historical values on an identity failure.
       const sections = event.systemPromptOptions.sections;
