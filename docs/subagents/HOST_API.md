@@ -72,7 +72,7 @@ Main active binding 用 Pi sendMessage 同步 TUI/native history，detached 旧 
 
 全部 session_shutdown 先 ending fence/撤销 append/view，再 force-close 旧树；quit 不重启 Main TUI。prepare/lease/assembly 完成后检查 ending，rollback 自身 artifacts/lease。cold reopen 在 writer lock 下 replay 完整 journal，unfinished current/queued 结算 interrupted/host-lost、关闭 ownerless Agent、取消旧 input；pending Completion 和控制交付仍对账，返回旧 Main 不自动 schedule。
 
-Main append 已改用公开 mailbox/readonly session API，旧 appendCustomMessageEntry/getEntry/getEntries 三项 private probe 随直接追加路径退役；public SDK/ManagedInteractive 无新增 private seam。公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0，managed native thread UI 另需 [UI_SPEC §5](./UI_SPEC.md#5-主题与终端释放) 的显式 host patch/UI capability；重建后用对应 host 的 fresh process 验证公开合同与适用 consumer probe；无法证明 binding/caller/native proof 则 fail closed，零静默降级。
+Main append 已改用公开 mailbox/readonly session API，旧 appendCustomMessageEntry/getEntry/getEntries 三项 private probe 随直接追加路径退役；public SDK/ManagedInteractive 无新增 private seam。公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0，managed native thread UI 遵守 [UI_SPEC §5](./UI_SPEC.md#5-主题与终端释放) 的原版主题降级/补丁热更新合同；重建后用对应 host 的 fresh process 验证公开合同与适用 consumer probe；无法证明 binding/caller/native proof 则 fail closed，零静默降级。
 
 ## 8. Snapshot、查询与通知
 

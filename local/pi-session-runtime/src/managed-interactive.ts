@@ -170,8 +170,15 @@ export class ManagedInteractive {
       commandContextActions: { ...blockedActions, waitForIdle: () => runtime.session.waitForIdle() },
       onError: this.#report,
     }));
-    const themed = this.#ui?.setTheme(owner.themeName!);
-    if (!themed?.success) throw new Error(`Unable to apply Main theme to child view: ${themed?.error ?? "UI unavailable"}`);
+    // Native init already applies initialThemeSetting. Reapplying the same name on
+    // stock Pi closes/recreates FSWatcher and can exhaust the initialization deadline.
+    // Patched hosts retain the unconditional named restore and hot-reload contract.
+    // acquire() has already validated both surfaces; a present SDK marker is patched.
+    const patched = (publicModules["@earendil-works/pi-coding-agent"] as { readonly THEME_WATCH_CAPABILITY?: unknown }).THEME_WATCH_CAPABILITY !== undefined;
+    if (patched || this.#ui?.theme.name !== owner.themeName) {
+      const themed = this.#ui?.setTheme(owner.themeName!);
+      if (!themed?.success) throw new Error(`Unable to apply Main theme to child view: ${themed?.error ?? "UI unavailable"}`);
+    }
     this.#ui?.setEditorText(this.draft);
     await initialization.wait(this.onLoaded?.());
     initialization.complete();

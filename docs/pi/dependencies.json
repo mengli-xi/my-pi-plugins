@@ -21,7 +21,7 @@
       "key": "pi.theme-watch.file-version.v1",
       "owner": "patched-pi-host",
       "consumers": ["pi-session-runtime"],
-      "notes": "官方 Pi 1.5.0 加显式主题监听源码补丁。managed UI handoff 在 drain/Main stop 前核对真正 Native UI themeWatchCapability 与 canonical SDK THEME_WATCH_CAPABILITY；两面均须精确匹配，缺失/未知拒绝交接。tool-only/headless 不要求此能力；该标记不授予 provider/tool 权限。",
+      "notes": "官方 Pi 1.5.0 加显式主题监听源码补丁。managed UI handoff 在 drain/Main stop 前核对真正 Native UI themeWatchCapability 与 canonical SDK THEME_WATCH_CAPABILITY；双面精确匹配启用主题热更新；双面缺失允许原版交接，保留交接配色、避免重复同名 setTheme，首次提示降级及补丁文档；仅单面声明或任一未知值拒绝交接。tool-only/headless 不要求此能力；该标记不授予 provider/tool 权限。",
       "verification": "用 host-patches/pi/v1.5.0/check.mjs 检查正式完整 SDK graph，再在隔离环境运行 Runtime npm run check 和 Subagents 三套 fresh PTY；完整 upstream suite、真实 provider、人工终端与完整 profile 另行验收。",
       "evidence": [
         { "path": "host-patches/pi/v1.5.0/manifest.json", "contains": "pi.theme-watch.file-version.v1" },

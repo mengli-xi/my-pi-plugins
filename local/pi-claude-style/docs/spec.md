@@ -60,7 +60,7 @@ Typewriter 只合并展示 snapshot，不改 protocol/session。Markdown/render/
 
 child 复用 transcript/working/editor/statusline installers，但不安装 Main control plane、Goal/Todo、model selector、外部 contributor 或 package updater。按实际 receiver/session owner 分派，不把后台 Main 更新送进前台 child。第三方原组件及 frozen renderer identity 保持；CC facade 动态转发实际存在的公开方法、属性与 symbol 协议，不扫描任意字段，不把 handleClick-only 组件桥接成 handleMouse。
 
-Main CC 不要求 Pi 源码 patch。native child 仍必须服从 `pi-session-runtime` 的 named-theme 和 theme-watch capability gate；能力缺失须在停止 Main 前拒绝，不能把 Main 可用误当 child 可用。
+Main CC 不要求 Pi 源码 patch。native child 仍必须服从 `pi-session-runtime` 的 named-theme 和 theme-watch capability gate；双面能力缺失时允许原版主题降级并首次提示，单面或未知声明仍在停止 Main 前拒绝。
 
 Pi 1.5 catalog 保留历史文件名 `src/compat/pi-1.3.ts`。当前 25 个 private contract（16 eager、9 live）各有 probe、owner、影响与降级；public `registerToolRenderer` 不是 private seam，不恢复旧 tool-definition lookup。probe 失配保留原生行为；health 内存优先、异步合并写，shutdown flush。升级需用最终 binary 做 offline/live 与 component-realm identity 验证，不能用 source-only probe 冒充真实 bundle 成功。
 

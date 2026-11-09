@@ -2,7 +2,7 @@
 
 ## 1. 同进程信任
 
-公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0、唯一 SDK；managed native thread UI 另需 [UI_SPEC §5](./UI_SPEC.md#5-主题与终端释放) 的显式 host patch/UI capability，不构成 tools/model/provider 授权或 OS 隔离。Main、Side、Subagents 和 approved factory 同 JSprocess，共享 filesystem/network/credentials。frozen tool/model/role/ctx policy 减少误用但不构成 sandbox，任何 trustedextension 都能使用 process 权限。没有 socket/fd/nonce/env 构造的安全隔离、Agent process group 或 Supervisor hard kill；任意不响应 JS 工具只能 abort/fence，仍执行就 closing，不能声称已回收。
+公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0、唯一 SDK；managed native thread UI 的原版主题降级与补丁热更新遵守 [UI_SPEC §5](./UI_SPEC.md#5-主题与终端释放) 的显式 host patch/UI capability，不构成 tools/model/provider 授权或 OS 隔离。Main、Side、Subagents 和 approved factory 同 JSprocess，共享 filesystem/network/credentials。frozen tool/model/role/ctx policy 减少误用但不构成 sandbox，任何 trustedextension 都能使用 process 权限。没有 socket/fd/nonce/env 构造的安全隔离、Agent process group 或 Supervisor hard kill；任意不响应 JS 工具只能 abort/fence，仍执行就 closing，不能声称已回收。
 
 不自动 worktree/写锁，同 workspace 并发 read/edit/bash/Process 会 race；用户要协调文件所有权，package 不能隐式扩展外部 authority。Subagentprefix/taskpath 是领域身份，不是可执行路径。PI_SUBAGENTS_BACKEND 被彻底拒绝，不接受旧 marker 恢复权限。
 

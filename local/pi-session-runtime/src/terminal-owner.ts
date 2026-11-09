@@ -105,7 +105,7 @@ export function gateTerminal(terminal: Terminal, foreground: () => boolean) {
 
 /** One process-wide foreground lease shared by Side and Subagents, even across loader copies. */
 const key = Symbol.for("pi.session-runtime.terminal-owner.v1");
-interface Registry { version: 1; owner?: TerminalOwner; hasManagedView?: boolean }
+interface Registry { version: 1; owner?: TerminalOwner; hasManagedView?: boolean; stockThemeNoticeShown?: boolean }
 export type TerminalReleaseReason = "return" | "quit";
 function registry(): Registry {
   const global = globalThis as typeof globalThis & { [key]?: Registry };
@@ -128,12 +128,14 @@ export class TerminalOwner {
   #watchName?: string;
   #watch?: () => void;
   #restoreWatcher = false;
+  #themeWatch: "stock" | "patched" = "stock";
   #disposed = false;
   #leaseGeneration = 0;
   constructor(tui: TUI, ui: ExtensionUIContext, readThemeSetting: () => string | undefined) {
     this.tui = tui; this.ui = ui;
     this.#readThemeSetting = readThemeSetting;
     this.#gate = gateTerminal(tui.terminal, () => this.#foreground);
+    // Only successful patched handoffs enable the cache-only repaint bridge.
     this.#restoreWatcher = registry().hasManagedView === true;
     if (this.#restoreWatcher) this.watchMainTheme();
     this.#disposeInput = ui.onTerminalInput(() => {
@@ -166,8 +168,16 @@ export class TerminalOwner {
       signal?.throwIfAborted();
       if (generation !== this.#leaseGeneration || shared.owner !== this || this.#disposed) throw new Error("Terminal handoff abandoned");
       const modules = getSessionAssemblyPublicModules();
-      requireThemeWatchContract(this.ui, modules["@earendil-works/pi-coding-agent"]);
-      shared.hasManagedView = true;
+      this.#themeWatch = requireThemeWatchContract(this.ui, modules["@earendil-works/pi-coding-agent"]);
+      if (this.#themeWatch === "patched") shared.hasManagedView = true;
+      else {
+        this.#restoreWatcher = false;
+        this.stopThemeWatch();
+        if (!shared.stockThemeNoticeShown) {
+          this.ui.notify("当前原版 Pi 的 child 视图沿用交接时配色，主题不随文件热更新。安装补丁宿主可获得热更新，见 host-patches/pi/v1.5.0/README.md。", "warning");
+          shared.stockThemeNoticeShown = true;
+        }
+      }
       const tui = modules["@earendil-works/pi-tui"];
       const keys = tui.getKeybindings();
       this.#restoreKeys = () => tui.setKeybindings(keys);
@@ -192,13 +202,17 @@ export class TerminalOwner {
     const restoreKeys = this.#restoreKeys; this.#restoreKeys = undefined;
     restoreKeys?.();
     try {
-      const result = this.ui.setTheme(this.#themeName!);
-      if (!result.success) {
-        if (this.#theme) this.ui.setTheme(this.#theme);
-        this.ui.notify(`Unable to reload Main theme; retaining its saved palette: ${result.error}`, "warning");
+      // Stock setTheme tears down FSWatcher synchronously even for the same name.
+      // Keep the entry palette instead of paying for another reload on return.
+      if (this.#themeWatch === "patched" || this.ui.theme.name !== this.#themeName) {
+        const result = this.ui.setTheme(this.#themeName!);
+        if (!result.success) {
+          if (this.#theme) this.ui.setTheme(this.#theme);
+          this.ui.notify(`Unable to reload Main theme; retaining its saved palette: ${result.error}`, "warning");
+        }
       }
-      this.#restoreWatcher = true;
-      this.watchMainTheme();
+      this.#restoreWatcher = this.#themeWatch === "patched";
+      if (this.#restoreWatcher) this.watchMainTheme();
     } finally {
       this.tui.start(); this.#gate.resume(); this.tui.requestRender(true);
       registry().owner = undefined;

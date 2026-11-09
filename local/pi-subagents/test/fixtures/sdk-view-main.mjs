@@ -55,6 +55,11 @@ export default function fixture(pi) {
     bindingLease?.release();
     bindingLease = registry.bind({ version: 1, registrationToken: registration.registrationToken, session_id: ctx.sessionManager.getSessionId(), runtime_generation: ++generation, mode: ctx.mode });
     if (ctx.hasUI) {
+      const notify = ctx.ui.notify;
+      ctx.ui.notify = function (message, ...args) {
+        if (message.includes("主题不随文件热更新")) log({ event: "stock-theme-notice", message });
+        return notify.call(this, message, ...args);
+      };
       const factory = ctx.ui.getEditorComponent();
       if (factory) ctx.ui.setEditorComponent(new Proxy(factory, { apply(target, receiver, args) { editor = Reflect.apply(target, receiver, args); originalEditor ??= editor; return editor; } }));
     }

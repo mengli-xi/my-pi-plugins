@@ -24,7 +24,7 @@ Provider 是本 **Pi host patch**；consumer 是 **`pi-session-runtime` managed 
 | canonical SDK | root export `THEME_WATCH_CAPABILITY` | `"pi.theme-watch.file-version.v1"` |
 | 真正 Main native CLI | 当前 `ExtensionUIContext.themeWatchCapability`，`readonly` optional | `"pi.theme-watch.file-version.v1"` |
 
-consumer 必须分别核对两面；任一缺失或未知值都拒绝 managed handoff。root marker 不能代替 native CLI 的证明；NativeUI 字段也不能代替 canonical SDK 的证明。非 interactive mode 不冒称支持 native handoff。消费者不得 import Pi private path/prototype；这里的内部 focused tests 属于 provider 自测，不是 consumer contract。
+consumer 必须分别核对两面；双面均缺失时允许原版 managed handoff，但沿用交接配色、首次提示主题文件热更新降级，避免重复同名 setTheme。仅一面声明或任一未知值仍拒绝 managed handoff。root marker 不能代替 native CLI 的证明；NativeUI 字段也不能代替 canonical SDK 的证明。非 interactive mode 不冒称支持 native handoff。消费者不得 import Pi private path/prototype；这里的内部 focused tests 属于 provider 自测，不是 consumer contract。
 
 ## 可复现构建
 
@@ -71,7 +71,7 @@ GitHub source archive 没有 `pi-ai/src/providers/data`。脚本只从 SHA-256 �
 
 ## 回滚、升级与边界
 
-- 回滚由 Main 恢复先前记录的 **pristine artifact/完整 peer graph links**，再启动 fresh Pi process；不能只恢复一个 JS 或只回退 CLI。consumer 会因缺 marker 拒绝 managed handoff，这不是应被绕过的告警。
+- 回滚由 Main 恢复先前记录的 **pristine artifact/完整 peer graph links**，再启动 fresh Pi process；不能只恢复一个 JS 或只回退 CLI。CLI 与 SDK 双面均无 marker 时 consumer 允许主题降级的 managed handoff，并给一次提示；只回滚一面仍因 marker 不一致而拒绝。
 - 不删除或改写任何 session、agent、auth、config 数据。保留旧 pristine artifact 及链接记录，直到新 build 全量 fresh 联验完成。本脚本不做部署或自动 rollback。
 - 升级必须重新 pin 官方 commit/archive/source hashes，审查原 theme lifecycle 与 public contract，再重新构建和验证；禁止把此 patch fuzz apply 到别的版本，或只补 marker 假装修复仍在。
 - 200ms poll + 100ms debounce 是 nominal 设置，不是繁忙 event loop 的硬 deadline。metadata 无法识别所有字段都刻意保持不变的内容替换；本修复没有为此增加轮询 digest/第二 loader。

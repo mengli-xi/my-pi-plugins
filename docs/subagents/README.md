@@ -1,6 +1,6 @@
 # pi-subagents 现行合同
 
-公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0，唯一同进程 SDK；managed native thread UI 另需官方 1.5.0 加显式 host patch，不宣称纯 stock Pi 的全部 UI 可用，边界见 [UI_SPEC §5](./UI_SPEC.md#5-主题与终端释放)。Agent identity/native history 持久，runtime 可显式关闭和恢复；Task 完成不关闭 Agent。旧 Supervisor/Owner IPC/PTY transport 已删除，现行事务与 ACK 约束分别归 Host 和 Delivery。
+公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0，唯一同进程 SDK；managed native thread UI 在原版上允许主题降级并首次提示，双面匹配补丁能力时支持热更新，边界见 [UI_SPEC §5](./UI_SPEC.md#5-主题与终端释放)。Agent identity/native history 持久，runtime 可显式关闭和恢复；Task 完成不关闭 Agent。旧 Supervisor/Owner IPC/PTY transport 已删除，现行事务与 ACK 约束分别归 Host 和 Delivery。
 
 | 需要了解 | 文档 |
 |---|---|

@@ -2,7 +2,7 @@
 
 ## 1. 分层与证据
 
-公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0/唯一 SDK；managed native thread UI 另需 [UI_SPEC §5](./UI_SPEC.md#5-主题与终端释放) 的显式 host patch，不宣称纯 stock Pi 的全部 UI 通过。验收须执行 package 脚本与 fresh process，不以本文或旧报告代替结果。历史 IMPLEMENTATION*/IMPLEMENTABILITY 报告、ADR 与旧 process benchmark 随原仓归档，不作新验收证据；现行行为以本文及 contracts 为准。回归必须覆盖删除资源收口、Process 排队与取消、builtin 权限、实际 factory 漂移、activation 归属及并发读取恢复；真实 provider、人工 TUI 与完整发行 profile 另行验收。
+公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0/唯一 SDK；managed native thread UI 的原版主题降级与补丁热更新边界见 [UI_SPEC §5](./UI_SPEC.md#5-主题与终端释放)。验收须执行 package 脚本与 fresh process，不以本文或旧报告代替结果。历史 IMPLEMENTATION*/IMPLEMENTABILITY 报告、ADR 与旧 process benchmark 随原仓归档，不作新验收证据；现行行为以本文及 contracts 为准。回归必须覆盖删除资源收口、Process 排队与取消、builtin 权限、实际 factory 漂移、activation 归属及并发读取恢复；真实 provider、人工 TUI 与完整发行 profile 另行验收。
 
 | 层 | 当前命令/验证 |
 |---|---|
@@ -56,7 +56,7 @@ Running/Done 全状态表驱动，closing 优先/unavailable 附加/mutedancesto
 
 成功 onLoaded 清自产 activity，不清收到 descendant；点击 onlyexactcard；坏/混合 receipt/写失败/unavailableinit/R/close/render/scroll 保 unread，不从 offscreenrender 推 tail 可见。当前协调规则与用户最终确认单列，不新 CCprivateviewportcallback。
 
-UI host-capability gate 按 UI_SPEC §5 核对两面：分别缺失/未知时须在 Main stop 前拒绝 managed native thread UI，而 tool-only/headless、Main strip/Tree 仍可用；不能藉 marker 扩 tools/model/provider 权限。正式 host artifact 须分别验证 CLI bundle/unbundled SDK 的 file-version watcher：metadata 未变不重复读/parse，inplace/atomic replace/删除重建/symlink 后沿用原 loader/cache 失效；child 前台期间文件变化后，按 named 返回 Main 的 cache/真实颜色与后续热更新均恢复。SDK patch、Runtime guard 与 consumer rebuild 后须 fresh process 重跑；隔离实验或测试文件复制不算正式 artifact 验收。
+UI host-capability gate 按 UI_SPEC §5 核对两面：双面均缺失时允许原版 managed native thread UI，须给一次降级提示且避免重复同名 setTheme；仅一面声明或任一未知值时须在 Main stop 前拒绝，而 tool-only/headless、Main strip/Tree 仍可用；不能藉 marker 扩 tools/model/provider 权限。正式 host artifact 须分别验证 CLI bundle/unbundled SDK 的 file-version watcher：metadata 未变不重复读/parse，inplace/atomic replace/删除重建/symlink 后沿用原 loader/cache 失效；child 前台期间文件变化后，按 named 返回 Main 的 cache/真实颜色与后续热更新均恢复。SDK patch、Runtime guard 与 consumer rebuild 后须 fresh process 重跑；隔离实验或测试文件复制不算正式 artifact 验收。
 
 Main/Side/Subviewsingle foreground/single stdin，original editor/history/draft/theme/focus/mouse/resize/监听引用恢复，CC 后台 recorder/新 viewattach、return 不 abort、quit 不重启 Main。Side10roundtrip/model-effort/BTW/compact/destroy/externaleditor、两 visibilityprobe，不把 MaintestPTY 当 Sideprocessbackend。
 

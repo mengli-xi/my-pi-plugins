@@ -366,42 +366,40 @@ cursor/scroll position do not. Main editor state survives because its object sta
 Native theme callback ownership can differ across physical SDK loader copies; immediate
 heap reclamation is not promised. Rebuild compiled direct consumers after library changes.
 
-`TerminalOwner(tui, ui, readThemeSetting)` takes a live getter for Main's original
-settings value. This release accepts an explicit single named theme. Automatic
-`light/dark` pairs, implicit defaults, and anonymous in-memory themes fail closed
-before Main is stopped; no setting is changed on rejection. `ui.theme` is a live
-proxy, so it must never be passed back as a Theme instance. Entry snapshots a
-loadable theme through `getTheme(name)` and gives the native child the same named
-setting. Return uses `setTheme(name)` to preserve named theme file watching.
+`TerminalOwner(tui, ui, readThemeSetting)` 接收 Main 原始主题设置的 live getter。
+当前只支持显式单个命名主题；automatic `light/dark` pair、隐式默认值与匿名 in-memory theme
+在 Main stop 前拒绝，且不修改设置。`ui.theme` 是 live proxy，不能当 Theme instance 传回。
+进入时通过 `getTheme(name)` 取得可加载主题，并把同一命名设置交给 native child。
+补丁宿主始终用 `setTheme(name)` 恢复命名主题监听；原版在 native init 后和返回时跳过重复的同名应用。
 
-Managed terminal handoff requires the Pi 1.5.0 theme-watch patch described in
-`host-patches/pi/v1.5.0`: the native Main `ExtensionUIContext` must expose readonly
-optional `themeWatchCapability`, and the canonical public SDK root must export
-`THEME_WATCH_CAPABILITY`, both exactly `"pi.theme-watch.file-version.v1"`.
-`src/theme-watch-contract.ts` validates these public APIs after the first-use SDK
-import, before input drain, Main stop or foreground transfer. Missing, unknown or
-mismatched markers reject visibly with installation/rebuild/restart guidance; getter
-failures retain their surface context and original error cause. This is a public
-patched SDK API contract, not a private Pi seam or private-field probe. Headless/tool-only
-assembly and Main bindings that never open a child do not require these markers.
+### theme-watch 与原版降级
 
-Install/upgrade the patched CLI and canonical SDK consumers together with a consistent
-Pi peer dependency graph, then restart Pi and rebuild compiled direct consumers.
-Patching only the CLI while a child resolves stock SDK peers is not supported. A
-`Child terminal handoff requires theme-watch capability` error after installation or
-upgrade means one of these two public surfaces lacks the expected patch; Main keeps
-its terminal and foreground ownership. Do not bypass the check or silently fall back
-to stock theme watching.
+`src/theme-watch-contract.ts` 在首次 SDK import 后、input drain/Main stop/前台转移前，
+分别检查 Main native `ExtensionUIContext.themeWatchCapability` 与 canonical SDK root
+`THEME_WATCH_CAPABILITY`：
 
-A reference-owned, non-persistent Node `watchFile` bridge still reapplies Main's
-registered named cache through public `setTheme()` after file changes. It does not
-force disk loading: the patched SDK owns file-version reload, cache invalidation and
-native repaint. The bridge retains the existing Main repaint path across loader
-copies, whose callbacks/cache need not be shared; it is not a second theme loader.
-The path comes from public `getAllThemes()`; Main input observes named setting changes,
-and replacement/disposal removes precisely this listener and watcher. The process
-registry remembers successful managed entry so a replacement Main binding also installs
-the bridge. No private theme/controller field is read or patched. Full automatic/in-memory
+- 两面都精确为 `"pi.theme-watch.file-version.v1"`：沿用 patched 路径，按名恢复并启用
+  cache-only repaint bridge；文件版本热更新由 SDK 负责。
+- 两面都为 `undefined`（原版 Pi 1.5.0）：允许 child 视图交接。沿用交接时的命名配色，
+  不依赖主题文件热更新，不安装 repaint bridge。native init 已应用同名主题时不再次
+  `setTheme`，返回 Main 同名时也不重复应用，避免原版同步关闭 FSWatcher 的慢路径叠加。
+  原生初始化/stop 自身的 watcher 生命周期仍由 Pi 管理，主题文件热更新不作保证，可能显示旧配色。
+  首次交接通过 Main `ui.notify` 给一次 warning（同进程跨 Main binding/consumer 去重），
+  说明降级及补丁文档 `host-patches/pi/v1.5.0/README.md`，不静默降级。
+- 仅一面声明、任一未知值（含 null），或 getter 抛错：仍拒绝交接、保留 Main；错误保留
+  安装/rebuild/restart 指引和 getter cause。不能用 shim 伪造 marker。
+
+这是 public SDK 合同，不 import Pi private path、不改 prototype、不另写 theme loader。
+headless/tool-only assembly 与从未打开 child 的 Main binding 不要求这些 marker。
+补丁安装见 [host patch](../../host-patches/pi/v1.5.0/README.md)；需要同步安装 CLI 与完整
+canonical SDK peer graph、重启 Pi 并重建 compiled consumer。只补一面是装配错误，不是原版降级。
+
+Patched 路径的 reference-owned、non-persistent Node `watchFile` bridge 只在文件变化后
+通过 public `setTheme()` 重应用 Main 注册 cache，不读/parse 主题文件；SDK 独占 file-version
+reload/cache invalidation/native repaint。两种 loader 的 callbacks/cache 不必共享。
+路径来自 public `getAllThemes()`；Main 输入后观察命名设置变化，replacement/disposal 精确
+移除本 listener/watcher。process registry 只记录启用过 patched managed entry，替换的 Main
+binding 因此仍安装该 bridge。 No private theme/controller field is read or patched. Full automatic/in-memory
 theme support needs a public Pi view lifecycle or theme-state capture/restore API with
 owner-scoped subscriptions.
 
@@ -429,8 +427,11 @@ to the normal Main handoff. Consumers must honor the provided AbortSignal.
 默认 `npm test` 只运行 stock Pi 可用的离线测试。`npm run test:patched-host` 单独运行
 `session-realm`、`terminal-frames`、`terminal-owner`；需要同步安装主题补丁 CLI/SDK（Pi 1.5.0），
 缺少补丁会明确失败，不会 skip。`npm run check` 包含默认测试与 typecheck。
-Stock 1.5.0 can typecheck and run `test/theme-watch-contract.test.ts` (which explicitly
-uses marker fixtures), but cannot pass real managed-handoff/dual-loader regressions.
+原版 Pi 1.5.0 的合同测试覆盖双面缺失可交接、一次提示及同名恢复跳过；双面精确 marker
+fixtures 保留 patched 恢复断言，单面/未知 marker 保留交接前拒绝断言。
+根 `npm run test:integration:stock-host` 用 npm 安装的原版 SDK/CLI、faux provider、真实 PTY
+打开/返回无 CC child 视图，检查 2000ms deadline、配色、Main editor identity 与零额外请求。
+`test:patched-host` 的真实补丁/dual-loader 回归仍要求匹配补丁 SDK，不能用 marker fixture 替代。
 The existing fixtures use faux providers, temporary sessions and fake terminal ports;
 no remote provider, legacy producer/database or daily configuration is required.
 Use fresh processes, not `/reload`. This library has no compiled output; rebuild any
@@ -458,8 +459,8 @@ provider for the following checks; real TUI/IME and provider acceptance remain s
   original keybindings and terminal state must survive; reentry restores the child
   draft, not its undo/history cursor. A second simultaneous view must reject. An
   automatic theme pair or anonymous theme must reject before stopping Main.
-- Edit the active named theme file after returning to Main. Main should repaint;
-  replacing/disposing the owner must remove its watcher and input listener.
+- 在补丁宿主返回 Main 后编辑当前命名主题文件，Main 应重绘；
+  replacement/disposal 必须移除 owner 的 watcher 与 input listener。
 - Check autocomplete/overlay Escape priority, busy interrupt versus idle return,
   rejected-input preservation and external-editor cancellation. Delayed/failed init
   must not leave a blank or stolen terminal; late writes must not repaint a later view.

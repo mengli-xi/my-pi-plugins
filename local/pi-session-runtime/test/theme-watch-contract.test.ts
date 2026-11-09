@@ -7,6 +7,9 @@ import { requireThemeWatchContract } from "../src/theme-watch-contract.ts";
 const capability = "pi.theme-watch.file-version.v1";
 const execute = promisify(execFile);
 const cases = [
+  { label: "null contracts", main: null, sdk: null },
+  { label: "unknown Main without SDK", main: "unknown", sdk: undefined },
+  { label: "unknown SDK without Main", main: undefined, sdk: "unknown" },
   { label: "missing Main", main: undefined, sdk: capability },
   { label: "missing SDK", main: capability, sdk: undefined },
   { label: "unknown Main", main: "pi.theme-watch.file-version.v2", sdk: capability },
@@ -26,7 +29,7 @@ for (const { label, main, sdk } of cases) test(`theme-watch contract rejects ${l
 });
 
 test("theme-watch contract accepts the exact public capability on both surfaces", () => {
-  requireThemeWatchContract({ themeWatchCapability: capability }, { THEME_WATCH_CAPABILITY: capability });
+  assert.equal(requireThemeWatchContract({ themeWatchCapability: capability }, { THEME_WATCH_CAPABILITY: capability }), "patched");
 });
 
 for (const surface of ["Main UI", "canonical SDK"]) test(`theme-watch contract preserves ${surface} getter failure context and cause`, () => {
@@ -87,10 +90,10 @@ Object.defineProperty(globalThis, Symbol.for("pi.session-runtime.session-assembl
   value: Object.freeze({ version: 1, sdkVersion: codingAgent.VERSION, publicModules }),
 });
 const { TerminalOwner } = await import(${JSON.stringify(new URL("../src/terminal-owner.ts", import.meta.url).href)});
-let drains = 0, stops = 0, setting = "light/dark";
+let drains = 0, stops = 0, restores = 0, setting = "light/dark";
 const terminal = { write() {}, setTitle() {}, setProgress() {}, setProgramStatus() {}, drainInput: async () => { drains++; } };
 const ui = { themeWatchCapability: ${JSON.stringify(capability)}, theme: { name: "named" },
-  getTheme: () => ({}), onTerminalInput: () => () => {}, getAllThemes: () => [], setTheme: () => ({ success: true }) };
+  getTheme: () => ({}), onTerminalInput: () => () => {}, getAllThemes: () => [], setTheme: () => { restores++; return { success: true }; }, notify: () => { throw new Error("patched must not warn"); } };
 const owner = new TerminalOwner({ terminal, stop() { stops++; }, start() {}, requestRender() {} }, ui, () => setting);
 try {
   await assert.rejects(owner.acquire(), /single named Main theme/);
@@ -98,7 +101,52 @@ try {
   setting = "named";
   await owner.acquire();
   assert.equal(drains, 1); assert.equal(stops, 1); assert.equal(owner.isMainForeground, false);
-  owner.restore(); assert.equal(owner.isMainForeground, true);
+  owner.restore(); assert.equal(owner.isMainForeground, true); assert.equal(restores, 1);
 } finally { owner.dispose(); }
+`]);
+});
+
+test("theme-watch contract accepts only both absent as stock", () => {
+  assert.equal(requireThemeWatchContract({}, {}), "stock");
+});
+
+test("stock handoff warns once across Main bindings and skips same-theme restore", async () => {
+  await execute(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
+import assert from "node:assert/strict";
+import * as codingAgent from "@earendil-works/pi-coding-agent";
+import * as ai from "@earendil-works/pi-ai";
+import * as tui from "@earendil-works/pi-tui";
+// Marker absence fixture also keeps this contract test runnable with patched peers.
+const publicModules = Object.freeze({
+  "@earendil-works/pi-coding-agent": Object.freeze({ ...codingAgent, THEME_WATCH_CAPABILITY: undefined }),
+  "@earendil-works/pi-ai": ai, "@earendil-works/pi-tui": tui,
+});
+Object.defineProperty(globalThis, Symbol.for("pi.session-runtime.session-assembly-realm.v1"), {
+  value: Object.freeze({ version: 1, sdkVersion: codingAgent.VERSION, publicModules }),
+});
+const { TerminalOwner } = await import(${JSON.stringify(new URL("../src/terminal-owner.ts", import.meta.url).href)});
+let notices = [], drains = 0, stops = 0, starts = 0, themes = [];
+const terminal = { write() {}, setTitle() {}, setProgress() {}, setProgramStatus() {}, drainInput: async () => { drains++; } };
+const ui = { theme: { name: "named" }, getTheme: () => ({}), onTerminalInput: () => () => {},
+  getAllThemes: () => { throw new Error("stock must not install repaint bridge"); },
+  notify: (...args) => notices.push(args), setTheme: name => { themes.push(name); ui.theme.name = name; return { success: true }; } };
+for (let binding = 0; binding < 2; binding++) {
+  const owner = new TerminalOwner({ terminal, stop() { stops++; }, start() { starts++; }, requestRender() {} }, ui, () => "named");
+  try {
+    for (let entry = 0; entry < 2; entry++) {
+      await owner.acquire(); assert.equal(owner.isMainForeground, false);
+      owner.restore(); assert.equal(owner.isMainForeground, true);
+    }
+    assert.equal(themes.length, binding, "same named palette never calls stock setTheme");
+    await owner.acquire(); ui.theme.name = "other"; owner.restore();
+    assert.equal(themes.at(-1), "named", "a genuinely different theme still restores");
+  } finally { owner.dispose(); }
+}
+assert.equal(drains, 6); assert.equal(stops, 6); assert.equal(starts, 6);
+assert.equal(notices.length, 1);
+assert.match(notices[0][0], /主题不随文件热更新/);
+assert.ok(notices[0][0].includes("host-patches/pi/v1.5.0/README.md"));
+assert.equal(notices[0][1], "warning");
+assert.equal(globalThis[Symbol.for("pi.session-runtime.terminal-owner.v1")].hasManagedView, undefined);
 `]);
 });

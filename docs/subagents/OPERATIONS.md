@@ -2,7 +2,7 @@
 
 ## 1. 当前运行路径
 
-公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0、唯一 SDK；managed native thread UI 另需显式 host patch，见 [UI_SPEC §5](./UI_SPEC.md#5-主题与终端释放)。Main process 内独立 session/runtime，无 Agent Supervisor/PTY child 或 backend chooser。配置 user<agent-dir>/pi-subagents/config.json、trusted project<cwd>/.pi/pi-subagents.json，schema 2。数据<agent-dir>/pi-subagents/store-v2/mains/<mainKey>，diagnostics 按 package closed layout。日常 Pi 与迁移 profile 分开 agent-dir；均从各自运行环境/公开 Pi API 定位，不修改日常 agent-dir 或默认入口。
+公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0、唯一 SDK；managed native thread UI 支持原版主题降级，补丁宿主提供主题热更新，见 [UI_SPEC §5](./UI_SPEC.md#5-主题与终端释放)。Main process 内独立 session/runtime，无 Agent Supervisor/PTY child 或 backend chooser。配置 user<agent-dir>/pi-subagents/config.json、trusted project<cwd>/.pi/pi-subagents.json，schema 2。数据<agent-dir>/pi-subagents/store-v2/mains/<mainKey>，diagnostics 按 package closed layout。日常 Pi 与迁移 profile 分开 agent-dir；均从各自运行环境/公开 Pi API 定位，不修改日常 agent-dir 或默认入口。
 
 source-only 依赖已迁入；compiled Subagents 或其 source-only 依赖变更后重建直接 consumer，Subagents 用 npm run build/verify-dist，再 fresh Pi 1.5.0 process。mailbox-v1.0.5 要求相关 compiled consumers 同步新 build，不混用旧 bundle。旧三项 Main append private probe 已退役，适用 consumer 的 probe 仍须验证。source-loaded Side/Compact 不用 build，仍 fresh process。/reload 是生命周期测试动作，不能代替重建验证。
 

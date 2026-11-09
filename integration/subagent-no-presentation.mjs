@@ -4,15 +4,22 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import xterm from "@xterm/headless";
 
+const cli = process.env.PI_PATCHED_CLI ?? resolve("node_modules/@earendil-works/pi-coding-agent/dist/cli.js");
+const stock = !process.env.PI_PATCHED_CLI;
+
 const root = mkdtempSync(join(tmpdir(), "subagent-no-cc-"));
 const pkg = resolve("local/pi-subagents"), agent = join(root, "agent");
 mkdirSync(join(agent, "pi-subagents"), { recursive: true, mode: 0o700 });
 writeFileSync(join(agent, "pi-subagents/config.json"), JSON.stringify({ schemaVersion: 2 }));
-writeFileSync(join(agent, "settings.json"), JSON.stringify({ packages: [], extensions: [], theme: "dark", quietStartup: true, retry: { enabled: false }, cacheWarming: "off" }));
+mkdirSync(join(agent, "themes"), { recursive: true });
+const palette = JSON.parse(readFileSync(resolve("local/pi-claude-style/themes/cc-style-soft.json"), "utf8"));
+palette.name = "no-cc-theme";
+writeFileSync(join(agent, "themes/no-cc-theme.json"), JSON.stringify(palette));
+writeFileSync(join(agent, "settings.json"), JSON.stringify({ packages: [], extensions: [], theme: "no-cc-theme", quietStartup: true, retry: { enabled: false }, cacheWarming: "off" }));
 writeFileSync(join(root, "fixture.txt"), "NATIVE_CHILD_FIXTURE");
 writeFileSync(join(root, "main.jsonl"), JSON.stringify({ type: "session", version: 3, id: "no-cc-main", timestamp: new Date().toISOString(), cwd: root }) + "\n");
 const terminal = new xterm.Terminal({ cols: 112, rows: 38, allowProposedApi: true });
-const child = Bun.spawn({ cmd: ["node", process.env.PI_PATCHED_CLI, "--offline", "--session", join(root, "main.jsonl"), "--tui-mode", "fullscreen", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-context-files",
+const child = Bun.spawn({ cmd: ["node", cli, "--offline", "--session", join(root, "main.jsonl"), "--tui-mode", "fullscreen", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-context-files",
   "-e", join(pkg, "test/fixtures/test-commands.ts"), "-e", join(pkg, "test/fixtures/sdk-view-main.mjs"),
   "--provider", "fixture", "--model", "faux-view", "--thinking", "off", "--approve"],
   cwd: root, env: { ...process.env, HOME: root, PI_CODING_AGENT_DIR: agent, PI_OFFLINE: "1", PI_SDK_VIEW_ROOT: root,
@@ -31,9 +38,9 @@ async function wait(label, predicate) {
   throw new Error(`${label}\n${screen()}\n${events().slice(-5).map(JSON.stringify).join("\n")}`);
 }
 let serial = 0;
-async function control(op) {
+async function control(op, extra = {}) {
   const id = ++serial;
-  appendFileSync(join(root, "commands.jsonl"), JSON.stringify({ id, op }) + "\n");
+  appendFileSync(join(root, "commands.jsonl"), JSON.stringify({ id, op, ...extra }) + "\n");
   await wait(op, () => events().some(event => event.event === "control" && event.id === id));
   const reply = events().find(event => event.event === "control" && event.id === id);
   if (reply.error) throw new Error(reply.error);
@@ -45,19 +52,39 @@ try {
   await wait("faux child settled", async () => (await control("snapshot")).agents?.[0]?.tasks[0]?.phase === "settled");
   const before = await control("snapshot");
   assert.equal(before.presentationProviders, undefined, "no CC presentation registry is installed");
-  child.terminal.write("/subagents /root/view_child\r");
-  await wait("native child view opened", async () => (await control("snapshot")).childMode === "tui" && screen().includes("VIEW_REPLY"));
-  assert.ok(screen().includes("VIEW_REPLY"), "the native view displays the faux child's history");
-  child.terminal.write("\x1b/");
-  await wait("Main restored", async () => (await control("snapshot")).childMode === "print");
-  const after = await control("snapshot");
-  assert.equal(after.editorSame, true);
-  assert.equal(after.presentationProviders, undefined);
-  assert.equal(after.agents[0].tasks.length, before.agents[0].tasks.length, "opening a view starts no model task");
+  const timings = [];
+  const requestCount = events().filter(event => event.event === "request").length;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await control("observe-view", { token: String(attempt) });
+    child.terminal.write("/subagents /root/view_child\r");
+    await wait("native child view opened", async () => (await control("snapshot")).childMode === "tui" && screen().includes("VIEW_REPLY"));
+    assert.ok(screen().includes("VIEW_REPLY"), "the native view displays the faux child's history");
+    await wait("view ready", () => events().some(event => event.event === "view-boundary" && event.token === String(attempt) && event.kind === "ready"));
+    const boundaries = events().filter(event => event.event === "view-boundary" && event.token === String(attempt));
+    const openedMs = boundaries.find(event => event.kind === "ready").monotonicAt - boundaries.find(event => event.kind === "init-start").monotonicAt;
+    assert.ok(!boundaries.some(event => event.kind === "deadline"), "no initialization deadline fallback");
+    assert.ok(openedMs < 2000, `handoff ${openedMs} ms exceeds deadline`);
+    await control("observe-return", { token: String(attempt) });
+    const returnStarted = performance.now();
+    child.terminal.write("\x1b/");
+    await wait("Main restored", async () => (await control("snapshot")).childMode === "print");
+    const returnedMs = performance.now() - returnStarted;
+    const restoration = events().find(event => event.event === "main-restored" && event.token === String(attempt));
+    assert.ok(returnedMs < 2000, `return ${returnedMs} ms exceeds deadline`);
+    timings.push({ openedMs: Math.round(openedMs), returnedMs: Math.round(returnedMs), restoreMs: restoration.completedAt - restoration.startedAt });
+    const after = await control("snapshot");
+    assert.equal(after.editorSame, true);
+    assert.equal(after.presentationProviders, undefined);
+    assert.equal(after.agents[0].tasks.length, before.agents[0].tasks.length, "opening a view starts no model task");
+    assert.equal(after.theme.name, "no-cc-theme");
+    assert.equal(after.theme.accent, before.theme.accent, "entry palette preserved");
+    assert.equal(events().filter(event => event.event === "request").length, requestCount, "view entry/return sends no requests");
+  }
+  assert.equal(events().filter(event => event.event === "stock-theme-notice").length, stock ? 1 : 0, "only stock hosts show one theme degradation notice");
   child.terminal.write("/quit\r");
   await wait("host quit", () => child.exitCode !== null);
   assert.equal(await child.exited, 0, await stderr);
-  console.log("PASS: Subagents opens native child view and returns without pi-claude-style; faux provider only");
+  console.log(`PASS: ${stock ? "stock" : "patched"} Pi 1.5.0, no CC, faux provider only; handoffs=${JSON.stringify(timings)}`);
 } finally {
   if (child.exitCode === null) child.kill("SIGKILL");
   await child.exited;

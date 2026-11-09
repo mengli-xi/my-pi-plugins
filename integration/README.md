@@ -11,7 +11,17 @@
 - Subagents 与 pi-bash-timeout 的仓库内 child 联测也随默认入口运行。
 - Effort 不加载 pi-model-prompts，真实 SDK 中 `/effort high`、`ultra`、`low` 改档，不隐式发请求；随后本地 faux 请求正常完成。
 
-无 pi-claude-style 的 Subagents child 视图另有显式补丁宿主入口：
+无 pi-claude-style 的 Subagents child 视图可在 `npm ci` 安装的原版 Pi 1.5.0 上验证：
+
+```sh
+npm run test:integration:stock-host
+```
+
+使用临时命名主题、原版 SDK/CLI 和 faux provider，连续打开/返回两次，核对一次降级提示、
+每次初始化与返回小于 2000ms、无 deadline fallback、配色及 Main editor identity 保留、零额外请求。
+不加载 CC presentation，不发真实 provider 请求。主题文件热更新不在原版保证范围。
+
+同一用例保留显式补丁宿主入口：
 
 ```sh
 PI_PATCHED_SDK=/path/to/build/source/packages/coding-agent \

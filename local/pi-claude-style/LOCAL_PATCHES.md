@@ -50,6 +50,6 @@ Bun splitting 保留首次使用 import，UIKit 内联，Pi API、`typebox`、�
 
 `dist/child.ts` 只导出 named SDK factory，Main 登记 capability。child 在 execution assembly 安装轻量 recorder，attach 安装 view，detach await 在途 shell 并释放 view，不结束 session。不能使用 `PI_OFFLINE` 禁掉 provider 网络；child 不安装 Main control、Goal/Todo、selector、external contributor 或全局 updater。return label 属于 editor chrome，不新增 footer 行，display name 不改 native session name。
 
-CC Main 不要求 Pi 源码 patch。native child 仍遵守 `pi-session-runtime` 的 named-theme / theme-watch capability gate：缺少对应能力在停止 Main 前拒绝，不放宽为静默主题恢复。命名主题资源发现和真实 `ui.theme.name` 才能证明生效，仅出现在 `/theme` 列表不是应用成功。
+CC Main 不要求 Pi 源码 patch。native child 仍遵守 `pi-session-runtime` 的 named-theme / theme-watch capability gate：双面能力缺失时允许原版主题降级并首次提示；单面或未知声明仍在停止 Main 前拒绝。命名主题资源发现和真实 `ui.theme.name` 才能证明生效，仅出现在 `/theme` 列表不是应用成功。
 
 Statusline 是真实 shell 边界，不是 sandbox，payload 带真实 session path；取消预算只回收本端 fd 和原进程组，不能追杀主动另建 session 的后代。完整数据、首帧、slot 与进程回收规则见 [statusline contract](./docs/statusline-provenance.md)。
