@@ -1,0 +1,38 @@
+▲ FIXTURE_IMAGE inspect the picture ──────────────────────────────────────────────────────────────────── click to jump ─
+
+● Picture read; now a screenshot.
+
+  Called fixture.screenshot
+  ⎿ View 2 Images (140 B)
+
+● Image inspected.
+
+─ ✓ done at <time> · took <d> · ↓<n> · <tps> · first <d> · 3 turns ────
+── ▣ 2 Images 1/2 · image/png (70 B)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────── ←/→ images · Esc close ──

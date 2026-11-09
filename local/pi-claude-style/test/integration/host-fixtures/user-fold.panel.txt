@@ -1,0 +1,23 @@
+── ❯ user ───────────────────────────────────────────────────────────────────────────────────────────────────── 19 lines
+
+  FIXTURE_USER please follow every step below.
+  step 1: keep line 1 in the request
+  step 2: keep line 2 in the request
+  step 3: keep line 3 in the request
+  step 4: keep line 4 in the request
+  step 5: keep line 5 in the request
+  step 6: keep line 6 in the request
+  step 7: keep line 7 in the request
+  step 8: keep line 8 in the request
+  step 9: keep line 9 in the request
+  step 10: keep line 10 in the request
+  step 11: keep line 11 in the request
+  step 12: keep line 12 in the request
+  step 13: keep line 13 in the request
+  step 14: keep line 14 in the request
+  ```sh
+  echo user-fence
+  ```
+  last line of the request
+
+─────────────────────────────────────────── ↑↓/jk scroll · PgUp/PgDn page · g/G top/bottom · y copy · Enter/Esc close ──

@@ -1,0 +1,25 @@
+╭ user <time> ────╮
+│  FIXTURE_MESSAGES say hello                                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+● OK: plain step 0.
+
+─ ✓ done at <time> · took <d> · ↓<n> · <tps> · first <d> · 1 turn ────
+
+▸ fork-update
+  pi packages updated: FIXTURE_KNOWN
+
+
+ [fixture-unknown]
+
+ FIXTURE_UNKNOWN first line
+ second line stays
+
+
+── ▸ fork-update ─────────────────────────────────────────────────────────────────────────────────────────────── 3 lines
+
+  Merged
+
+  - FIXTURE_KNOWN_DETAILS
+
+─────────────────────────────────────────── ↑↓/jk scroll · PgUp/PgDn page · g/G top/bottom · y copy · Enter/Esc close ──

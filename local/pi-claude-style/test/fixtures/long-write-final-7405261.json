@@ -1,0 +1,61 @@
+{
+  "baseline": "740526115349628a7f90e6f70125787a4eafc7ec",
+  "pi": "1.4.0",
+  "width": 100,
+  "cases": {
+    "native": {
+      "rows": 339,
+      "runs": [
+        {
+          "line": "",
+          "count": 2
+        },
+        {
+          "line": " write report.txt",
+          "count": 1
+        },
+        {
+          "line": "",
+          "count": 1
+        },
+        {
+          "line": " 中文报告：\"引号\"与反斜杠\\",
+          "count": 333
+        },
+        {
+          "line": " 中文报告：",
+          "count": 1
+        },
+        {
+          "line": "",
+          "count": 1
+        }
+      ]
+    },
+    "grouped": {
+      "rows": 337,
+      "runs": [
+        {
+          "line": "",
+          "count": 1
+        },
+        {
+          "line": "● write report.txt",
+          "count": 1
+        },
+        {
+          "line": "",
+          "count": 1
+        },
+        {
+          "line": "  中文报告：\"引号\"与反斜杠\\",
+          "count": 333
+        },
+        {
+          "line": "  中文报告：",
+          "count": 1
+        }
+      ]
+    }
+  }
+}

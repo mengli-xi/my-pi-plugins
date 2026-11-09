@@ -1,0 +1,53 @@
+{
+  "name": "pi-claude-style",
+  "version": "0.1.0",
+  "description": "Claude Code-style transcript, working row, and status presentation for pi",
+  "type": "module",
+  "private": true,
+  "pi": {
+    "extensions": [
+      "./dist/index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node scripts/isolated-agent.mjs node --experimental-strip-types --test test/*.test.ts test/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json --noEmit && node scripts/build.mjs",
+    "check": "npm run typecheck && npm run build && npm test",
+    "prepare": "npm run build",
+    "check-internals": "node scripts/isolated-agent.mjs node --experimental-strip-types scripts/check-internals.ts",
+    "check-internals:host": "node scripts/check-internals-host.mjs",
+    "check-retry-child:host": "node scripts/check-retry-child-host.mjs",
+    "check-provider-errors:host": "node scripts/check-provider-errors-host.mjs",
+    "benchmark:monitor": "node scripts/isolated-agent.mjs node --experimental-strip-types scripts/benchmark-monitor.ts",
+    "test:child-ui": "node scripts/isolated-agent.mjs bun test/integration/child-ui.mjs",
+    "test:main-statusline": "node scripts/isolated-agent.mjs bun test/integration/main-statusline.mjs",
+    "test:host-fixtures": "node scripts/isolated-agent.mjs bun test/integration/host-fixtures.mjs",
+    "test:history:host": "node scripts/isolated-agent.mjs bun test/integration/full-history.mjs",
+    "measure:startup": "bun scripts/measure-startup.mjs",
+    "benchmark:long-write": "bun scripts/benchmark-long-write.mjs",
+    "benchmark:write-preview": "node scripts/isolated-agent.mjs bun scripts/benchmark-write-preview.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "^1.5.0",
+    "@earendil-works/pi-ai": "^1.5.0",
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0",
+    "typebox": "*"
+  },
+  "dependencies": {
+    "conf": "14.0.0",
+    "pi-li-uikit": "file:../pi-li-uikit",
+    "pi-runtime-contracts": "file:../pi-runtime-contracts"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0",
+    "@types/node": "^22.0.0",
+    "@xterm/headless": "^6.0.0",
+    "typebox": "1.3.7",
+    "typescript": "^5.6.0"
+  }
+}

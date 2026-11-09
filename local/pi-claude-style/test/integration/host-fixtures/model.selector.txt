@@ -1,0 +1,25 @@
+╭ user <time> ────╮
+│  FIXTURE_MODEL say hello                                                                                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+● OK: plain step 0.
+
+─ ✓ done at <time> · took <d> · ↓<n> · <tps> · first <d> · 1 turn ────
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+Only showing models from configured providers. Use /login to add providers.
+
+>
+
+  [fixture (2)]   fixture-b (1)
+
+→ ✓ fixture-model                                                                                            IMAGE 65.5k
+    fixture-model-large                                                                                      IMAGE 65.5k
+
+  Model Name: fixture-model
+
+  Model catalogs refreshed.
+
+──────────────────────────────────────── Enter select · Ctrl+S default · Escape/Ctrl+C close · Tab/Shift+Tab provider ──

@@ -1,0 +1,25 @@
+╭ user <time> ────╮
+│  FIXTURE_GROUPED survey the inputs                                                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+  Read 3 files, ran 1 shell command · Thinking <d>
+
+  One more file is needed before answering.
+
+    cat c.txt
+
+ ▴ Thinking <d>
+
+● Survey complete.
+
+    const bodyFence = 42;
+
+  - alpha
+  - beta
+
+─ ✓ done at <time> · took <d> · ↓<n> · <tps> · first <d> · thought <d> · 3 turns ────
+
+ Thinking blocks: visible
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────

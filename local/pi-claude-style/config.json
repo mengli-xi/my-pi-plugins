@@ -1,0 +1,158 @@
+{
+  "enabled": true,
+  "expandMode": "overlay",
+  "overlayShortcut": "alt+o",
+  "maxGroups": 100,
+  "maxResultChars": 200000,
+  "maxCapturedBytes": 16000000,
+  "grouping": {
+    "read": true,
+    "search": true,
+    "list": true,
+    "bash": true,
+    "edit": true,
+    "write": true,
+    "mcp": true,
+    "subagent": true,
+    "process": true,
+    "memory": true,
+    "note": true,
+    "context": true,
+    "todo": true,
+    "unknown": true
+  },
+  "importantTools": {
+    "askUserQuestion": true,
+    "webSearch": true,
+    "webFetch": true,
+    "singleFileEdit": true,
+    "todoList": false,
+    "webDetails": "overlay"
+  },
+  "overlay": {
+    "mouseScrollLines": 3
+  },
+  "separators": {
+    "enabled": true,
+    "showTurnSeparators": false,
+    "showTurnNumber": true,
+    "showRunSeparator": true,
+    "replaceDoneWidget": true
+  },
+  "working": {
+    "enabled": true,
+    "style": "cyber",
+    "showDoneSummary": true,
+    "showInputTokens": true,
+    "showOutputTokens": true,
+    "showTps": true,
+    "showTtft": true,
+    "showThinkingTime": true,
+    "showTurns": true,
+    "showCancelHintAfterMs": 10000,
+    "verbRotateMs": 8000,
+    "spinnerIntervalMs": 180,
+    "refreshMs": 150,
+    "messageWidth": 100
+  },
+  "diff": {
+    "enabled": true,
+    "addedBg": 22,
+    "removedBg": 52,
+    "addedHighlightBg": 28,
+    "removedHighlightBg": 88
+  },
+  "userMessages": {
+    "enabled": true,
+    "style": "compact-box",
+    "title": "user",
+    "horizontalPadding": 1,
+    "verticalPadding": 0,
+    "topMargin": 0,
+    "maxLines": 3
+  },
+  "assistantMessages": {
+    "enabled": true,
+    "style": "claude",
+    "marker": "●",
+    "markerColor": "accent",
+    "collapsedThinking": "activity",
+    "hideCodeFenceMarkers": true,
+    "typewriter": {
+      "enabled": true,
+      "frameMs": 50,
+      "minCharsPerFrame": 3,
+      "maxCharsPerFrame": 160,
+      "targetLagMs": 160,
+      "finalDrainMs": 1200
+    }
+  },
+  "goal": {
+    "enabled": true,
+    "placement": "statusline",
+    "label": "Goal",
+    "showText": false,
+    "showTokens": true,
+    "refreshMs": 1000,
+    "completedLingerMs": 8000
+  },
+  "customMessages": {
+    "enabled": true,
+    "style": "claude",
+    "marker": "▸",
+    "stripEchoedHeading": true
+  },
+  "nativeToolOutput": {
+    "enabled": true,
+    "maxLines": 2,
+    "tools": [
+      "process"
+    ],
+    "respectExpanded": false,
+    "compactShell": true
+  },
+  "integrations": [
+    {
+      "source": "npm:@aliou/pi-processes",
+      "enabled": false,
+      "optional": true
+    },
+    {
+      "source": "npm:pi-mcp-adapter",
+      "enabled": true,
+      "optional": true
+    },
+    {
+      "source": "npm:@narumitw/pi-subagents",
+      "enabled": true,
+      "optional": true
+    },
+    {
+      "source": "npm:@juicesharp/rpiv-todo",
+      "enabled": true,
+      "optional": true
+    },
+    {
+      "source": "npm:@juicesharp/rpiv-ask-user-question",
+      "enabled": true,
+      "optional": true
+    },
+    {
+      "source": "npm:pi-native-search",
+      "enabled": true,
+      "optional": true
+    },
+    {
+      "source": "npm:@narumitw/pi-goal",
+      "enabled": false,
+      "optional": true,
+      "force": false
+    },
+    {
+      "source": "npm:@narumitw/pi-plan-mode",
+      "enabled": true,
+      "optional": true,
+      "force": false
+    }
+  ]
+}

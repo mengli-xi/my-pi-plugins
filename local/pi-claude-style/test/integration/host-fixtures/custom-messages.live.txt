@@ -1,0 +1,25 @@
+╭ user <time> ────╮
+│  FIXTURE_MESSAGES say hello                                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+● OK: plain step 0.
+
+─ ✓ done at <time> · took <d> · ↓<n> · <tps> · first <d> · 1 turn ────
+
+▸ fork-update
+  pi packages updated: FIXTURE_KNOWN
+
+
+ [fixture-unknown]
+
+ FIXTURE_UNKNOWN first line
+ second line stays
+
+
+ Warning: FIXTURE_NOTICE native warning
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,25 @@
+╭ user <time> ────╮
+│  FIXTURE_SESSION say hello                                                                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+● OK: plain step 0.
+
+─ ✓ done at <time> · took <d> · ↓<n> · <tps> · first <d> · 1 turn ────
+
+
+── Session info ──────────────────────────────────────────────────────────────────────────────────────────────── 1-12/22
+
+   File:                                                                                                               █
+   <ROOT>/sessions/<iso>_<uuid>  █
+   <uuid>.jsonl   █
+   ID: <uuid>   █
+                                                                                                                       █
+   Messages                                                                                                            █
+   Total: 3                                                                                                            █
+   User: 1
+   Assistant: 1
+   Tools: 0 calls, 0 results
+
+   Tokens
+
+─────────────────────────────────────────── ↑↓/jk scroll · PgUp/PgDn page · g/G top/bottom · y copy · Enter/Esc close ──
