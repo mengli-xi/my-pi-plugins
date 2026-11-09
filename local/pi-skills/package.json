@@ -1,0 +1,30 @@
+{
+  "name": "pi-skills",
+  "version": "0.1.0",
+  "description": "Codex-style explicit $skill mentions for Pi",
+  "type": "module",
+  "private": true,
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "skills",
+    "mentions",
+    "codex"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-transform-types --test tests/*.test.ts",
+    "check-internals": "node scripts/check-internals.mjs",
+    "check": "npm run typecheck && npm run check-internals && npm test"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "^1.5.0",
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0"
+  }
+}

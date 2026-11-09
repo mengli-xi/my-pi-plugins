@@ -10,6 +10,10 @@
 - Compact 不加载 pi-cc-memory / pi-todo，真实阈值压缩后仍继续并完成请求；复用包内流式 fixture，不重复实现压缩算法。
 - Subagents 与 pi-bash-timeout 的仓库内 child 联测也随默认入口运行。
 - Effort 不加载 pi-model-prompts，真实 SDK 中 `/effort high`、`ultra`、`low` 改档，不隐式发请求；随后本地 faux 请求正常完成。
+- [Skills + Compact](skills-compact.test.ts) 直接加载两个生产 entry point，检查 Skills 材料进入 faux transport 收到的真实压缩请求、规则只嵌入 checkpoint 一次、连续两次压缩与 legacy binding 恢复，以及外部 owner 引用不被 Skills 冒领。旧 restore-request 入口还会在真实 provider 请求前持久化独立恢复消息，重复请求不重复追加。分别缺 Skills、缺 Compact 时，普通请求继续；request-only 注入不进入持久 LLM message，resume 只恢复原 sidecar 版本，不重复追加。
+- [Skills + CC](skills-presentation.test.ts) 在两种加载顺序中加载真实 Skills 和构建后的 CC；另用生产 presentation factory 与真实 Skills SDK row 组合，检查晚加载、owner 替换、旧 owner 退出和缺 CC fallback，不覆写 row 的 `render`。click 只交给测试侧 opener，不操作终端或剪贴板。
+
+`npm run test:integration` 会先用 Bun 构建 CC，再运行联测；单独运行 Skills/CC 测试文件时须先执行 `npm run build -w pi-claude-style`，不以源码 mock 代替 `dist/index.ts`。这些用例使用根依赖中的 stock Pi 1.5.0 公共 SDK，不加载 patched SDK 或真实 provider。
 
 无 pi-claude-style 的 Subagents child 视图可在 `npm ci` 安装的原版 Pi 1.5.0 上验证：
 

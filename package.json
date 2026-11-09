@@ -8,7 +8,7 @@
   "scripts": {
     "typecheck": "npm run typecheck --workspaces && tsc -p integration/tsconfig.json",
     "test": "node --test scripts/check-doc-links.test.mjs && node scripts/check-doc-links.mjs && node scripts/isolated-agent.mjs npm run test --workspaces",
-    "test:integration": "node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/*.test.ts",
+    "test:integration": "npm run build -w pi-claude-style && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/*.test.ts",
     "test:integration:stock-host": "npm run build -w pi-subagents && bun integration/subagent-no-presentation.mjs",
     "test:integration:patched-host": "node integration/run-patched-host.mjs",
     "test:integration:subagents": "npm run build -w pi-subagents && node integration/run-subagents.mjs"
