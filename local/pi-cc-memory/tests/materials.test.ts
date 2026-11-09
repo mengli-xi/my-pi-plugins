@@ -44,7 +44,7 @@ test("public materials request works with no consumer, a stand-in consumer and a
 });
 
 
-test("canonical memory directory cannot escape the owner project tree through a symlink", async t => {
+test("memoryDir escape is rejected while projects can link outside agentDir", async t => {
   const root = await mkdtemp(join(tmpdir(), "memory-root-boundary-")); t.after(() => rm(root, { recursive: true, force: true }));
   const agentDir = join(root, "agent"), projects = join(agentDir, "pi-cc-memory", "projects");
   const parent = join(projects, "a".repeat(64)), dir = join(parent, "memory"), outside = join(root, "external");
@@ -54,10 +54,14 @@ test("canonical memory directory cannot escape the owner project tree through a 
   assert.deepEqual(result.memory, []); assert.match(result.known[0]!.statement, /outside owner's project tree/);
   await rm(projects, { recursive: true });
   await mkdir(join(outside, "a".repeat(64), "memory"), { recursive: true });
-  await writeFile(join(outside, "a".repeat(64), "memory", "MEMORY.md"), "OUTSIDE_PROJECTS_ROOT");
+  const externalMemory = join(outside, "a".repeat(64), "memory");
+  await writeFile(join(externalMemory, "MEMORY.md"), "[topic](topic.md)");
+  await writeFile(join(externalMemory, "topic.md"), "EXTERNAL_PROJECT_TOPIC");
   await symlink(outside, projects);
-  result = await collectMemoryMaterials(agentDir, dir, "");
-  assert.deepEqual(result.memory, []); assert.match(result.known[0]!.statement, /outside owner's project tree/);
+  result = await collectMemoryMaterials(agentDir, dir, "topic");
+  assert.deepEqual(result.memory.map(item => item.contents), ["[topic](topic.md)", "EXTERNAL_PROJECT_TOPIC"]);
+  assert.deepEqual(result.known, []);
+  assert.equal(result.memory[0]!.path, await realpath(join(externalMemory, "MEMORY.md")));
 });
 
 
