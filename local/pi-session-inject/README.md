@@ -11,7 +11,7 @@ source-only 的 Pi-aware 共享库，维护 safe append primitives 与统一 mai
 - 根入口或 `append-at-safe-boundary-v1`：`appendAtSafeBoundary()` 在 idle、当前 authority 且无 open tool call 时发送 custom message，再等待 native entry proof；`proveNativeEntry()` 按 identity、内容和 SHA-256 验证唯一 entry，供恢复和幂等检查使用。对应类型为 `SafeAppendOptions`、`SafeAppendResult`、`NativeEntryProof`。
 - 根入口或 `types`：`IdleAppendBoundary`、`LiveMessagePort`、`SessionManager` 类型。调用方提供 live runtime boundary 和 message port。
 
-Processes、Goal、Subagents、Scheduler、MCP Adapter 通过 producer 接口接入，各自仍拥有业务 guard、身份、持久业务状态与 domain settlement。本库只拥有 transport；Main/Side/child 分 session slot，不能相互改投。六项 producer ID 是固定合同，历史 `pi-magic-context` ID 仅作兼容，不自动安装插件、加载 producer 或读取数据库。新增 producer 需扩公共合同，不能借注册获取业务权限。
+Processes、Goal、Subagents、Scheduler、MCP Adapter 通过 producer 接口接入，各自仍拥有业务 guard、身份、持久业务状态与 domain settlement。本库只拥有 transport；Main/Side/child 分 session slot，不能相互改投。producer ID 由参与方注册为非空字符串，不自动发现或加载插件。注册可声明 `capabilities.activateNewExecution: true`，仅允许证明首次新 execution；不会授予业务 Task/grant 权限。未声明时不能激活，所有恢复、首轮与 token 校验保持不变。
 
 ## 投影、读取与存储边界
 
@@ -24,7 +24,7 @@ Processes、Goal、Subagents、Scheduler、MCP Adapter 通过 producer 接口接
 - snapshot/receipt 保存完整正文、图片与 details，不脱敏、不加密。新 snapshot 文件使用 0600，已有目录权限由 owner 管理。GC snapshot 不等于删除会话中的正文/receipt，也不按时间清理临时残留。
 - accepted、recorded、fulfilled 与业务成功不等价。cancel 不能撤回已提交原生队列或已冻结/发出的请求；关闭 producer、退出或 `/mailbox resume` 都不替代业务取消/授权。
 
-当前 transport build 为 `mailbox-v1.0.5`。transport build 标识变化后，编译型消费者必须 rebuild 并新开进程；不以 `/reload` 代替源码重建。API/schema 保留，旧不兼容 holder 拒绝接入，不覆盖或静默降级。
+当前 transport build 为 `mailbox-v1.0.6`。transport build 标识变化后，编译型消费者必须 rebuild 并新开进程；不以 `/reload` 代替源码重建。API/schema 保留，旧不兼容 holder 拒绝接入，不覆盖或静默降级。
 
 ## 验证与使用回归
 

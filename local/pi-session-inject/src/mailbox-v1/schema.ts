@@ -1,4 +1,4 @@
-import { MAILBOX_POLICIES, MAILBOX_PRODUCER_IDS } from "./types.js";
+import { MAILBOX_POLICIES } from "./types.js";
 
 // JSON Schema draft 2020-12, not a TypeBox runtime dependency. All transport
 // objects are exact; only producer details allows arbitrary plain JSON values.
@@ -11,12 +11,12 @@ const object = (properties: Record<string, object>, required = Object.keys(prope
   type: "object", additionalProperties: false, properties, required,
 });
 const mailProperties = {
-  producer: { enum: MAILBOX_PRODUCER_IDS }, key: string, anchorEntryId: nullableId,
+  producer: string, key: string, anchorEntryId: nullableId,
   policy: { enum: MAILBOX_POLICIES }, wake: { type: "boolean" },
   messages: array(ref("nativeMessage"), 1),
 };
 const evidenceProperties = {
-  producer: { enum: MAILBOX_PRODUCER_IDS }, key: string, terminalId: string, scope: ref("scope"),
+  producer: string, key: string, terminalId: string, scope: ref("scope"),
 };
 const recorded = (ack: readonly string[]) => object({ notice: ref("recordedNotice"), ack: { enum: ack } });
 
@@ -53,7 +53,7 @@ export const MAILBOX_PENDING_SCHEMA_V1 = {
     mail: object(mailProperties),
     requiredCallbacks: object({ recorded: { type: "boolean" }, terminal: { type: "boolean" } }),
     recordedNotice: object({
-      producer: { enum: MAILBOX_PRODUCER_IDS }, key: string, scope: ref("scope"),
+      producer: string, key: string, scope: ref("scope"),
       recordedToken: string, entries: array(ref("nativeEntryRef"), 1),
     }),
     pendingRecorded: recorded(["pending", "acknowledged"]),
@@ -84,7 +84,7 @@ export const MAILBOX_PENDING_SCHEMA_V1 = {
       recorded: { anyOf: [{ type: "null" }, ref("terminalRecorded")] },
       terminalAck: { enum: ["pending", "acknowledged"] }, backingReceiptEntryId: nullableId,
     }),
-    member: object({ producer: { enum: MAILBOX_PRODUCER_IDS }, key: string, anchorEntryId: nullableId }),
+    member: object({ producer: string, key: string, anchorEntryId: nullableId }),
     attempt: object({ id: string, members: array(ref("member")), sealedRevision: integer }),
     suspension: object({ reason: { enum: ["aborted", "error", "blocked"] }, detail: string }),
   },

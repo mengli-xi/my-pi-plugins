@@ -51,7 +51,7 @@ const emptySnapshot: MailboxSnapshot = {
   suspended: null, pending: [], terminal: [],
 };
 void emptySnapshot;
-// @ts-expect-error Producer IDs are the frozen finite public set.
+// Producer IDs are open; registrations own their identity.
 const invalidProducer: Mail["producer"] = "another-producer";
 // @ts-expect-error No public five-state receipt / recorded terminal outcome.
 const invalidOutcome: TerminalEvidence["outcome"] = "recorded";

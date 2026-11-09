@@ -40,7 +40,7 @@ if (result.kind === "terminal") { /* 已 fulfilled/cancelled，不能再次发�
 source 私有 identity 与 payload 等价规则保持原状；同 key 换正文、policy、wake 或 origin branch 都冲突。
 `anchorEntryId=null` 只允许尚无 entry 的空会话。
 
-ProducerId 是 `MAILBOX_PRODUCER_IDS` 的六个公开值；同包 Main/Side/child 共用 ID、分别使用 session slot。
+ProducerId 是参与方注册的非空字符串（旧 ID 原样可读）；同包 Main/Side/child 共用 ID、分别使用 session slot。
 policy 只有 `MAILBOX_POLICIES` 的三值，不新增 TTL、priority、通用 authority 或 request 查询服务。
 `target(ctx)` 同步核对当前 public SessionManager identity；异步 producer 必须传捕获的 target，
 防止旧动作误投后来的 session。省略 target 的 put/cancel 在**调用时**捕获当前绑定，之后不随 await 改投。
@@ -75,10 +75,10 @@ producer.beforeRun 中 await put 的消息可加入同次已接受用户 run。�
 没有公开读取 Mail 的查询服务；B 可用独立 model-invisible process-notification-intent-v1 保存其原 intent，
 不得修改原 batch content/details 或自行决定 native 重送。
 
-协调者另批准 `endpoint.activateNewExecution(target):Promise<void>`：只允许已注册的 pi-subagents
+协调者另批准 `endpoint.activateNewExecution(target):Promise<void>`：只允许注册时声明 `capabilities: {activateNewExecution: true}` 的
 execution-owner token 在本进程新建 SDK execution 的首个真实 run 前调用，且不能是旧 snapshot 恢复。
 它保留 execution-owner 的显式校验，不创建 control，也不授 Task/grant 权限；调用方仍须取得首个 Task grant。
-已有真实 run、恢复过的 slot、其他 producer 一律拒绝并 diagnostic。cold hold 只作用于本进程首次
+已有真实 run、恢复过的 slot、未声明能力的 producer 一律拒绝并 diagnostic。cold hold 只作用于本进程首次
 恢复出来的旧 pending key；本进程新 accepted key 直接 live，因此 startup 的 /goal kickoff、Side 的
 extension prompt 和 Main 新卡片都无需额外 source 通知入口。D 可继续显式调用这个兼容入口。
 
@@ -181,7 +181,7 @@ nativeEntryIds 还须与 recorded notice 的索引顺序相符，不向 source �
 
 ## holder、三类 submitted 与命令 facade
 
-holder ABI=1，transportBuildId=`mailbox-v1.0.5`（读取竞争与真正 proof 错误分开处理，保留投影闭合、校验和读取状态复用；旧 compiled consumer 必须重建并新进程启动），key=`pi.session-inject.mailbox.v1`。
+holder ABI=1，transportBuildId=`mailbox-v1.0.6`（读取竞争与真正 proof 错误分开处理，保留投影闭合、校验和读取状态复用；旧 compiled consumer 必须重建并新进程启动），key=`pi.session-inject.mailbox.v1`。
 轻/重引擎的布局和 recovered 第三参要求匹配的 runtime；因此新旧 compiled bundles 混用
 必须明确拒绝，而非接入旧 holder。schema/ABI 仍为 1；整批 compiled consumers 须 rebuild 并 fresh process。
 现有 holder 的 version/build/方法必须一致，不能覆盖。只有全局属性真正缺席才创建；已有 own undefined、

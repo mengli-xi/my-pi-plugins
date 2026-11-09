@@ -52,7 +52,6 @@ import {
   MAILBOX_ABI_VERSION,
   MAILBOX_HOLDER_KEY,
   MAILBOX_TRANSPORT_BUILD_ID,
-  MAILBOX_PRODUCER_IDS,
   MAILBOX_COMMANDS,
   MAILBOX_COMMAND_DESCRIPTION,
 } from "./constants.js";
@@ -371,11 +370,12 @@ export class Binding implements MailboxBinding {
   registerProducer(callbacks: ProducerRegistration): ProducerEndpoint {
     if (
       this.closed ||
-      !MAILBOX_PRODUCER_IDS.includes(callbacks.id) ||
+      (typeof callbacks.id !== "string" || !callbacks.id.trim()) ||
       typeof callbacks.checkCurrent !== "function" ||
       typeof callbacks.proveNative !== "function"
     )
       throw new MailboxError("conflict", "invalid mailbox producer registration");
+    const canActivate = callbacks.capabilities?.activateNewExecution === true;
     const registration: Registration = { callbacks, token: Symbol(randomUUID()), binding: this, closed: false };
     this.registrations.push(registration);
     if (this.current) {
@@ -398,10 +398,10 @@ export class Binding implements MailboxBinding {
         const { slot } = getSlot(target);
         await slot.ensureEngine();
         slot.assertTarget(registration, target);
-        if (callbacks.id !== "pi-subagents" || slot.restoredFromDisk || slot.recoveryHeld || slot.runOrdinal > 0) {
+        if (!canActivate || slot.restoredFromDisk || slot.recoveryHeld || slot.runOrdinal > 0) {
           const error = new MailboxError(
             "conflict",
-            "new execution activation requires pi-subagents owner, no restored mailbox, and no previous run",
+            "new execution activation requires a declared execution-owner capability, no restored mailbox, and no previous run",
           );
           diagnostic(this.ctx, error);
           throw error;

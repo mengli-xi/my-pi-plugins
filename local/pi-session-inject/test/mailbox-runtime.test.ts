@@ -299,7 +299,7 @@ test("shared A/E fulfilled fixture replays final ACK with pending empty and no n
 test("execution activation checks producer token, restored snapshot, and first-run boundary", async () => {
   const h = await harness({ persist: true });
   try {
-    const p = h.producer("pi-subagents"), q = h.producer("pi-processes");
+    const p = h.producer("independent-execution-owner", { capabilities: { activateNewExecution: true } }), q = h.producer("pi-subagents");
     await h.emit("session_start", { reason: "startup" });
     await assert.rejects(q.endpoint.activateNewExecution(q.endpoint.target(h.ctx)), { code: "conflict" });
     await p.endpoint.activateNewExecution(p.endpoint.target(h.ctx));
@@ -717,5 +717,18 @@ test("cold failed ACK does not block healthy live keys and cannot release anothe
     assert.ok(slot.held(held)); assert.equal(slot.snapshot.pending.find((record: any) => record.key === held.key).nativeEntries.length, 0);
     assert.equal(reopened.sends.some(send => send.message.content === held.messages[0]!.content), false);
     assert.equal(reopened.sends.filter(send => !send.options.triggerTurn).length, 1);
+  } finally { await h.cleanup(); }
+});
+
+
+test("unlisted producer registers, persists and delivers through the ordinary mailbox contract", async () => {
+  const h = await harness({ persist: true });
+  try {
+    const p = h.producer("stand-in-owner");
+    await h.emit("session_start", { reason: "startup" });
+    const mail = h.mail("stand-in-owner", "open-registration");
+    assert.equal((await p.endpoint.put(mail)).kind, "accepted");
+    await h.startUser(); await h.context();
+    assert.ok(h.messages().some(message => message.content === "mail:open-registration"));
   } finally { await h.cleanup(); }
 });

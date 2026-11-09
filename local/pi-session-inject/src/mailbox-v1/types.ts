@@ -2,7 +2,6 @@ import {
   MAILBOX_ABI_VERSION,
   MAILBOX_TRANSPORT_BUILD_ID,
   MAILBOX_HOLDER_KEY,
-  MAILBOX_PRODUCER_IDS,
   MAILBOX_POLICIES,
   MAILBOX_COMMANDS,
   MAILBOX_CUSTOM_TYPES,
@@ -11,7 +10,6 @@ export {
   MAILBOX_ABI_VERSION,
   MAILBOX_TRANSPORT_BUILD_ID,
   MAILBOX_HOLDER_KEY,
-  MAILBOX_PRODUCER_IDS,
   MAILBOX_POLICIES,
   MAILBOX_COMMANDS,
   MAILBOX_CUSTOM_TYPES,
@@ -36,7 +34,7 @@ import type {
 /** Recovery admission needs this runtime; an older holder would silently ignore
  * put's third argument. Mixed compiled bundles must fail closed until rebuilt. */
 
-export type ProducerId = (typeof MAILBOX_PRODUCER_IDS)[number];
+export type ProducerId = string;
 
 export type MailPolicy = (typeof MAILBOX_POLICIES)[number];
 
@@ -185,6 +183,7 @@ export interface ProducerCallbacks {
 }
 export interface ProducerRegistration extends ProducerCallbacks {
   readonly id: ProducerId;
+  readonly capabilities?: { readonly activateNewExecution?: boolean };
 }
 /** Source validates its legacy business receipt; A separately verifies both IDs
  * on the original persisted branch, a successful assistant and all native mail
@@ -207,11 +206,11 @@ export interface ProducerEndpoint {
   /** Synchronous capture of the ctx's current binding; rejects stale ctx. Capture
    * before starting async source work and pass to put/cancel to prevent rehoming. */
   target(ctx: ExtensionContext): MailboxTarget;
-  /** Only the registered pi-subagents execution-owner token may attest a newly
+  /** Only a registration declaring capabilities.activateNewExecution=true may attest a newly
    * created SDK execution, before its first real run and without a restored
    * mailbox snapshot. Retained as an explicit owner check; newly accepted live
    * keys already bypass recovery hold. Creates no control/grant.
-   * Restored/previously-run slots and other producers reject with a diagnostic. */
+   * Restored/previously-run slots and undeclared registrations reject with a diagnostic. */
   activateNewExecution(target: MailboxTarget): Promise<void>;
   /** Clones/validates plain JSON at synchronous ingress, then serializes fsync
    * acceptance. Resolve never waits for model/source ACK. Same scope/key/payload

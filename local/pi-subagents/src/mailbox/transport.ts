@@ -74,7 +74,7 @@ export class SubagentMailboxTransport {
     this.agentDir = agentDir;
     this.pi = pi;
     this.binding = bind(pi, { agentDir });
-    this.endpoint = this.binding.registerProducer({ id: "pi-subagents", ...callbacks,
+    this.endpoint = this.binding.registerProducer({ id: "pi-subagents", capabilities: { activateNewExecution: true }, ...callbacks,
       proveNative: (mail, branch) => {
         try { return { kind: "observed", entries: proveSubagentMail(mail, branch) }; }
         catch (error) { return { kind: "conflict", reason: String(error) }; }

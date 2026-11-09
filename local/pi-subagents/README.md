@@ -38,7 +38,7 @@ node --import ./test/ts-resolve.mjs --experimental-strip-types --test test/real/
 npm run test:real-sdk-view -- /path/to/patched-pi-1.5.0
 ```
 
-修改 TypeScript 或已迁入的 source-only 依赖后必须重建直接 compiled consumer；Subagents 运行 `npm run build`，Pi 加载逐文件 `dist/index.js` 与按需 SDK module，小型 fork grammar 单独 bundle；build 先清理旧 dist。mailbox transport build 为 `mailbox-v1.0.5`，相关 compiled consumer 必须重新 build 并 fresh process，不能混用旧 bundle。Main `/reload` 会 force-close 旧 Main tree，未结束的 Task 结算为 interrupted；`resume_agent` 恢复为 idle execution，并使用新的 runtime generation，另发输入才启动新 Task。
+修改 TypeScript 或已迁入的 source-only 依赖后必须重建直接 compiled consumer；Subagents 运行 `npm run build`，Pi 加载逐文件 `dist/index.js` 与按需 SDK module，小型 fork grammar 单独 bundle；build 先清理旧 dist。mailbox transport build 为 `mailbox-v1.0.6`，相关 compiled consumer 必须重新 build 并 fresh process，不能混用旧 bundle。Main `/reload` 会 force-close 旧 Main tree，未结束的 Task 结算为 interrupted；`resume_agent` 恢复为 idle execution，并使用新的 runtime generation，另发输入才启动新 Task。
 
 直接调用 child 的 SDK `session.reload()` 只允许真正 quiescent 的 execution：没有非终态 Task（包括 queued/waiting）、持有的 Task lease、未完成的 owner event、Wake/proof 或正在进行的控制。检查与 reload 共用 Host admission 边界，重载完成前该 child 不接受新 Task。拒绝发生在旧 `session_shutdown` 之前，会显示原因及完成/关闭 Task、等待投递结算后重试的提示；原 Task、generation、binding 和 lease 保持不变。子视图的 `/reload` 仍不在命令白名单中；不支持对活动 child 做跨 binding 的无损 SDK reload。
 
