@@ -88,9 +88,9 @@ npm run check
 npm run test:host
 ```
 
-host 脚本默认使用本包安装的 `node_modules/.bin/pi`，可用 `PI_MEMORY_HOST_BINARY` 指定其他 Pi 1.5.0 binary；脚本会核对版本。HOME、agent directory、XDG config 和 session JSONL 都在新建临时目录，不读取或复制日常 profile、auth，也不加载 Magic Context。固定 RPC + faux provider，零真实推理请求。验证会话中途改磁盘后连续几轮实际 system 内容逐字节不变、没有新 memory patch、手动 `/compact` 后下一轮刷新，以及 resume 读取当前磁盘并保留历史。核心测试另覆盖 identity、直接追加 compaction、分支/会话/项目变化；这些回归不依赖其他 package 的源码安装。`/memory` 的 faux host 验收在 pi-session-compact 的 `node scripts/check-host.mjs --commands-only`。
+host 脚本默认使用本包安装的 `node_modules/.bin/pi`，可用 `PI_MEMORY_HOST_BINARY` 指定其他 Pi 1.5.0 binary；脚本会核对版本。HOME、agent directory、XDG config 和 session JSONL 都在新建临时目录，不读取或复制日常 profile、auth，也不加载 Magic Context。固定 RPC + faux provider，零真实推理请求。验证会话中途改磁盘后连续几轮实际 system 内容逐字节不变、没有新 memory patch、手动 `/compact` 后下一轮刷新，以及 resume 读取当前磁盘并保留历史。核心测试另覆盖 identity、直接追加 compaction、分支/会话/项目变化；这些回归不依赖其他 package 的源码安装。命令注册与系统快照由本包 `test:host` 核对；跨插件验证见[根 integration](../../../integration/README.md)。
 
-`PI_MEMORY_HOST_ARTIFACTS=<目录>` 可保存 host 请求、session 与检查结果。结束会等待本次启动的 Pi process 退出并删除临时目录，不碰其他进程。旧 `--full-profile` / `PI_MEMORY_HOST_AGENT` 模式已移除。
+`PI_MEMORY_HOST_ARTIFACTS=<目录>` 可保存 host 请求、session 与检查结果。结束会等待本次启动的 Pi process 退出并删除临时目录，不碰其他进程。
 
 本包独立实现，未复制 draft 或 Claude Code 产品提示词/代码。公开协议 `cc-memory:request:materials-v1` 面向任意只读消费者：请求 `{version:1,sessionId,context:string,reply}`，handler 在 emit 栈上回复 Promise，结果为 `{version:1,sessionId,memory:[{path,hash,contents}],known:[{kind,statement}]}`。从当前 session 的项目读取完整 MEMORY.md，再从索引链接中最多选八个主题；优先文件名出现在 context 中的主题，其余按文件名排序。先解析 `agentDir/pi-cc-memory/projects` 的 canonical 根（与常规注入一致，允许软链到 agentDir 内或外部目录，例如另一块盘），记忆目录的 canonical 路径相对该根必须是 `<64位hex>/memory`，memoryDir 自身软链不能逃出该项目树；索引及主题 realpath 必须留在该记忆目录内，仅索引缺失时静默返回；单个主题读取失败（含悬空软链或扫描后删除）记入 known，并继续其他已选主题，不取消消费者操作。此读取不改变冻结系统快照。其他 session 不回复，读取期间 snapshot 退役则不给出旧内容；没有消费者时不额外读取。Compact 缺席不影响记忆，记忆缺席时消费者应使用空材料。
 

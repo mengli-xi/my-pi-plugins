@@ -34,7 +34,7 @@ Fullscreen 的 Main、Side 和子 agent 共用 Working 行：Pi 原始 `auto_ret
 保留原处理器的 Esc 绑定和最终通知；原生 retry indicator 在被替换时立即 dispose。任一 probe 失配就完整保留
 Pi 原生重试显示，`/internals` 可查状态。regular 模式保留 Pi 原生重试。session 级快照通过公开 subscribe 记录，在 view detach 后保留，首次进入和重新进入均按原开始时间恢复；
 请求开始、取消、重试结束和 session shutdown 清除。原型包装 bindExtensions / init 也按私有接缝审计，
-这两个恢复探针失配只禁用恢复，保留上一版当前视图行为。当前总计 25 个私有面（16 eager、9 live；历史探针另有实时实例校验）。
+这两个恢复探针失配只禁用恢复，保留当前视图行为。当前总计 25 个私有面（16 eager、9 live；历史探针另有实时实例校验）。
 
 child 生命周期：`npm run check-retry-child:host -- /path/to/pi` 覆盖 Side/Subagent 在等待中重进、后台等待后首次进入、Main 隔离及取消后再次进入。
 
@@ -257,9 +257,9 @@ Pi 1.5 fullscreen 自己维护 viewport、滚动、选区和鼠标捕获，将 n
 
 点击会在松开时派发，并且只会在期间未选择任何内容时派发，因此从可点击行开始拖动选区仍会执行选择。
 
-一行所调用的 opener 会通过每个携带 context 的 event 激活，而不仅是 `session_start`。`/reload` 会创建新的 module instance，但绝不会重放 `session_start`，因此若只在那里激活，session 剩余期间所有行都会失去响应——看起来就像点击功能根本没有实现。
-
-同一个 reload 间隙还决定哪个 module *构建*一行。工具行来自工具定义，每次激活时都会重新装饰，因此始终属于当前 instance。Thinking 行来自对 `AssistantMessageComponent.prototype` 的 patch；该 patch 会跨 reload 保留，因为 disposer 只在 `session_shutdown` 时运行，而 `/reload` 从不发出该 event。因此安装 patch 时会采用此前 instance 保存的原始项，而不是发现已有 patch 就退出。否则，thinking 行会一直由 Pi 启动时加载的 module 构建，无论怎样编辑此 package 都不会生效，直到重启 Pi。
+opener 随当前 runtime/context 激活，工具 renderer 与 prototype lease 都须按实际 receiver/owner 分派。
+Pi 1.5 的 `/reload` 先发 `session_shutdown(reason:reload)`、退役旧 runner，再重建 runtime；有 UI binding 时发 `session_start(reason:reload)`。
+旧实例须幂等释放订阅与 patch，新实例重新绑定。不能依赖“reload 不发生生命周期事件”的旧假设；资源发现与 session_info_changed 也可补充激活，但不替代 shutdown 清理。
 
 没有 hover 反馈：报告 mouse 移动意味着每移动一个单元格就产生一份报告，不值得为高亮承担此成本。可点击行看起来与其他行完全相同，因此能打开内容的行正是那些本就像更大内容摘要的行。
 
@@ -434,7 +434,9 @@ todo provider 也可以使用自己的视觉语言，在编辑器旁保留自己
 
 已完成工作会继续绘制而非丢弃：只显示剩余工作的列表无法说明进度。长列表中大部分是已完成工作，因此行预算不足时会先压缩这些内容——最早完成的行折叠为单个 `✓ 7 done`，所有未完成内容都会保留，因为隐藏剩余工作的预算会让整行失去意义。
 
-该列表可跨重启和 `/reload` 保留：它只接收实时工具 event，因此还会从 session branch 回读。全新运行时由 `session_start` 完成此操作；由于 `/reload` 重建 extension 时绝不会重放 `session_start`，读取还会挂接到 reload 后确实会到达的 event（`resources_discover`、`session_info_changed`）上，方式与重新激活 popup opener 相同。只有 snapshot 为空时才会重新读取 session，因此拿到列表后，这些 event 不会产生任何成本。两种 payload shape 都会读取（`{tasks: [{subject}]}` 和 `{todos: [{content}]}`）；分组词汇称作 todo 工具的任何工具都会为其提供数据，而不仅是名为 `todo` 的工具。
+Todo 列表在 session_start 从语义 owner 请求 snapshot；owner 缺席时仅按兼容历史恢复。
+资源发现与 session_info_changed 可重试空 snapshot 的激活，权威空 snapshot 不从旧历史复活。
+兼容解析支持 `{tasks:[{subject}]}` 与 `{todos:[{content}]}`；当前主协议为 todo:snapshot-v1，不只按工具名判断。
 
 即使只有一次调用，信息量较低的已完成活动仍会保持精简：
 
@@ -517,9 +519,7 @@ import 边界不变；`dist/config-storage.cjs` 不导入任何 Pi class，刻�
   必须同步引用 `dist/index.ts`、`dist/child.ts`、`dist/src/internals.ts`、`dist/src/probes.ts`。不能放宽校验或添加旧 `.js` shim。
 - 真实 CLI fixture 同样用 `.mts` / `.ts` 入口保持 host 绑定，例如 `host-fixtures-extension.mts` 和临时 child wrapper。
 
-证据：同一 stock 1.5.0 fresh process 中，source `.ts` 的 Assistant/User component identity 与 host 相同，旧 Bun
-`.js` 产物不同；改用 Bun `.ts` 产物后恢复相同。此前“16 eager probes 都通过但 patch 错了 class”的误绿已由
-`scripts/check-internals-host.mjs` 封住：它同时断言最终 CLI 的 component identity 和 compact patch 实际安装状态。
+`scripts/check-internals-host.mjs` 同时断言最终 CLI 的 component identity 与 compact patch 安装状态，不能仅凭 prototype probe 判断 realm 正确。
 `npm run check-internals:host -- /path/to/pi-1.5.0` 是可重复门禁；根 `integration/claude-style/child-ui.mjs` 另验证 Main/child 的真实
 identity、单次 ownership 与 teardown。无效后缀导致的降级不能用 source probe 或只改 snapshot 冒充通过。
 
