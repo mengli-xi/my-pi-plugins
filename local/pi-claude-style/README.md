@@ -337,6 +337,18 @@ fullscreen 下这一行通过 Pi 公开的 `handleMouse` 接收点击，打开�
 
 同一个 live run 内，连续出现、归一化后文字完全相同的 assistant 错误会折成一个可点击行，不限 provider 或错误格式。归一化只忽略开头的 `Error:`、`Retry failed after N attempts:`、空白差异和已知会变的 `attempts`、`request_id`、`log_id` 字段值（request/log ID 可带由字母数字和下划线构成的 namespace 前缀，如 `vendor_log_id`）；字段名必须完整，且位于开头或空白、`(`、`,`、`;` 之后，值不跨越空白、括号、逗号或分号；不明确的结构保留原文。其余文字（包括诊断字段）必须完全相同。摘要取末尾 ` (…)` 诊断前的部分，没有诊断则用整条错误，沿用现有宽度规则。重试中显示 `… ×N`，最终失败显示 `… N/N`；点击可查看每次原始错误、request ID、时间及最终 retry notice。不同错误、可见 assistant 正文、工具调用、其他错误通知、扩展通过 `ctx.ui.notify` 发出的 info/warning 通知或 run settle 都会切断聚合；后两类扩展通知通过公开 `ExtensionRunner.setUIContext` / `ExtensionUIContext.notify` 包装处理，不覆盖 Pi 内部直接调用的 status 通知。最终那条 `Retry failed after N attempts` 通知由公开的 `InteractiveMode.showError` 包装收进这一行，其余通知都走 Pi 原生。这里只改 component projection，不修改 retry、provider 请求、session entry 或历史恢复；重启后历史仍按 Pi 的原始记录呈现。
 
+## Statusline
+
+默认状态栏脚本随包提供于 `assets/statusline.mjs`。未配置 Pi settings 的 `statusLine.command` 时，CC 用 PATH 中的 `node` 执行它的包内绝对路径，无需可执行位。它显示目录、model/provider、effort、会话时长、轮次/压缩计数、上下文占用和累计 token/cache 流量，并预留 Fast、CH/RU/M、Todo 与其他贡献项的位置；Git 状态仍由 editor chrome 显示。脚本尚无输出或失败时保留 CC 兜底帧或上次成功帧。
+
+可在全局 `<agent-dir>/settings.json` 或项目 `.pi/settings.json` 中覆盖默认命令，项目同名字段优先：
+
+```json
+{ "statusLine": { "type": "command", "command": "node /path/to/custom-statusline.mjs" } }
+```
+
+只配置 placement/timeout 等选项仍使用默认脚本。显式空 command（`""` 或 `null`）或非 `command` 的 type 会关闭状态栏。默认脚本会读取 `pi.session_file` 的原始会话文件来统计计数并补齐旧 payload，缓存仅保存数字摘要；命令继承宿主权限，并非沙箱。完整字段、缓存设置和隐私边界见 [statusline contract](./docs/statusline-provenance.md)。
+
 ## Goal 状态
 
 `@narumitw/pi-goal` 通过 `setStatus` 报告，而被替换的 footer 或命令驱动的 statusline 可能吞掉该报告。此 extension 使用 pi-goal 的语义 snapshot 并自行绘制状态——默认右对齐放在 statusline 专用的第三行：

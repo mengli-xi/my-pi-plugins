@@ -1,9 +1,28 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getAgentDir } from "../config/agent-dir.ts";
 import type { StatusLineCommandConfig, StatusLineSettings } from "./types.ts";
 
 const PROJECT_SETTINGS_PATH = join(process.cwd(), ".pi", "settings.json");
+
+function bundledStatusLineCommand(): string {
+  // Source modules, split Main chunks and the standalone child bundle have
+  // different depths. Resolve from this module, never from the user's cwd.
+  let directory = dirname(fileURLToPath(import.meta.url));
+  for (;;) {
+    const manifest = join(directory, "package.json");
+    if (existsSync(manifest) && (readJson(manifest) as { name?: string }).name === "pi-claude-style") {
+      const script = join(directory, "assets", "statusline.mjs");
+      return `node '${script.replaceAll("'", "'\\''")}'`;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) throw new Error("Cannot locate pi-claude-style package assets");
+    directory = parent;
+  }
+}
+
+const DEFAULT_STATUSLINE_COMMAND = bundledStatusLineCommand();
 
 export function globalStatusLineSettingsPath(): string {
   return join(getAgentDir(), "settings.json");
@@ -47,7 +66,10 @@ export function readStatusLineConfig(cwd: string): StatusLineCommandConfig | nul
     candidates.push(cwdSettingsPath);
   }
 
-  let merged: Partial<StatusLineCommandConfig> = {};
+  let merged: Partial<StatusLineCommandConfig> = {
+    type: "command",
+    command: DEFAULT_STATUSLINE_COMMAND,
+  };
 
   for (const path of candidates) {
     if (!existsSync(path)) continue;

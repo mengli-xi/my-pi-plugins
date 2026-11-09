@@ -4,6 +4,20 @@
   "description": "Claude Code-style transcript, working row, and status presentation for pi",
   "type": "module",
   "private": true,
+  "files": [
+    "assets/statusline.mjs",
+    "child.ts",
+    "config.json",
+    "dist/",
+    "docs/",
+    "index.ts",
+    "LOCAL_PATCHES.md",
+    "scripts/",
+    "src/",
+    "test/",
+    "themes/",
+    "tsconfig*.json"
+  ],
   "pi": {
     "extensions": [
       "./dist/index.ts"

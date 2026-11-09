@@ -8,7 +8,7 @@ import test from "node:test";
 
 import { ContributedRows } from "../../src/statusline/extra-lines.ts";
 
-const STATUSLINE_SCRIPT = fileURLToPath(new URL("../../../../assets/statusline.mjs", import.meta.url));
+const STATUSLINE_SCRIPT = fileURLToPath(new URL("../../assets/statusline.mjs", import.meta.url));
 const ANSI = /\x1b\[[0-9;]*m/g;
 
 function statusLines(
@@ -42,9 +42,9 @@ function statusLines(
     context_window: contextWindow,
     cost: { total_duration_ms: 124_000 },
   };
-  const result = spawnSync(STATUSLINE_SCRIPT, [], {
+  const result = spawnSync(process.execPath, [STATUSLINE_SCRIPT], {
     cwd,
-    env: { ...process.env, MY_PI_STATUSLINE_CACHE_DIR: join(cwd, ".statusline-cache") },
+    env: { ...process.env, PI_CLAUDE_STYLE_STATUSLINE_CACHE_DIR: join(cwd, ".statusline-cache") },
     input: JSON.stringify(payload),
     encoding: "utf8",
   });

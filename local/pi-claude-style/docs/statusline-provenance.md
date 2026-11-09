@@ -1,10 +1,12 @@
 # Statusline contract 与来源
 
-`src/statusline/` 源自公开 npm package `pi-statusline@0.0.2`（[upstream](https://github.com/hsingjui/pi-statusline)），现作为 CC Style 的本地维护实现，不再作为独立 Fork 跟踪。原始发布可通过 `npm pack pi-statusline@0.0.2` 取得。当前行为由本文与 [README](../README.md) 定义，不由旧上游说明定义。
+`src/statusline/` 基于公开 npm package `pi-statusline@0.0.2`（[upstream](https://github.com/hsingjui/pi-statusline)），由 CC Style 本地维护。公开来源可通过 `npm pack pi-statusline@0.0.2` 取得。当前行为由本文与 [README](../README.md) 定义。
 
 ## Shell 与数据边界
 
-`statusLine` 的 command/placement/timeout 属于 Pi settings；CC 是通用展示 host，不拥有外部脚本的实现或领域状态。command 通过 shell 执行，stdin 收到 JSON，stdout 返回带 ANSI 的行，tab 分隔可伸缩左栏与右对齐栏。这不是 sandbox：脚本继承进程环境和操作系统权限，可能访问其可读文件或网络，CC 不保证脚本“无法读会话”。
+`statusLine` 的 command/placement/timeout 属于 Pi settings。未配置 `statusLine.command` 时，CC 默认通过 `node` 执行本包 `assets/statusline.mjs` 的绝对路径，不依赖当前目录、可执行位或 shebang；需要 PATH 中有 `node`。用户设置的 command 优先，项目 `.pi/settings.json` 覆盖全局 `<agent-dir>/settings.json` 的同名字段。只配置 placement/timeout 等字段仍使用默认脚本；显式空 command（`""` 或 `null`）或非 `command` 的 type 会关闭 statusline。
+
+command 通过 shell 执行，stdin 收到 JSON，stdout 返回带 ANSI 的行，tab 分隔可伸缩左栏与右对齐栏。CC 拥有默认脚本和展示 host，不接管用户脚本或贡献方的领域状态。这不是 sandbox：脚本继承进程环境和操作系统权限，可能访问其可读文件或网络，CC 不保证脚本“无法读会话”。
 
 payload 含 cwd/workspace、model/provider、effort/effort_level、session id、terminal width、usage/cost/cache、todo、`pi.session_started_at_ms/refreshed_at_ms`，以及两个明确的文件入口：
 
@@ -13,9 +15,17 @@ payload 含 cwd/workspace、model/provider、effort/effort_level、session id、
 
 projection 只写 user/assistant 的标识、parent 和 assistant usage，不把正文、thinking 或 tool payload 复制进去；**这不限制脚本通过 `pi.session_file` 或自身权限读取原始会话。** analyzer 从公开当前 branch 取数据，按 count/tail id 版本复用解析结果，append 只处理新增条目；branch 改变/失效时重建。同一 invocation 的写操作串行，unchanged branch 不反复解析或重写。
 
-仓库可选的 `assets/statusline.mjs` 在 command host 之外：它读 stdin，并会读取 `pi.session_file` 计算 turn/compaction 等计数与 legacy 缺字段 fallback；它不读 `transcript_path`。脚本按文件 identity/size/mtime/ctime 检查版本，只缓存数字摘要，canonical 内容相同不写；显式 0/null 具有权威性，不从旧分支复活 usage。cache 可用 `MY_PI_STATUSLINE_CACHE_DIR` 指到隔离目录。这里描述的是该资产的实现，不代表任意用户 command 的权限限制。
+包内默认脚本 `assets/statusline.mjs` 输出三行模板：第一行是目录、model/provider、effort、Fast slot，以及轮次、压缩次数和会话时长；第二行是上下文占用、累计输入/输出与 cache read/write token，以及 host 提供的 CH/RU/M slot；第三行保留 Todo slot 和贡献项的位置。目录会按终端宽度缩短，空间不足时优先保留目录而省略轮次/压缩计数。Git 状态由 editor chrome 显示。
 
-外部脚本不是 CC package 的内嵌资源；profile owner 需显式配置已存在的 command，不能以文档链接或不存在的 stub 代替资产。测试 `test/statusline/external-script.test.ts` 依赖仓库真实 `assets/statusline.mjs`，不读取用户脚本或数据库。
+默认脚本读 stdin，并会读取 `pi.session_file` 的原始 JSONL 计算 turn/compaction 等计数与 legacy 缺字段 fallback；它不读 `transcript_path`、用户配置、日志或数据库，不访问网络，也没有其他静态仓库外依赖。它读取原始会话时会接触正文所在文件，即使只保留数字摘要也不构成正文读取隔离。脚本按文件 identity/size/mtime/ctime 检查版本，只缓存数字摘要，canonical 内容相同不写；显式 0/null 具有权威性，不从旧分支复活 usage。缓存默认为系统临时目录下的 `pi-claude-style-statusline-<uid>`，可用 `PI_CLAUDE_STYLE_STATUSLINE_CACHE_DIR` 指到隔离目录。这里描述的是内置脚本的实现，不代表任意用户 command 的权限限制。
+
+覆盖示例（Pi settings）：
+
+```json
+{ "statusLine": { "type": "command", "command": "node /path/to/custom-statusline.mjs" } }
+```
+
+测试 `test/statusline/external-script.test.ts` 使用包内真实脚本，不读取用户脚本或数据库；`sdk-default.test.ts` 通过 Pi 1.5 SDK 与 faux provider 验证未配置 command 时默认输出替换兜底帧，不发送 provider 请求。
 
 ## Usage、压缩与 cache
 
@@ -49,4 +59,4 @@ POSIX command 以独立 session/process group 启动，TERM/KILL 发给该组。
 
 ## 验证入口
 
-`test/statusline/{payload,transcript,install,command,command-deadline,external-script}.test.ts` 覆盖 payload/缓存/首帧/进程树/边界。`bun test/integration/context-compact.mjs /path/to/pi` 在临时 HOME 和 faux provider 中检查原生/extension compaction；默认使用仓库资产，`CC_CONTEXT_STATUSLINE` 可换成显式可执行脚本，`CC_CONTEXT_STATUSLINE_PATCH` 仅定制该 fixture。`CC_CONTEXT_COMPACT_ARTIFACTS` 保存隔离产物。运行命令前确认真实资产和依赖存在，不把缺失资产或零测试当通过。
+`test/statusline/{config,install,command,command-deadline,external-script,payload}.test.ts` 覆盖默认/用户命令选择、显式关闭、payload/缓存/首帧/进程树边界。在包目录运行 `node scripts/isolated-agent.mjs node --experimental-strip-types --test test/statusline/*.test.ts`，其中 `sdk-default.test.ts` 使用临时 agent directory、Pi 1.5 SDK 与 faux provider，检查同步兜底后出现默认脚本独有的 token/cache accounting，并断言 provider 调用数为零。运行命令前确认包内资产和依赖存在，不把缺失资产或零测试当通过。
