@@ -55,6 +55,7 @@ Deadline planning retains the existing generic estimates (2,000 input and 120 ou
 Validation:
 
 包内 recovery/material 测试只发送公开协议 DTO；不读取其他插件的私有 binding，也不模拟其注入或恢复实现。
+`tests/reserve-write.test.ts` 在默认离线测试中直接运行本包确认命令与 `writeReserveSettings`，覆盖取消/缺确认 UI 不写、确认期间全局或项目配置冲突拒绝、等待 Pi 文件锁、成功合并及精确原字节备份；只使用临时配置，不启动 Pi 或 provider 请求。
 
 ```sh
 npm run check
