@@ -54,12 +54,12 @@ Host markCompletionsRead 验证精确 Inbox/Completion/projection digest/native 
 ## 5. 主题与终端释放
 
 公开 Pi API 与 stock Core 支持以 Pi 1.5.0 为目标，原版也可打开 managed native thread UI。
-共享 [Runtime](../../local/pi-session-runtime/README.md#theme-watch-与原版降级) 在 Main stop 前核对
+共享 [Runtime](../../pi-session-runtime/README.md#theme-watch-与原版降级) 在 Main stop 前核对
 SDK root `THEME_WATCH_CAPABILITY` 与真正 Main native `ExtensionUIContext.themeWatchCapability`：
 双面均为 `"pi.theme-watch.file-version.v1"` 时保留完整 patched 热更新路径；双面都缺失时允许
 交接，沿用交接时配色，不依赖主题文件热更新、不装 repaint bridge，native init 后及返回时避免
 重复 `setTheme` 同名主题。原版可能显示旧配色，首次打开会给一次 warning，说明安装
-[补丁宿主](../../host-patches/pi/v1.5.0/README.md) 可获得热更新。
+[补丁宿主](../../../host-patches/pi/v1.5.0/README.md) 可获得热更新。
 仅一面声明或任一未知值仍明确拒绝相关 UI、保留 Main；不能用 shim 补 marker。
 该能力不授予 tools/model/provider 权限，也不是 provider/OS attestation。
 

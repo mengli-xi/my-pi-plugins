@@ -4,7 +4,7 @@
 
 ## 导出
 
-- `continuation-v1`：协调 session-scoped blocking lease 与 wake delivery。规范 API 与 state-machine contract 参见 [`../../docs/processes-next/RUNTIME_CONTRACTS.md`](../../docs/processes-next/RUNTIME_CONTRACTS.md)。
+- `continuation-v1`：协调 session-scoped blocking lease 与 wake delivery。规范 API 与 state-machine contract 参见 [`./docs/continuation-v1.md`](./docs/continuation-v1.md)。
 - `child-capabilities-v1`：让 Main runtime 按 child target 发现受限 entrypoint，并冻结 capability closure。声明本身不授予 provider/tool 执行权限，实际执行方仍须独立批准与验证。
 - `provider-activity-v1`：共享 provider/session-scoped activity DTO 与 validator，描述 attempt、queue 和 load；它只提供观测，不调度模型、不修改权限。
 - `process-wait-bridge-v1`：保留原有 session-scoped process continuation bridge。

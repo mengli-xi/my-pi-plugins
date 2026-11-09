@@ -10,7 +10,7 @@ Tool authority 由 role 与 parent 当前 active tools 共同收窄：Pi 基础�
 
 外部 SDK provider 不按品牌识别：它必须声明 `sdk_provider_factory`，并由实际 agentDir 的独立 `sdk-provider-grants.json` 精确批准；无 proof 的旧 frozen provider profile 只能看历史，不能自动执行。声明、grant 格式、scope 与 cooperative 边界见 [`docs/sdk-providers.md`](docs/sdk-providers.md)。
 
-公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0；原版也可打开 managed native thread UI，但主题文件热更新降级并在首次交接提示；双面声明匹配的[显式 host patch](../../host-patches/pi/v1.5.0/README.md) 提供热更新，单面/未知声明仍拒绝交接。UI host 合同与拒绝范围见 [UI_SPEC §5](../../docs/subagents/UI_SPEC.md#5-主题与终端释放)。codemode/tool-search 以 `builtin:<owner>` 和 `builtin_proof={version,pi_version}` 冻结，proof 核对 canonical Pi.VERSION，不把 builtin 标识当物理文件做 SHA 读取；role/tools fences 仍生效。共享 Runtime 的通用显式 Builtin 接口默认全禁，其可选 MCP 支持不代表本 consumer 已支持 MCP。未选中的 builtin 不启用，llama.cpp 不是工具，本轮不启动其服务；不解析 stock MCP 配置、不冻结 raw 凭据。SDK child 关闭自动扩展发现。配置、roles、journal 与 store 跟随 Pi 的 `getAgentDir()`，支持 `PI_CODING_AGENT_DIR` 隔离。
+公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0；原版也可打开 managed native thread UI，但主题文件热更新降级并在首次交接提示；双面声明匹配的[显式 host patch](../../host-patches/pi/v1.5.0/README.md) 提供热更新，单面/未知声明仍拒绝交接。UI host 合同与拒绝范围见 [UI_SPEC §5](./docs/ui.md#5-主题与终端释放)。codemode/tool-search 以 `builtin:<owner>` 和 `builtin_proof={version,pi_version}` 冻结，proof 核对 canonical Pi.VERSION，不把 builtin 标识当物理文件做 SHA 读取；role/tools fences 仍生效。共享 Runtime 的通用显式 Builtin 接口默认全禁，其可选 MCP 支持不代表本 consumer 已支持 MCP。未选中的 builtin 不启用，llama.cpp 不是工具，本轮不启动其服务；不解析 stock MCP 配置、不冻结 raw 凭据。SDK child 关闭自动扩展发现。配置、roles、journal 与 store 跟随 Pi 的 `getAgentDir()`，支持 `PI_CODING_AGENT_DIR` 隔离。
 
 `subagent-completion-v1` 的模型可见 XML、digest、投递和持久化仍由本 package 独占。TUI fallback 始终只显示一行 Agent path、outcome/reason、token 与 duration，不展开 summary/result。若 CC Style 的 versioned presentation registry 可用，同一行可点击并在 Markdown TextPanel 中展示完整 Summary 与 Result；registry 缺失、版本不匹配或 provider 失败时继续使用单行 fallback，不改变模型上下文与 delivery proof。
 
@@ -20,7 +20,7 @@ Tool authority 由 role 与 parent 当前 active tools 共同收窄：Pi 基础�
 
 手动压缩期间完成的任务仍走原有 durable Completion 队列。公开 `session_compact` / `session_compact_failed` 后等待 Pi 的 compaction guard 退出，再通知既有 Main idle 边界；活动 run 继续使用 `agent_settled`。短期 timer 受 session/runtime fence 和 shutdown cleanup 约束，不能在旧 session 送达，也不会复制结果或让完成消息落到 compaction 前。
 
-现行规范位于 [`../../docs/subagents`](../../docs/subagents/README.md)。本包交付源码、技能与回归测试，根目录的 16 份现行规范另计；使用前必须显式 build。历史 IMPLEMENTATION*/IMPLEMENTABILITY 报告与 ADR 随原仓归档，未迁入，也不作 Pi 1.5.0 的新验收证据。
+现行规范位于 [`../../docs/subagents`](./docs/../README.md)。本包交付源码、技能与回归测试，根目录的 16 份现行规范另计；使用前必须显式 build。历史 IMPLEMENTATION*/IMPLEMENTABILITY 报告与 ADR 随原仓归档，未迁入，也不作 Pi 1.5.0 的新验收证据。
 
 ## 开发
 
@@ -54,7 +54,7 @@ Main 首帧同步注册工具 schema、命令、message renderer 和隐藏的 st
 ## SDK execution and lifecycle
 
 Subagents use the Pi 1.5.0 public in-process SDK owner; managed native views
-add the explicit UI host contract in [UI_SPEC §5](../../docs/subagents/UI_SPEC.md#5-主题与终端释放). Agents have a persistent
+add the explicit UI host contract in [UI_SPEC §5](./docs/ui.md#5-主题与终端释放). Agents have a persistent
 `open | closing | closed` lifecycle independent of Task outcomes. Finishing a Task
 keeps the agent open. `close_agent` closes an idle structural subtree;
 `force: true` cancels every unfinished Task and waits for native drain before
@@ -157,7 +157,7 @@ invalidation 与 palette 更新，不扩大 package/project hot-reload 范围。
 cache-only repaint bridge，不新增 loader/parser/timer。原版在 native init 后与返回时跳过重复同名
 `setTheme`，沿用交接配色、不保证主题文件热更新，首次交接给一次 warning 并指向补丁文档。
 完整边界由 [Runtime README](../pi-session-runtime/README.md#theme-watch-与原版降级) 与
-[UI_SPEC §5](../../docs/subagents/UI_SPEC.md#5-主题与终端释放) 定义；完整自动主题 ownership 仍不支持。
+[UI_SPEC §5](./docs/ui.md#5-主题与终端释放) 定义；完整自动主题 ownership 仍不支持。
 
 CC's audited factory is now installed during SDK child assembly so actual run
 metrics and run separators are recorded even before the first view and after
@@ -174,7 +174,7 @@ Retired Pinned presentation entries in old frozen profiles are ignored without r
 
 执行边界：已完成的 open Agent 删除前先 close/drain，再 delete；Process continuation 正常等待 active 位不能因 30 秒而变成 record-only，watchdog 与 cancel 必须一同收口；waiting activation 收尾只清除当前 grant 持有的 order，不能覆盖之后收到的唤醒；codemode/tool-search canonical factory 的前端准入与后端装配必须一致，并遵守 role/tools 与 Pi.VERSION/proof 校验；非 builtin Search/Processes 的 `execution_factory` proof 才直接读取实际物理 factory 文件做 SHA 校验，不只校验 wrapper。旧 profile 仍可读取和列出，但缺少对应 proof 时不创建可执行 SDK 会话，不自动补授权。
 
-日常回归清单见 [TEST_PLAN](../../docs/subagents/TEST_PLAN.md)：spawn、close/resume、wait、Process 排队、cancel、delete 与 frozen drift。真实 provider、全 profile、人工 TUI 和规模性能仍未验收，faux/PTY 结果不能替代这些验收。
+日常回归清单见 [TEST_PLAN](./docs/maintenance.md)：spawn、close/resume、wait、Process 排队、cancel、delete 与 frozen drift。真实 provider、全 profile、人工 TUI 和规模性能仍未验收，faux/PTY 结果不能替代这些验收。
 
 后台 mailbox、completion/barrier cards 和 outbox continuation 使用统一 mailbox v1；稳定 key、legacy 导入、
 Goal obligation、child grant/取消顺序见 [mailbox 合同](./docs/mailbox-v1.md)。原 journal/native hash 不变；
