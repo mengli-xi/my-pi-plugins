@@ -1,5 +1,4 @@
 import { buildSessionProjection, calculateContextTokens, convertToLlm, sessionEntryToContextMessages, type CompactionEntry, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { includesRecovery } from "./collected-recovery.ts";
 import { fallbackDescription, type ModeSelection } from "./mode.ts";
 import { textTokens, contextTokens, type reserveThreshold } from "./budget.ts";
 import { renderUserQuotations, type UserQuotations } from "./quotations.ts";
@@ -80,8 +79,7 @@ export function describeCompaction(entry: CompactionEntry, branch: SessionEntry[
     lines.push(`保留尾部：从 entry ${entry.firstKeptEntryId} 开始`);
   }
   const skills = details.restoreSkills ?? [];
-  const restored = includesRecovery(details, "pi-skills", "pi-skills:compact-restored-v1") || branch.some((e) => e.type === "custom_message" && e.customType === "pi-skills:compact-restored-v1" && (e.details as { operationId?: string } | undefined)?.operationId === details.operationId);
-  lines.push(`恢复的 skill：${skills.length ? `${skills.map((s) => `${s.name}（${s.path}）`).join("、")}；${restored ? "已确认恢复" : "尚未确认恢复"}` : "无"}`);
+  lines.push(`恢复的 skill：${skills.length ? `${skills.map((s) => `${s.name}（${s.path}）`).join("、")}；公开材料引用；恢复状态见附录` : "无"}`);
   if (run?.shadow?.enabled) {
     const adopt = run.shadow.adopt === "small" ? "small" : "main", other = adopt === "main" ? "small" : "main";
     const describe = (name: string) => { const o = run.outputs?.[name]; return `${name} ${SHADOW[o?.status ?? ""] ?? o?.status ?? "无记录"}，摘要约 ${o?.validated?.summary ? n(textTokens(o.validated.summary)) : "无"} tokens，耗时 ${seconds(o)}`; };

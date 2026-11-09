@@ -9,15 +9,15 @@ import sessionCompact from "../index.ts";
 import { collectUserQuotations, renderUserQuotations } from "../src/quotations.ts";
 import { validateOutput, generationInstruction, PROMPT_VERSION } from "../src/output.ts";
 import { chunkUnits, sourceUnits, unitText, generateSmall } from "../src/small.ts";
-import { skillMaterials } from "../src/materials.ts";
+import { collectMaterials } from "../src/materials.ts";
 import { DEFAULT_CONFIG, readConfig } from "../src/config.ts";
 import { acquireEffectiveCapture, contextFingerprint, getEffectiveContextStore, mapEffectiveTurns } from "pi-session-runtime/effective-context";
 import { describeNativeContext } from "pi-session-runtime/native-child-context";
-import { InvocationStore } from "../../pi-skills/invocations.ts";
-import { renderSkillInstructions } from "../../pi-skills/skills.ts";
+import { InvocationStore } from "./fixtures/recovery-owners.ts";
+import { renderSkillInstructions } from "./fixtures/recovery-owners.ts";
 import { tokens, contextTokens } from "../src/budget.ts";
-import { installCompactionSkillRecovery } from "../../pi-skills/compact-recovery.ts";
-import todo from "../../pi-todo/index.ts";
+import { installCompactionSkillRecovery } from "./fixtures/recovery-owners.ts";
+import todo from "./fixtures/recovery-owners.ts";
 import { restoredContext, recoveryText } from "../src/recovery.ts";
 import { requestOnlyTokens } from "../src/request-only.ts";
 
@@ -202,7 +202,9 @@ test("small uses the previous summary once and restores the latest actual skill 
   assert.equal(requests.length, 1); assert.equal((JSON.stringify(requests[0]).match(/PREVIOUS_SUMMARY_ONCE/g) ?? []).length, 1);
   assert.equal(requests[0].tools, undefined); assert.doesNotMatch(JSON.stringify(requests[0]), /entry=|chars=|source table/);
   const versions: any[] = ["one", "two"].map((contents, i) => ({ type: "custom", id: `v${i}`, customType: "pi-skills:binding-v1", data: { version: 1, skills: [{ name: "skill", path: "/SKILL.md", contents }] } }));
-  assert.equal(skillMaterials(versions)[0]!.contents, "two");
+  const pi: any = { events: createEventBus() };
+  pi.events.on("pi-session-compact:collect-materials-v1", (r: any) => r.reply({ owner: "rules-owner", skills: [{ sourceEntryId: "v1", name: "skill", path: "/SKILL.md", contents: "two" }] }));
+  assert.equal((await collectMaterials(pi, ctx, root, versions)).skills[0]!.contents, "two");
 });
 
 test("unreadable raw user content stops reconstruction rather than pretending it is empty", () => {
@@ -291,21 +293,18 @@ test("non-ASCII single pass and multi-chunk synthesis use the same actual Pi mes
   }
 });
 
-test("unproven owner skill version cancels before generation or compaction commit", async () => {
-  const h = harness([{ text: "MUST_NOT_REQUEST" }]);
-  h.sm.appendCustomEntry("pi-skills:binding-v1", { version: 1, skills: [{ name: "required", path: "/required/SKILL.md", contents: "EXACT_RULES" }] });
+test("missing skill owner never cancels compression or leaves a request latch", async () => {
+  const h = harness([{ text: "HANDOFF" }]);
+  h.sm.appendCustomEntry("pi-skills:binding-v1", { version: 1, skills: [{ name: "required", contents: "PRIVATE_RULES" }] });
   h.event.branchEntries = h.sm.getBranch();
-  const original = structuredClone(h.sm.getEntries());
-  const hooks = new Map<string, any>();
-  installCompactionSkillRecovery({ ...h.pi, on: (name: string, handler: any) => hooks.set(name, handler) });
-  const ownerBranch = structuredClone(h.event.branchEntries) as any[];
-  ownerBranch.at(-1).data.skills[0].contents = "DIFFERENT_VERSION";
-  hooks.get("session_start")({}, { ...h.ctx, sessionManager: { getSessionId: () => h.sm.getSessionId(), getBranch: () => ownerBranch } });
-  assert.equal((await h.run()).cancel, true);
-  assert.equal(h.count, 0);
-  assert.ok(h.aborted);
-  assert.match(h.notices.join("\n"), /Skill version mismatch/);
-  assert.deepEqual(h.sm.getEntries(), original);
+  const result = await h.run();
+  assert.ok(result.compaction, h.notices.join("\n"));
+  assert.equal(h.count, 1); assert.equal(h.aborted, false);
+  assert.match(result.compaction.summary, /pi-skills:binding-v1 未恢复/);
+  assert.doesNotMatch(result.compaction.summary, /PRIVATE_RULES/);
+  h.sm.appendCompaction(result.compaction.summary, result.compaction.firstKeptEntryId, 1, result.compaction.details);
+  h.handlers.get("context_with_system")({ messages: h.sm.buildSessionProjection().messages }, h.ctx);
+  assert.equal(h.aborted, false);
 });
 
 test("legacy before_agent_start still repairs recovery with nextTurn", () => {
@@ -315,7 +314,9 @@ test("legacy before_agent_start still repairs recovery with nextTurn", () => {
   h.pi.events.on("pi-skills:compact-restore-request-v1", (request: any) => requests.push(request));
   h.pi.sendMessage = (message: any, options: any) => sent.push({ message, options });
   h.handlers.get("before_agent_start")({}, h.ctx);
-  assert.equal(requests[0].beforeAgentStart, true);
+  assert.equal(requests.length, 0, "legacy references do not require a missing owner");
+  h.handlers.get("context_with_system")({ messages: h.sm.buildSessionProjection().messages }, h.ctx);
+  assert.equal(h.aborted, false);
   assert.equal(sent[0].message.content, "ORIGINAL_RECOVERY");
   assert.deepEqual(sent[0].options, { deliverAs: "nextTurn", triggerTurn: false });
 });
@@ -357,11 +358,11 @@ test("request-only mixed-content skill envelope stays fully charged when its sou
   installCompactionSkillRecovery({ ...h.pi, on: (name: string, handler: any) => hooks.set(name, handler) });
   hooks.get("session_start")({}, h.ctx);
   const prefix = convertToLlm(await invocations.inject(h.sm.buildSessionProjection().messages, async () => []));
-  assert.equal(requestOnlyTokens(branch, prefix, h.event.preparation.firstKeptEntryId), 0);
+  const pureTokens = requestOnlyTokens(branch, prefix, h.event.preparation.firstKeptEntryId); assert.ok(pureTokens > 0);
   const unknown = { role: "user" as const, timestamp: source.message.timestamp, content: [{ type: "text" as const, text: renderSkillInstructions(skill) }, { type: "image" as const, mimeType: "image/png", data: "AAAA" }] };
   prefix.splice(2, 0, unknown);
   const unknownTokens = contextTokens([unknown]);
-  assert.equal(requestOnlyTokens(branch, prefix, h.event.preparation.firstKeptEntryId), unknownTokens, "the entire unknown injection, including its image, must stay charged");
+  assert.equal(requestOnlyTokens(branch, prefix, h.event.preparation.firstKeptEntryId), unknownTokens + pureTokens, "the entire unknown injection, including its image, must stay charged");
   const sessionId = h.sm.getSessionId(), lease = acquireEffectiveCapture({ owner: "request-only-multimodal", sessionId, binding: h.sm });
   try {
     const store = getEffectiveContextStore(), origins = describeNativeContext(branch), selectedModel = { provider: h.ctx.model.provider, id: h.ctx.model.id };
@@ -369,7 +370,7 @@ test("request-only mixed-content skill envelope stays fully charged when its sou
     const original = structuredClone(h.sm.getEntries());
     assert.equal((await h.run()).cancel, true, "known mixed-content overflow must cancel before commit");
     assert.equal(h.count, 0);
-    assert.match(h.notices.join("\n"), new RegExp(`其他注入 ${unknownTokens}`));
+    assert.match(h.notices.join("\n"), new RegExp(`其他注入 ${unknownTokens + pureTokens}`));
     assert.deepEqual(h.sm.getEntries(), original);
   } finally { lease.retire(); }
 });
@@ -399,20 +400,9 @@ test("request-only skill admission follows its retained source user", async () =
       const store = getEffectiveContextStore(), origins = describeNativeContext(branch), selectedModel = { provider: h.ctx.model.provider, id: h.ctx.model.id };
       assert.ok(store.put({ sessionId, generation: lease.generation, selectedModel, physicalModel: selectedModel, thinkingLevel: "off", toolLoadoutFingerprint: contextFingerprint([]), capabilityFingerprint: "test", requestOrdinal: 1, leafId: h.sm.getLeafId(), normalizedMessages: prefix, contextCandidateHash: contextFingerprint(prefix), normalizedRequestHash: contextFingerprint(prefix), capturedAt: Date.now(), ...mapEffectiveTurns(prefix, origins), wirePrefix: "unknown" }, store.revision(sessionId), origins));
       const result = await h.run();
-      if (retainSource) {
-        assert.equal(result.cancel, true, "retained source still reinjects rules beyond this window");
-        assert.equal(h.count, 0);
-        assert.match(h.notices.join("\n"), new RegExp(`其他注入 ${injectionTokens}`));
-      } else {
-        assert.ok(result.compaction, h.notices.join("\n"));
-        assert.equal(h.count, 1); assert.equal(h.aborted, false);
-        assert.ok(result.compaction.summary.includes(injection));
-        const run = JSON.parse(readFileSync(join(root, "agent", result.compaction.details.runLog), "utf8"));
-        assert.equal(run.contextSizes.after.estimated.otherInjected, 0);
-        const checkpoint: any = { type: "compaction", id: "projected", parentId: branch.at(-1)!.id, timestamp: "t", ...result.compaction, systemMessage: getCurrentSystemMessage(prefix) };
-        const actual = contextTokens(convertToLlm(buildSessionProjection([...branch, checkpoint], checkpoint.id).messages));
-        assert.equal(run.contextSizes.after.estimated.total, actual);
-      }
+      assert.equal(result.cancel, true, "unproven request-only injections remain charged regardless of cut");
+      assert.equal(h.count, 0);
+      assert.match(h.notices.join("\n"), new RegExp(`其他注入 ${injectionTokens}`));
     } finally { lease.retire(); }
   }
 });

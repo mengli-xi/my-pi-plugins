@@ -52,8 +52,8 @@ npm ci --ignore-scripts --registry=https://registry.npmjs.org --replace-registry
 npm run check   # tsc --noEmit + node --test
 ```
 
-When pi-session-compact is present, the synchronous `pi-session-compact:collect-recovery-v1` contract supplies this owner's existing recovery text before compaction commits. The owner skips its separate recovery message when `compactionEntry.details.recovery` (version 1) lists its owner/customType; records without that optional marker retain the existing standalone path. The collection payload, fixed summary order, identities and version-2 details compatibility are owned by `pi-session-compact`; that optional package and its full spec are reviewed separately, not required for installing Todo. Collection does not change task admission, abort fences or completion delivery.
-Todo records the source entry ID as identity and resumes the list from that exact active-branch durable source when its old carrier is outside the projected context. Newer projected todo writes still take precedence.
+可选 Compact 的同步 `pi-session-compact:collect-recovery-v1` 协议在提交前收集本包现有恢复文本，回复声明 `order: 20`，不依赖固定 owner 名单。协议缺席时保留原有独立恢复路径；version 1 的 `compactionEntry.details.recovery` 包含本包 owner/customType 时跳过重复消息，无标记的旧记录仍走原路径。开放排序、请求和 details 兼容由 [pi-session-compact](../pi-session-compact/README.md) 定义；无需安装该插件，收集不改变任务准入、中止围栏或完成投递。
+Todo 以 source entry ID 作为 identity；旧 carrier 被切出投影时，从当前 raw branch 上该确切持久来源恢复列表，再由更新的投影 todo 写入覆盖。
 
 ## 日常回归（需单独验收）
 

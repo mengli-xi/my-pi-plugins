@@ -36,7 +36,7 @@ export function createCompactReinjection(pi: Pick<ExtensionAPI, "sendMessage"> &
       const request = raw as { version?: number; sessionId?: string; operationId?: string; reply?: (item: unknown) => void };
       if (request?.version !== 1 || typeof request.operationId !== "string" || typeof request.reply !== "function" || !current || request.sessionId !== current.sessionManager.getSessionId()) return;
       const state = snapshot(current);
-      if (state) request.reply({ owner: "pi-subagents", customType: "subagent-compact-state-v1", ...state });
+      if (state) request.reply({ owner: "pi-subagents", order: 40, customType: "subagent-compact-state-v1", ...state });
     });
   pi.on?.("session_start", (_event, ctx) => { current = ctx; });
   pi.on?.("session_tree", (_event, ctx) => { current = ctx; });

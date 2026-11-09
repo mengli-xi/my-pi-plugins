@@ -8,7 +8,6 @@ import { createAssistantMessageEventStream, type AssistantMessage } from "@earen
 import sessionCompact from "../index.ts";
 import { acquireEffectiveCapture, contextFingerprint, getEffectiveContextStore, mapEffectiveTurns } from "pi-session-runtime/effective-context";
 import { describeNativeContext } from "pi-session-runtime/native-child-context";
-import { MainContextSource } from "../../pi-side-chat/effective-context.ts";
 
 // The extension reads its agent directory per call, so the run logs land in this temporary one.
 const root = mkdtempSync(join(tmpdir(), "compact-shadow-"));
@@ -162,8 +161,8 @@ test("Side invalidation of a real fingerprint mismatch cannot turn it into rebui
   const h = harness({ shadow: false, system: true }), lease = seedPrefix(h, false, true);
   t.after(() => lease.retire());
   h.ctx.modelRegistry.getRegisteredProviderIds = () => [];
-  const source = new MainContextSource({ on() {}, getActiveTools: () => [], getAllTools: () => [], getCommands: () => [], getThinkingLevel: () => "off" } as any);
-  assert.throws(() => source.select(h.ctx), /Complete one Main turn/);
+  // Stand-in for another consumer recording a structural selection failure.
+  getEffectiveContextStore().invalidate(h.sm.getSessionId(), "fingerprint-changed");
   assert.equal(getEffectiveContextStore().reason(h.sm.getSessionId()), "fingerprint-changed");
   assert.equal(getEffectiveContextStore().get(h.sm.getSessionId(), lease.generation), undefined);
   let rebuilt = false;

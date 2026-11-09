@@ -70,7 +70,7 @@ test("show reads sizes, skill restoration and shadow while tolerating legacy dia
     contextSizes: { before: { estimated: { total: 240000 } }, requests: [{ slot: "main", estimated: { total: 230000 } }, { slot: "small", estimated: { total: 9 } }], after: { estimated: { total: 30000, summary: 5000, retainedRecent: 20000, recoveryPackage: 300 }, providerReported: { rawUsage: { input: 31000, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 31010, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } } } } };
   const restored = { type: "custom_message", id: "r", parentId: "c1", timestamp: "t", customType: "pi-skills:compact-restored-v1", content: "", display: false, details: { operationId: "op" } };
   const text = describeCompaction(entry, [entry, restored] as never, run);
-  for (const expected of ["采用：main", "session-window（本会话有效窗口）；有效窗口 262,000，模型窗口 600,000", "压缩前 240,000；材料 230,000（1 个请求）；压缩后 30,000", "provider 实报：31,010", "保留尾部：20,000 tokens，从 entry u9", "fix（/s/SKILL.md）；已确认恢复", "small 为影子；main 完成", "small 取消", "SUMMARY_BODY", "The conversation history before this point was compacted"])
+  for (const expected of ["采用：main", "session-window（本会话有效窗口）；有效窗口 262,000，模型窗口 600,000", "压缩前 240,000；材料 230,000（1 个请求）；压缩后 30,000", "provider 实报：31,010", "保留尾部：20,000 tokens，从 entry u9", "fix（/s/SKILL.md）；公开材料引用；恢复状态见附录", "small 为影子；main 完成", "small 取消", "SUMMARY_BODY", "The conversation history before this point was compacted"])
     assert.ok(text.includes(expected), expected);
   const native = describeCompaction({ ...entry, details: { knownUncertainties: [{ statement: "KNOWN_ONLY" }] } } as CompactionEntry, [entry] as never, undefined);
   assert.match(native, /不是 pi-session-compact 生成的/);

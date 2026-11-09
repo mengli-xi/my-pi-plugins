@@ -283,7 +283,7 @@ export default function (pi: ExtensionAPI) {
 		const request = raw as { version?: number; sessionId?: string; operationId?: string; reply?: (item: unknown) => void };
 		if (request?.version !== 1 || typeof request.operationId !== "string" || typeof request.reply !== "function" || request.sessionId !== currentSessionId || !currentContext || !current.some(todo => todo.status !== "completed")) return;
 		const source = currentContext.sessionManager.getBranch?.().findLast(entry => entry.type === "custom_message" && entry.customType === STATE_MESSAGE_TYPE || entry.type === "message" && (entry.message.role === "toolResult" && entry.message.toolName === TOOL_NAME && entry.message.isError !== true || entry.message.role === "custom" && entry.message.customType === STATE_MESSAGE_TYPE));
-		request.reply({ owner: "pi-todo", customType: STATE_MESSAGE_TYPE, identity: { sourceEntryId: source?.id }, content: stateForLLM() });
+		request.reply({ owner: "pi-todo", order: 20, customType: STATE_MESSAGE_TYPE, identity: { sourceEntryId: source?.id }, content: stateForLLM() });
 	});
 	pi.events.on(TODO_SNAPSHOT_REQUEST_CHANNEL, (value) => {
 		if (!value || typeof value !== "object") return;

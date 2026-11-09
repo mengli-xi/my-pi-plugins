@@ -136,8 +136,6 @@ export default function sessionCompact(pi: ExtensionAPI): void {
     const branch=ctx.sessionManager.getBranch(),entry=branch.findLast(e=>e.type==="compaction");
     const details=entry?.details as {operationId?:string;restoreSkills?:RestoreRef[];recoveryText?:string}|undefined;
     if(!details?.operationId)return;
-    if(details.restoreSkills?.length&&!includesRecovery(details,"pi-skills","pi-skills:compact-restored-v1")&&!branch.some(e=>e.type==="custom_message"&&e.customType==="pi-skills:compact-restored-v1"&&(e.details as {operationId?:string})?.operationId===details.operationId))
-      pi.events.emit("pi-skills:compact-restore-request-v1",{version:1,sessionId:ctx.sessionManager.getSessionId(),operationId:details.operationId,skills:details.restoreSkills,beforeAgentStart:true});
     if(!includesRecovery(details,"pi-session-compact","pi-session-compact:recovery-v1")&&!branch.some(e=>e.type==="custom_message"&&e.customType==="pi-session-compact:recovery-v1"&&(e.details as {operationId?:string})?.operationId===details.operationId))
       pi.sendMessage({customType:"pi-session-compact:recovery-v1",content:details.recoveryText??recoveryText(),display:false,details:{version:1,operationId:details.operationId}},{deliverAs:"nextTurn",triggerTurn:false});
   });
@@ -216,7 +214,7 @@ export default function sessionCompact(pi: ExtensionAPI): void {
     let quotationText: string;
     let inventoryText: string;
     try {
-      recovery = collectRecovery(pi, ctx, operationId, selectedSkills);
+      recovery = collectRecovery(pi, ctx, operationId, selectedSkills, branch);
       recoveryOptions.recoveryAppendix = recovery.appendix;
       quotations = collectUserQuotations(branch, firstKeptEntryId);
       quotationText = renderUserQuotations(quotations);
@@ -376,7 +374,7 @@ export default function sessionCompact(pi: ExtensionAPI): void {
       let customResult:CompactionResult|undefined;
       let customInventory:Inventory|undefined;
       if(output?.validated&&generatedLogged){
-        recovery = collectRecovery(pi, ctx, operationId, selectedSkills);
+        recovery = collectRecovery(pi, ctx, operationId, selectedSkills, branch);
         recoveryOptions.recoveryAppendix = recovery.appendix;
         customInventory=inventory;
         customResult={summary:output.validated.summary+quotationText+inventoryText+recovery.appendix,firstKeptEntryId,tokensBefore:event.preparation.tokensBefore,usage:output.attempts.at(-1)?.usage};
@@ -417,7 +415,7 @@ export default function sessionCompact(pi: ExtensionAPI): void {
         quotations = collectUserQuotations(branch, result.firstKeptEntryId);
         quotationText = renderUserQuotations(quotations);
         const nativeBody = result.summary;
-        recovery = collectRecovery(pi, ctx, operationId, selectedSkills);
+        recovery = collectRecovery(pi, ctx, operationId, selectedSkills, branch);
         recoveryOptions.recoveryAppendix = recovery.appendix;
         recoveryOptions.additionalTokens = requestOnlyTokens(branch, provenPrefix ?? [], result.firstKeptEntryId);
         result.summary += quotationText + recovery.appendix;
@@ -459,7 +457,6 @@ export default function sessionCompact(pi: ExtensionAPI): void {
     if (item.run.degraded.occurred) item.run.degraded.nativeOutcome = "committed";
     else item.run.status = "committed";
     item.run.timings.hostCommitMs = performance.now() - item.started - (item.run.totalElapsedMs ?? 0);
-    if(details?.restoreSkills?.length&&!includesRecovery(details,"pi-skills","pi-skills:compact-restored-v1"))pi.events.emit("pi-skills:compact-restore-request-v1",{version:1,sessionId:item.run.sessionId,operationId:item.run.operationId,skills:details.restoreSkills});
     ctx.ui.notify(`压缩完成${item.run.degraded.occurred ? "（采用 Pi 原生兜底）" : ""}：交接正文与完整累计用户原话已保留。`, "info");
     if(!includesRecovery(details,"pi-session-compact","pi-session-compact:recovery-v1"))pi.sendMessage({customType:"pi-session-compact:recovery-v1",content:recoveryText(),display:false,details:{version:1,operationId:item.run.operationId}},{triggerTurn:false});
     await persist(item, ctx);
@@ -467,10 +464,6 @@ export default function sessionCompact(pi: ExtensionAPI): void {
   pi.on("context_with_system", (event, ctx) => {
     const compact=ctx.sessionManager.getBranch().findLast(e=>e.type==="compaction");
     const d=compact?.details as {operationId?:string;restoreSkills?:unknown[]}|undefined;
-    if(d?.operationId&&d.restoreSkills?.length&&!includesRecovery(d,"pi-skills","pi-skills:compact-restored-v1")){
-      const restored=ctx.sessionManager.getBranch().some(e=>e.type==="custom_message"&&e.customType==="pi-skills:compact-restored-v1"&&(e.details as {operationId?:string})?.operationId===d.operationId);
-      if(!restored){ctx.ui.notify("pi-session-compact：必要 skill 规则尚未确认恢复，停止相关动作。","warning");ctx.abort();return;}
-    }
     const messages = convertToLlm(event.messages);
     let actualEstimate = boundedContextTokens(messages, []);
     if (compact && ctx.model) {
@@ -493,7 +486,7 @@ export default function sessionCompact(pi: ExtensionAPI): void {
     const item = [...pending.values()].findLast((i) => i.run.adopted?.compactionEntryId && i.run.contextSizes.after.providerReported === null);
     if (item && item.run.sessionId === ctx.sessionManager.getSessionId()) {
       const branch=ctx.sessionManager.getBranch(),at=branch.findIndex(e=>e.id===item.run.adopted?.compactionEntryId);
-      const recovery=branch.slice(at+1).filter(e=>e.type==="custom_message"&&["pi-session-compact:recovery-v1","pi-skills:compact-restored-v1"].includes(e.customType));
+      const recovery=branch.slice(at+1).filter(e=>e.type==="custom_message"&&e.customType==="pi-session-compact:recovery-v1");
       const estimate=item.run.contextSizes.after.estimated as {systemAndTools:number;summary:number;retainedRecent:number;recoveryPackage:number;total:number};
       if(!includesRecovery(d,"pi-session-compact","pi-session-compact:recovery-v1"))estimate.recoveryPackage=contextTokens(convertToLlm(recovery.flatMap(e=>e.type==="custom_message"?[{role:"custom",customType:e.customType,content:e.content,display:e.display,details:e.details,timestamp:Date.parse(e.timestamp)}]:[])));
       estimate.total=actualEstimate.total;

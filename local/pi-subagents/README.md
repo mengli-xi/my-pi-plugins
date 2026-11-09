@@ -194,4 +194,4 @@ reconcile 记入 deferred、不报诊断，由持有者收尾；新旧 binding �
 
 Main append 现只通过公开 mailbox/readonly session API；旧三项 Main private probe 已随直接追加路径删除。
 
-When pi-session-compact is present, the synchronous `pi-session-compact:collect-recovery-v1` contract supplies this owner's existing recovery text before compaction commits. The owner skips its separate recovery message when `compactionEntry.details.recovery` (version 1) lists its owner/customType; records without that optional marker retain the existing standalone path. The optional pi-session-compact owner defines the collection payload, fixed summary order, identities and version-2 details compatibility. That package is not migrated here; this optional integration is not acceptance evidence for the target profile. Collection does not change task admission, abort fences or completion delivery.
+可选 Compact 的同步 `pi-session-compact:collect-recovery-v1` 协议在提交前收集本包现有恢复文本，回复声明 `order: 40`，不依赖固定 owner 名单。协议缺席时保留原有独立恢复路径；version 1 的 `compactionEntry.details.recovery` 包含本包 owner/customType 时跳过重复消息，无标记的旧记录仍走原路径。开放排序、请求和 details 兼容由 [pi-session-compact](../pi-session-compact/README.md) 定义；无需安装该插件，收集不改变任务准入、中止围栏或完成投递。

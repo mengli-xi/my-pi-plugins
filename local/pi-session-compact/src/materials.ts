@@ -14,22 +14,21 @@ async function memoryFile(dir:string,name:string){
   if(isAbsolute(rel)||rel===".."||rel.startsWith(`..${process.platform==="win32"?"\\":"/"}`))throw new Error(`Memory file outside project: ${name}`);
   const contents=await readFile(path,"utf8");return{path,hash:hash(contents),contents};
 }
-/** Consume the skill owner's existing persisted binding/read ABI; no catalog name implies loaded rules. */
-export function skillMaterials(branch: SessionEntry[]): SkillMaterial[] {
-  const skills = new Map<string, SkillMaterial>();
-  for (const entry of branch) {
-    if (entry.type !== "custom" || !["pi-skills:binding-v1", "pi-skills:agent-read-v1"].includes(entry.customType)) continue;
-    const data = entry.data as { version?: number; skills?: unknown[]; skill?: unknown } | undefined;
-    if (data?.version !== 1) continue;
-    for (const raw of data.skills ?? (data.skill ? [data.skill] : [])) {
-      const s = raw as { name?: unknown; path?: unknown; contents?: unknown; truncated?: boolean };
-      if (typeof s.name === "string" && typeof s.path === "string" && typeof s.contents === "string" && s.truncated !== true) skills.set(s.path, { sourceEntryId: entry.id, name: s.name, path: s.path, contents: s.contents, contentHash: hash(s.contents) });
-    }
-  }
-  return [...skills.values()];
-}
 export async function collectMaterials(pi: ExtensionAPI, ctx: ExtensionContext, agentDir: string, branch: SessionEntry[]): Promise<Materials> {
-  const result: Materials = { goal: null, memory: [], skills: skillMaterials(branch), known: [] };
+  const result: Materials = { goal: null, memory: [], skills: [], known: [] };
+  // Open, synchronous material contributions. The owner proves its own loaded versions.
+  let accepting = true;
+  try { pi.events.emit("pi-session-compact:collect-materials-v1", { version: 1, sessionId: ctx.sessionManager.getSessionId(), branchEntries: branch, reply: (raw: unknown) => {
+    if (!accepting) return;
+    const payload = raw as { owner?: string; skills?: SkillMaterial[] };
+    if (typeof payload?.owner !== "string" || !Array.isArray(payload.skills)) return;
+    for (const skill of payload.skills) if (skill && [skill.sourceEntryId, skill.name, skill.path, skill.contents].every(value => typeof value === "string")) {
+      const material = { sourceEntryId: skill.sourceEntryId, name: skill.name, path: skill.path, contents: skill.contents, contentHash: hash(skill.contents) };
+      const at = result.skills.findIndex(item => item.path === material.path);
+      if (at >= 0) result.skills[at] = material; else result.skills.push(material);
+    }
+  } }); } catch { result.known.push({ kind: "owner-material", statement: "Some optional material contributors did not reply." }); }
+  accepting = false;
   // Copied synchronous contract owned by pi-goal; no owner import/load-order dependency.
   pi.events.emit("goal:request:snapshot-v1", { sessionId: ctx.sessionManager.getSessionId(), reply: (raw: unknown) => {
     const payload = raw as { version?: number; sessionId?: string; goal?: { id?: unknown; text?: unknown; phase?: unknown } | null };
