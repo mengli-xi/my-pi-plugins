@@ -1,0 +1,59 @@
+{
+  "name": "pi-processes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Supervised process runtime for Pi",
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "docs"
+  ],
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "skills": [
+      "./skills/pi-processes"
+    ]
+  },
+  "dependencies": {
+    "@aliou/sh": "^0.1.0",
+    "pi-li-uikit": "*",
+    "pi-runtime-contracts": "*",
+    "pi-session-inject": "*"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0",
+    "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build.mjs",
+    "verify-dist": "node scripts/verify-dist.mjs",
+    "test": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/config.test.ts test/contract/*.test.ts test/host/*.test.ts test/integrations/*.test.ts test/logs/*.test.ts test/matchers/*.test.ts test/notifications/*.test.ts test/protocol/*.test.ts test/supervisor/*.test.ts test/tool/*.test.ts test/ui/*.test.ts",
+    "test:integration": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/integration/*.test.ts",
+    "test:e2e": "node test/e2e/full-settings-rpc.mjs",
+    "test:e2e:late-turn": "node test/e2e/late-turn-notice.mjs",
+    "test:e2e:mailbox": "node test/e2e/mailbox-recovery.mjs",
+    "test:perf": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/perf/*.test.ts",
+    "check": "npm run typecheck && npm run build && npm run verify-dist && npm test && npm run test:integration",
+    "prepare": "npm run build"
+  },
+  "engines": {
+    "node": ">=22.19"
+  }
+}

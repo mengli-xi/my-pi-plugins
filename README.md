@@ -4,7 +4,7 @@
 
 ## 安装与加载
 
-需要 Node.js 22.19+、npm 和 Pi 1.5.0；构建 CC Style、Session Naming、Subagents 时还需 Bun。Node 直接运行 TypeScript 的测试建议使用 Node 24。将下面的仓库地址占位符换成实际地址：
+需要 Node.js 22.19+、npm 和 Pi 1.5.0；构建 CC Style、Session Naming、Subagents、Processes 时还需 Bun。Node 直接运行 TypeScript 的测试建议使用 Node 24。将下面的仓库地址占位符换成实际地址：
 
 ```sh
 git clone <仓库地址> pi-packages
@@ -14,6 +14,7 @@ npm ci
 npm run build -w pi-claude-style
 npm run build -w pi-session-naming
 npm run build -w pi-subagents
+npm run build -w pi-processes
 
 # 从本地路径安装一个插件；Pi 直接加载，不复制、不安装本地包依赖
 pi install "$PWD/local/pi-todo"
@@ -50,6 +51,7 @@ pi -e "$PWD/local/pi-todo"
 | [pi-model-capacity](local/pi-model-capacity/README.md) | 插件 | 容量、订阅窗口和余额观测 |
 | [pi-model-prompts](local/pi-model-prompts/README.md) | 插件 | 模型规则、命名提示词与片段汇总 |
 | [pi-package-manager](local/pi-package-manager/README.md) | 插件 | 已配置包的启停、过滤和显式更新 |
+| [pi-processes](local/pi-processes/README.md) | 插件 | 监督后台命令、滚动日志、进程通知与 deadline |
 | [pi-rewind](local/pi-rewind/README.md) | 插件 | 会话裁剪、归档和校验恢复 |
 | [pi-runtime-contracts](local/pi-runtime-contracts/README.md) | 共享库 | 不依赖 Pi 的版本化协调协议 |
 | [pi-session-compact](local/pi-session-compact/README.md) | 插件 | 整会话压缩、恢复材料与原文检索 |
@@ -71,28 +73,29 @@ pi -e "$PWD/local/pi-todo"
 | `todo:snapshot-v1`、`todo:request:snapshot-v1` | [Todo](local/pi-todo/README.md) | CC Style | 不显示托管列表，Todo 内联与 /todos 不受影响 |
 | `todo:changed`（旧兼容） | [Todo](local/pi-todo/README.md) | CC Style | 以版本化 snapshot 为主，不要求旧事件 |
 | `goal:snapshot-v1`、`goal:request:snapshot-v1` | 外部 Goal；[消费约束](local/pi-claude-style/docs/spec.md) | CC Style、Compact | 无 Goal 状态/材料，不启动 Goal |
-| `statusline:processes-snapshot-v2`、`processes:snapshot-request-v2`、`processes:open-request-v2` | 外部 Processes；[消费约束](local/pi-claude-style/docs/spec.md) | CC Style | 无 processes 行/打开动作，不读私有存储 |
+| `statusline:processes-snapshot-v2`、`processes:snapshot-request-v2`、`processes:open-request-v2` | [Processes](local/pi-processes/README.md#可选协作与降级) | CC Style | 无 processes 行/打开动作，不读私有存储 |
+| `processes:managed-snapshot-v1`、`processes:managed-snapshot-request-v1` | [Processes](local/pi-processes/docs/MANAGED_EXECUTION.md#只读-managed-snapshot-v1) | 外部只读监管方 | 无消费者不影响执行；快照本身不授予控制或 ownership |
 | `provider:activity-v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义 DTO；provider adapter 发布 | CC Style、Compact、SDK observer | 无队列/负载展示，压缩时钟正常计时 |
 | `model-capacity:snapshot-v2`、`model-capacity:request-snapshot-v2`、`model-capacity:watch-v2` | [Model Capacity](local/pi-model-capacity/README.md) | CC Style | 不显示容量，模型选择和请求照常 |
 | `model-capacity:register-adapter-v1`、`model-capacity:adapter-ready-v1` | [Model Capacity](local/pi-model-capacity/README.md) 与外部 adapter | adapter 注册 helper、CC watch 恢复 | 尚未准入不伪造成功；缺 adapter 不观测该 provider |
 | `cc-memory:request:materials-v1` | [Memory](local/pi-cc-memory/README.md) | Compact | 空记忆材料，压缩继续 |
 | `cc-memory:request:project-v1`（旧兼容） | [Memory](local/pi-cc-memory/README.md) | 外部只读旧消费者 | 无可用项目返回 null/reason；当前 Compact 不依赖目录接口 |
-| `pi-session-compact:collect-recovery-v1` | [Compact](local/pi-session-compact/README.md) 发收集，Skills/Todo/Subagents 回复 | Compact 与各 owner | 无回复注明未恢复；缺 Compact 时各 owner 独立恢复 |
+| `pi-session-compact:collect-recovery-v1` | [Compact](local/pi-session-compact/README.md) 发收集，Skills/Todo/Processes Main与Side/Subagents 回复 | Compact 与各 owner | 无回复注明未恢复；缺 Compact 时各 owner 独立恢复 |
 | `pi-session-compact:collect-materials-v1` | [Compact](local/pi-session-compact/README.md) 发收集，[Skills](local/pi-skills/README.md#压缩材料与恢复协议) 等可选 owner 回复 | Compact | 技能材料为空，不读私有 binding |
 | `pi-skills:compact-restore-request-v1`、`pi-skills:compact-restore-response-v1` | [Skills](local/pi-skills/README.md#旧独立恢复通道) | 外部旧恢复调用方 | 当前 Compact 不依赖旧回复；旧调用方不能假定规则已恢复 |
 | `ui-pack.user-message-render-transforms.v1` | [Skills](local/pi-skills/README.md#消息装饰协议) 注册 transform；CC 提供 host，Skills 提供原生 fallback | CC/Skills 消息 renderer | 装饰不可用时保留原生显示，技能加载不变 |
 | `statusline:row`、`statusline:refresh` | [CC Style](local/pi-claude-style/README.md) 状态栏 host | Effort、Memory、Compact、Subagents；CC 自有 Goal/Todo/Processes/Capacity 行 | 贡献无人接收不报错，不影响业务；Goal 可退 widget/setStatus |
-| `child-capabilities-v1`（存储 key `pi.child-capability-registry.v2`） | [Runtime Contracts](local/pi-runtime-contracts/README.md)；Timeout/CC/外部 factory 注册 | Subagents、SDK provider loader | 无声明不复制 extension 工具；注册不等于执行授权 |
+| `child-capabilities-v1`（存储 key `pi.child-capability-registry.v2`） | [Runtime Contracts](local/pi-runtime-contracts/README.md)；Timeout/CC/Processes/外部 factory 注册 | Subagents、SDK provider loader | 无声明不复制 extension 工具；注册不等于执行授权 |
 | `presentation/claude-style-v1` | [CC Style](local/pi-claude-style/README.md)，具名 `dist/child.ts` factory | Subagents，外部 SDK 消费者 | child 使用 Pi 原生渲染，输入/历史/返回不变 |
-| `pi.claude-style.custom-entry-presentations.v1` | [CC Style](local/pi-claude-style/README.md) | Subagents completion、Skills Loaded 行；外部 entry renderer | 各 producer 保留自己的 fallback，不改变正文或投递 proof |
+| `pi.claude-style.custom-entry-presentations.v1` | [CC Style](local/pi-claude-style/README.md) | Subagents completion、Skills Loaded 行、Processes lifecycle；外部 entry renderer | 各 producer 保留自己的 fallback，不改变正文或投递 proof |
 | `pi.claude-style.editor-image-source.v2` | [CC Style](local/pi-claude-style/README.md) | Rewind | 整体退为无路径 `[Image]`，不暴露临时文件路径 |
 | `pi.pinned-layout.editor-slot-geometry.v1` | [CC fullscreen](local/pi-claude-style/README.md) | UIKit editor-overlay | 原生布局估算，仍保持安全关闭 |
-| `continuation-v1` / `pi.runtime-contracts.continuation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) | Subagents，外部 producer/Goal | 无 Wake consumer 时 producer fallback；共享库本身不调模型 |
-| `process-wait-bridge-v2` / `pi.subagents.process-wait-bridge.v2` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义，Subagents 注册 | 批准的外部 Processes child factory | 无合法 Task/grant 则 record-only，不恢复已取消任务 |
+| `continuation-v1` / `pi.runtime-contracts.continuation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) | Subagents、Processes，外部 producer/Goal | 无 Wake consumer 时 producer fallback；共享库本身不调模型 |
+| `process-wait-bridge-v2` / `pi.subagents.process-wait-bridge.v2` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义，Subagents 注册 | 批准的 Processes child factory | 无合法 Task/grant 则 record-only，不恢复已取消任务 |
 | `process-wait-bridge-v1` / `pi.subagents.process-wait-bridge.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 保留旧 API | 外部旧进程消费者 | 无 bridge 无协作 continuation；不与 V2 混用 |
-| `goal-continuation-obligation-v1` / `pi.goal.continuation-obligation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md)，外部 Goal 注册 reader | Subagents fallback | 无 reader 返回 none；unknown 保留 pending，不抢 continuation |
+| `goal-continuation-obligation-v1` / `pi.goal.continuation-obligation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md)，外部 Goal 注册 reader | Subagents、Processes fallback | 无 reader 返回 none；unknown 保留 pending，不抢 continuation |
 | `pi.subagents.producer-continuation-proof.v1` | [Subagents](local/pi-subagents/README.md) | 外部 Goal claimant | 无兼容 registry 时不 claim Subagents，producer 自行唤醒 |
-| `pi-session-inject/mailbox-v1` | [Session Inject](local/pi-session-inject/README.md) | Subagents、Compact 只读过滤及外部 producer | 这是共享库硬依赖；无 active owner 保留 pending，不私发 fallback |
+| `pi-session-inject/mailbox-v1` | [Session Inject](local/pi-session-inject/README.md) | Subagents、Processes、Compact 只读过滤及外部 producer | 这是共享库硬依赖；无 active owner 保留 pending，不私发 fallback |
 | `pi.session-runtime.effective-context.v1`、`pi.session-runtime.session-assembly-realm.v1`、`pi.session-runtime.factory-loader-realms.v1` | [Session Runtime](local/pi-session-runtime/README.md) | Subagents、Compact、外部 SDK owner | 无 capture 按合同拒绝/重建；realm 冲突拒绝，不拿错 SDK 执行 |
 | `pi.session-runtime.terminal-owner.v1`、`pi.session-runtime.terminal-gate.v1` | [Session Runtime](local/pi-session-runtime/README.md) | managed child view | 无 lease 不交接，保留 Main，不影响 headless |
 | `pi.theme-watch.file-version.v1` | [可选 host patch](host-patches/pi/v1.5.0/README.md) | Session Runtime | 双面缺失允许原版配色降级并首次提示；单面/未知拒绝视图 |

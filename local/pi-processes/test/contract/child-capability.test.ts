@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { getOrCreateChildCapabilityRegistryV1 } from "pi-runtime-contracts/child-capabilities-v1";
+import { installProcessChildCapability } from "../../src/subagent-capability.ts";
+
+test("declares and releases the Processes Subagent child capability", (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-processes-child-capability-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(root, "index.js"), "export default()=>{}\n", { mode: 0o600 });
+  writeFileSync(join(root, "child.js"), "export default()=>{}\n", { mode: 0o600 });
+  const registry = getOrCreateChildCapabilityRegistryV1();
+  const capability = installProcessChildCapability(root);
+  const ctx = { mode: "tui", sessionManager: { getSessionId: () => "process-child-capability-test" } } as never;
+  capability.bind(ctx);
+  const registration = registry.snapshot("process-child-capability-test").registrations.find((entry) => entry.owner_id === "pi-processes");
+  assert.ok(registration);
+  assert.deepEqual(Object.keys(registration.manifest.targets), ["pi-subagents"]);
+  const target = registration.manifest.targets["pi-subagents"];
+  assert.equal(target?.activation, "required-only");
+  assert.deepEqual(target?.commands, []);
+  assert.deepEqual(target?.tools, ["process"]);
+  assert.deepEqual(target?.providers, []);
+  assert.deepEqual(target?.hooks, []);
+  assert.deepEqual(target?.requires, []);
+  assert.equal(target?.child_entrypoint.canonical_path, join(root, "child.js"));
+  capability.release(ctx);
+  capability.dispose();
+  assert.equal(registry.snapshot("process-child-capability-test").registrations.some((entry) => entry.owner_id === "pi-processes"), false);
+});
