@@ -96,7 +96,7 @@ test("an incompatible child capability holder fails closed", () => {
   `;
   const result = spawnSync(process.execPath, [
     "--import",
-    new URL("./ts-resolve.mjs", import.meta.url).pathname,
+    new URL("../../../ts-resolve.mjs", import.meta.url).pathname,
     "--experimental-strip-types",
     "--input-type=module",
     "--eval",
@@ -121,7 +121,7 @@ test("an incompatible existing global holder fails closed", async () => {
     `;
     const result = spawnSync(process.execPath, [
       "--import",
-      new URL("./ts-resolve.mjs", import.meta.url).pathname,
+      new URL("../../../ts-resolve.mjs", import.meta.url).pathname,
       "--experimental-strip-types",
       "--input-type=module",
       "--eval",

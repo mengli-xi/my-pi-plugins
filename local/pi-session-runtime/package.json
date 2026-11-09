@@ -29,16 +29,9 @@
     "@earendil-works/pi-coding-agent": "^1.5.0",
     "@earendil-works/pi-tui": "^1.5.0"
   },
-  "devDependencies": {
-    "@earendil-works/pi-ai": "1.5.0",
-    "@earendil-works/pi-coding-agent": "1.5.0",
-    "@types/node": "^25.0.10",
-    "typescript": "^5.9.3",
-    "@earendil-works/pi-tui": "1.5.0"
-  },
   "dependencies": {
     "jiti": "2.7.0",
-    "pi-runtime-contracts": "file:../pi-runtime-contracts"
+    "pi-runtime-contracts": "^0.1.0"
   },
   "imports": {
     "#internal/magic-context-format": "./src/magic-context-format.ts",

@@ -3,7 +3,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 const pkg = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-compact-v2-host-")));
 const agent = join(root, "agent"), cwd = join(root, "cwd"), home = join(root, "home");
@@ -47,12 +47,12 @@ try {
   writeFileSync(join(agent, "settings.json"), JSON.stringify({ extensions: ["-builtin:mcp"], cacheWarming: "off", retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 }, compaction: { enabled: false, reserveTokens: 20000, keepRecentTokens: 50 } }));
   const config = { mode: "small", smallModel: { provider: "compact-faux", id: "small", effort: "off" }, outputTokens: 4096, summaryTokens: 1 };
   const configPath = join(agent, "pi-session-compact/config.json"); writeFileSync(configPath, JSON.stringify(config));
-  const moduleUrl = p => pathToFileURL(join(pkg, "node_modules", p)).href;
+  const moduleUrl = p => import.meta.resolve(p);
   writeFileSync(join(root, "faux/index.ts"), `import { appendFileSync } from "node:fs";
 import { fauxProvider, fauxAssistantMessage } from ${JSON.stringify(import.meta.resolve("@earendil-works/pi-ai/providers/faux"))};
-import { acquireEffectiveCapture, contextFingerprint } from ${JSON.stringify(moduleUrl("pi-session-runtime/src/effective-context.ts"))};
-import { describeNativeContext, describeAuxiliaryPreamble } from ${JSON.stringify(moduleUrl("pi-session-runtime/src/native-child-context.ts"))};
-import { PROVIDER_ACTIVITY_CHANNEL } from ${JSON.stringify(moduleUrl("pi-runtime-contracts/src/provider-activity-v1.ts"))};
+import { acquireEffectiveCapture, contextFingerprint } from ${JSON.stringify(moduleUrl("pi-session-runtime/effective-context"))};
+import { describeNativeContext, describeAuxiliaryPreamble } from ${JSON.stringify(moduleUrl("pi-session-runtime/native-child-context"))};
+import { PROVIDER_ACTIVITY_CHANNEL } from ${JSON.stringify(moduleUrl("pi-runtime-contracts/provider-activity-v1"))};
 export default function(pi) {
  pi.on("before_agent_start",event=>{event.systemPromptOptions.sections.compact_host="HOST_SYSTEM_SECTION";});
  const faux = fauxProvider({provider:"compact-faux",api:"compact-faux",models:[{id:"main",contextWindow:200000,maxTokens:24000},{id:"small",contextWindow:200000,maxTokens:8192}],tokensPerSecond:10000000});

@@ -10,7 +10,7 @@ assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), "
 const artifact = process.env.MAILBOX_FOLLOWUP_ARTIFACT_DIR ?? mkdtempSync(join(tmpdir(), "mailbox-followup-"));
 mkdirSync(artifact, { recursive: true });
 const sdkRoot = join(artifact, "sdk"); mkdirSync(sdkRoot, { recursive: true });
-const sdk = execFileSync(process.execPath, ["--import", join(root, "../ts-resolve.mjs"), "--experimental-strip-types", join(root, "sdk-followup.ts")], {
+const sdk = execFileSync(process.execPath, ["--import", join(root, "../../../../ts-resolve.mjs"), "--experimental-strip-types", join(root, "sdk-followup.ts")], {
   cwd: sdkRoot,
   env: { PATH: process.env.PATH, HOME: sdkRoot, PI_CODING_AGENT_DIR: join(sdkRoot, "agent"), TMPDIR: sdkRoot, PI_OFFLINE: "1", PI_TELEMETRY: "0", MAILBOX_FOLLOWUP_ROOT: sdkRoot }, timeout: 30000, encoding: "utf8", maxBuffer: 2 ** 20,
 });
@@ -52,7 +52,7 @@ for (const scenario of [...(process.env.MAILBOX_GOAL_BUNDLE ? ["goal"] : []), "r
         requiredCallbacks: { recorded: false, terminal: false }, branchEntryId: null, nativeEntries: [], recorded: null };
       const module = new URL("../../src/mailbox-v1/store.ts", import.meta.url).href;
       const code = `import {MailboxStore} from ${JSON.stringify(module)}; const [directory,identity,pending]=process.argv.slice(1); const store=new MailboxStore(directory,JSON.parse(identity)); await store.acquire(); await store.transact(draft=>{draft.pending.push(JSON.parse(pending));}); await store.close();`;
-      execFileSync(process.execPath, ["--import", join(root, "../ts-resolve.mjs"), "--experimental-strip-types", "--input-type=module", "-e", code, join(directory, "agent"), JSON.stringify(identity), JSON.stringify(pending)], {
+      execFileSync(process.execPath, ["--import", join(root, "../../../../ts-resolve.mjs"), "--experimental-strip-types", "--input-type=module", "-e", code, join(directory, "agent"), JSON.stringify(identity), JSON.stringify(pending)], {
         cwd: join(directory, "cwd"), env: { PATH: process.env.PATH, HOME: join(directory, "home"), PI_CODING_AGENT_DIR: join(directory, "agent"), PI_OFFLINE: "1" },
       });
       send("/mailtest-live-put");

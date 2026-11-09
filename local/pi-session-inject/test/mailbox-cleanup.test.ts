@@ -93,7 +93,7 @@ for (const mode of ["writer-before-rmdir", "mkdir-before-rmdir"] as const)
       const cleanup = store.transact(draft => { draft.pending = []; }); await until(() => entered);
       const messages: any[] = [];
       child = fork(fileURLToPath(new URL("./cleanup-race-child.ts", import.meta.url)), [directory, JSON.stringify(identity), mode, JSON.stringify(pending("other-process"))], {
-        execArgv: ["--import", fileURLToPath(new URL("./ts-resolve.mjs", import.meta.url)), "--experimental-strip-types"], silent: true,
+        execArgv: ["--import", fileURLToPath(new URL("../../../ts-resolve.mjs", import.meta.url)), "--experimental-strip-types"], silent: true,
         env: { PATH: process.env.PATH, HOME: directory, PI_CODING_AGENT_DIR: join(directory, "agent"), PI_OFFLINE: "1" },
       });
       let stderr = ""; child.stderr!.on("data", chunk => { stderr += chunk; }); child.on("message", message => { messages.push(message); });

@@ -4,20 +4,26 @@
   "private": true,
   "type": "module",
   "description": "Project memory files with bounded persistent Pi system sections",
-  "keywords": ["pi-package", "pi-extension", "memory"],
-  "pi": { "extensions": ["./index.ts"] },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "memory"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "check": "npm run typecheck && npm test",
     "test:host": "node scripts/check-host.mjs"
   },
-  "dependencies": { "pi-li-uikit": "file:../pi-li-uikit" },
-  "peerDependencies": { "@earendil-works/pi-coding-agent": "^1.5.0" },
-  "devDependencies": {
-    "@earendil-works/pi-coding-agent": "1.5.0",
-    "@earendil-works/pi-ai": "1.5.0",
-    "@types/node": "^24.0.0",
-    "typescript": "^5.9.0"
+  "dependencies": {
+    "pi-li-uikit": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0"
   }
 }

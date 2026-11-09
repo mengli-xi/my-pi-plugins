@@ -11,7 +11,7 @@ for (const point of ["source-ack", "handled", "import-terminal", "cancel-termina
   const directory = await mkdtemp(join(tmpdir(), "mailbox-source-kill-"));
   const run = (phase: string) => new Promise<any>((resolve, reject) => {
     const child = fork(fileURLToPath(new URL("../fixtures/mailbox-ack-crash.ts", import.meta.url)), [directory, point, phase], {
-      execArgv: ["--import", fileURLToPath(new URL("../ts-resolve.mjs", import.meta.url)), "--experimental-strip-types"], silent: true,
+      execArgv: ["--import", fileURLToPath(new URL("../../../../ts-resolve.mjs", import.meta.url)), "--experimental-strip-types"], silent: true,
       env: { PATH: process.env.PATH, HOME: directory, PI_CODING_AGENT_DIR: join(directory, "agent"), PI_OFFLINE: "1", PI_TELEMETRY: "0" },
     });
     let stderr = "", message: any; child.stderr!.on("data", data => { stderr += data; });

@@ -109,7 +109,7 @@ test("lazy open holds pending committed by an exited writer after startup while 
     const pending = { ...old, acceptedRevision: 1, requiredCallbacks: { recorded: false, terminal: false }, branchEntryId: null, nativeEntries: [], recorded: null };
     const module = new URL("../src/mailbox-v1/store.ts", import.meta.url).href;
     const code = `import {MailboxStore} from ${JSON.stringify(module)}; const [directory,identity,pending]=process.argv.slice(1); const store=new MailboxStore(directory,JSON.parse(identity)); await store.acquire(); await store.transact(draft=>{draft.pending.push(JSON.parse(pending));}); await store.close();`;
-    execFileSync(process.execPath, ["--import", fileURLToPath(new URL("./ts-resolve.mjs", import.meta.url)), "--experimental-strip-types", "--input-type=module", "-e", code, h.agentDir, JSON.stringify(identity), JSON.stringify(pending)], {
+    execFileSync(process.execPath, ["--import", fileURLToPath(new URL("../../../ts-resolve.mjs", import.meta.url)), "--experimental-strip-types", "--input-type=module", "-e", code, h.agentDir, JSON.stringify(identity), JSON.stringify(pending)], {
       cwd: h.directory, env: { PATH: process.env.PATH, HOME: h.directory, PI_CODING_AGENT_DIR: h.agentDir, PI_OFFLINE: "1" },
     });
     assert.equal(slot.snapshot.pending.length, 0, "the first writer has not been opened by this slot yet");

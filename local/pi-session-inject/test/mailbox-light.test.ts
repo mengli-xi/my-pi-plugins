@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const resolver = join(root, "test/ts-resolve.mjs");
+const resolver = join(root, "../../ts-resolve.mjs");
 const harnessModule = new URL("./mailbox-harness.ts", import.meta.url).href;
 const engineKey = "pi.session-inject.mailbox.engine.v1";
 function run(code: string, directory: string) {
@@ -56,7 +56,7 @@ async function bundles(): Promise<string> {
   if (bundleDirectory) return bundleDirectory;
   bundleDirectory = await mkdtemp(join(tmpdir(), "mailbox-light-bundles-"));
   await writeFile(join(bundleDirectory, "package.json"), '{"type":"module"}\n');
-  await symlink(join(root, "node_modules"), join(bundleDirectory, "node_modules"));
+  await symlink(join(root, "../../node_modules"), join(bundleDirectory, "node_modules"));
   const source = `export {bindMailbox} from ${JSON.stringify(join(root, "src/mailbox-v1/light.ts"))}; export {loadEngine} from ${JSON.stringify(join(root, "src/mailbox-v1/engine-loader.ts"))};`;
   await writeFile(join(bundleDirectory, "entry.ts"), source);
   for (const label of ["a", "b"])

@@ -113,7 +113,7 @@ for (const point of ["before-write", "before-file-sync", "before-rename", "befor
     const identity = { id, file: join(directory, "session.jsonl") }, store = new MailboxStore(directory, identity);
     await store.acquire(); await store.transact(draft => { draft.pending.push(pending()); }); await store.close();
     const module = new URL("../src/mailbox-v1/store.ts", import.meta.url).href;
-    const resolver = fileURLToPath(new URL("./ts-resolve.mjs", import.meta.url));
+    const resolver = fileURLToPath(new URL("../../../ts-resolve.mjs", import.meta.url));
     const code = `import {MailboxStore} from ${JSON.stringify(module)}; const [directory,identity,point,terminal] = process.argv.slice(1); setInterval(()=>{},1000); const store=new MailboxStore(directory,JSON.parse(identity),{at:async current=>{if(current===point){process.stdout.write('CRASHPOINT\\n');await new Promise(()=>{});}}}); await store.acquire(); await store.transact(draft=>{draft.pending=[];draft.terminal.push(JSON.parse(terminal));});`;
     const child = spawn(process.execPath, ["--import", resolver, "--experimental-strip-types", "--input-type=module", "-e", code, directory, JSON.stringify(identity), point, JSON.stringify(terminal(id))], { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "";

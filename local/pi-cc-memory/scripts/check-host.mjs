@@ -4,12 +4,12 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { getCurrentSystemMessage, getSystemMessageText } from "@earendil-works/pi-ai";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 assert.equal(process.argv.length, 2, "test:host does not accept profile arguments");
-const binary = process.env.PI_MEMORY_HOST_BINARY ?? join(packageRoot, "node_modules/.bin/pi");
+const binary = process.env.PI_MEMORY_HOST_BINARY ?? join(packageRoot, "../../node_modules/.bin/pi");
 const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-cc-memory-host-")));
 const home = join(root, "home");
 const agent = join(root, "agent");
@@ -100,7 +100,7 @@ try {
     retry: { enabled: false }, cacheWarming: "off",
     compaction: { enabled: false, reserveTokens: 1024, keepRecentTokens: 100 },
   }));
-  const fauxUrl = pathToFileURL(join(packageRoot, "node_modules/@earendil-works/pi-ai/dist/providers/faux.js")).href;
+  const fauxUrl = import.meta.resolve("@earendil-works/pi-ai/providers/faux");
   mkdirSync(fixtureRoot);
   writeFileSync(join(fixtureRoot, "package.json"), JSON.stringify({ name: "memory-host-faux", type: "module", pi: { extensions: ["./index.ts"] } }));
   writeFileSync(fixture, `import { appendFileSync } from "node:fs";

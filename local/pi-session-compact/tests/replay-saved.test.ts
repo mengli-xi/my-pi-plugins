@@ -11,7 +11,7 @@ import { collectInventory, renderInventory } from "../src/inventory.ts";
 import { restoredContext } from "../src/recovery.ts";
 
 const script = fileURLToPath(new URL("../scripts/replay-saved.mjs", import.meta.url));
-const resolver = fileURLToPath(new URL("../../pi-session-inject/test/ts-resolve.mjs", import.meta.url));
+const resolver = fileURLToPath(new URL("../../../ts-resolve.mjs", import.meta.url));
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "compact-replay-")), input = join(root, "copies"), output = join(root, "output");
   mkdirSync(join(input, "sessions"), { recursive: true }); mkdirSync(join(input, "runs"));

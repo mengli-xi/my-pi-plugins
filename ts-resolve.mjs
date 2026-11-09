@@ -1,3 +1,4 @@
+// Match Pi/Jiti's relative .js-to-.ts resolution for Node's offline tests.
 import { registerHooks } from "node:module";
 
 registerHooks({

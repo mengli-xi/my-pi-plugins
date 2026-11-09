@@ -19,12 +19,8 @@
     "src"
   ],
   "scripts": {
-    "test": "node --import ./test/ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
+    "test": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test"
-  },
-  "devDependencies": {
-    "@types/node": "^26.0.0",
-    "typescript": "^7.0.0"
   }
 }

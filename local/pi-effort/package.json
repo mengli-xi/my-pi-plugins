@@ -28,20 +28,14 @@
     ]
   },
   "scripts": {
-    "test": "node --experimental-strip-types --import ./test/ts-resolve.mjs --test --test-reporter=spec test/*.test.ts",
+    "test": "node --experimental-strip-types --import ../../ts-resolve.mjs --test --test-reporter=spec test/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^1.5.0",
     "@earendil-works/pi-tui": "^1.5.0"
   },
-  "devDependencies": {
-    "@earendil-works/pi-coding-agent": "1.5.0",
-    "@earendil-works/pi-tui": "1.5.0",
-    "@types/node": "^24.0.0",
-    "typescript": "^5.9.0"
-  },
   "dependencies": {
-    "pi-li-uikit": "file:../pi-li-uikit"
+    "pi-li-uikit": "^0.1.0"
   }
 }

@@ -15,7 +15,7 @@ for (const [mode, point] of cases) test(`transport SIGKILL ${mode} at ${point} r
   const directory = await mkdtemp(join(tmpdir(), "mailbox-transport-kill-"));
   const run = (phase: string) => new Promise<any>((resolve, reject) => {
     const child = fork(fileURLToPath(new URL("./transport-crash-child.ts", import.meta.url)), [directory, mode!, point!, phase], {
-      execArgv: ["--import", fileURLToPath(new URL("./ts-resolve.mjs", import.meta.url)), "--experimental-strip-types"], silent: true, cwd: directory,
+      execArgv: ["--import", fileURLToPath(new URL("../../../ts-resolve.mjs", import.meta.url)), "--experimental-strip-types"], silent: true, cwd: directory,
       env: { PATH: process.env.PATH, HOME: directory, PI_CODING_AGENT_DIR: join(directory, "agent"), PI_OFFLINE: "1", PI_TELEMETRY: "0" },
     });
     let stderr = "", message: any; child.stderr!.on("data", data => { stderr += data; });
