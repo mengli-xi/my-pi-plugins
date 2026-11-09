@@ -339,15 +339,7 @@ fullscreen 下这一行通过 Pi 公开的 `handleMouse` 接收点击，打开�
 
 ## Statusline
 
-默认状态栏脚本随包提供于 `assets/statusline.mjs`。未配置 Pi settings 的 `statusLine.command` 时，CC 用 PATH 中的 `node` 执行它的包内绝对路径，无需可执行位。它显示目录、model/provider、effort、会话时长、轮次/压缩计数、上下文占用和累计 token/cache 流量，并预留 Fast、CH/RU/M、Todo 与其他贡献项的位置；Git 状态仍由 editor chrome 显示。脚本尚无输出或失败时保留 CC 兜底帧或上次成功帧。
-
-可在全局 `<agent-dir>/settings.json` 或项目 `.pi/settings.json` 中覆盖默认命令，项目同名字段优先：
-
-```json
-{ "statusLine": { "type": "command", "command": "node /path/to/custom-statusline.mjs" } }
-```
-
-只配置 placement/timeout 等选项仍使用默认脚本。显式空 command（`""` 或 `null`）或非 `command` 的 type 会关闭状态栏。默认脚本会读取 `pi.session_file` 的原始会话文件来统计计数并补齐旧 payload，缓存仅保存数字摘要；命令继承宿主权限，并非沙箱。完整字段、缓存设置和隐私边界见 [statusline contract](./statusline-provenance.md)。
+CC 提供随包默认状态栏，可由 Pi 的 `statusLine` settings 覆盖或关闭。默认脚本、字段、缓存、首帧、slot 与命令回收的完整规则只在[状态栏合同](statusline-provenance.md)定义。
 
 ## Goal 状态
 
@@ -459,7 +451,7 @@ Todo 列表在 session_start 从语义 owner 请求 snapshot；owner 缺席时�
 
 ### Legacy Magic Context 展示
 
-本仓不安装或迁移 Magic Context，也不依赖其源码、dist 或数据库。以下名称 adapter 和 `ctx-status` provider
+CC 不加载 Magic Context，也不依赖其源码、dist 或数据库。以下名称 adapter 和 `ctx-status` provider
 只用于显示旧 session；包内测试直接调用公开 presentation registry，不加载外部插件。
 
 旧 `@cortexkit/pi-magic-context` 工具记录使用自己的词汇分类，而不是回退到 `Searched for N patterns` / `Ran N tools`：
@@ -487,7 +479,7 @@ Pi 1.5 host surface 统一登记在 `src/compat/pi-1.3.ts` 中（保留历史文
 
 Probe 状态变化以内存为先。持久化通过异步 atomic writer 合并，并在 session shutdown 时 flush；render 和 input 路径不会运行同步 mkdir/write/rename 调用。Pi 升级后，`/internals` 仍是实时验证界面。
 
-`@juicesharp/rpiv-ask-user-question`、`pi-native-search` 和 `@narumitw/pi-plan-mode` 如需启用，均由 Pi 直接加载；Magic Context 不在迁移 profile 中。它们的 package filter 不得排除 extension entry；现在使用 `autoload: false` 禁用 package 就会将其禁用，不再存在 CC Style 侧门。
+外部工具的 extension 由 Pi 按 package 声明和资源过滤直接加载。CC Style 只装饰展示，不 import 工厂，也不接管执行或生命周期；被禁用或过滤的 extension 不会经 CC Style 加载。
 
 代码搜索继续使用 Pi 内置的按需 `grep`/`find` 路径。未安装 FFF：其每进程、每 root 的常驻索引会在并发 Pi session 间成倍增加内存，扫描新 root 时还可能阻塞 TUI。Schema v2 会移除整个已退役 integrations override，因此旧 CC Style store 无法通过 CC Style 重新激活它或任何其他 extension。
 

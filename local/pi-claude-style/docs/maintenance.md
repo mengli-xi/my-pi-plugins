@@ -10,7 +10,7 @@ Pi 唯一加载第三方 factory，CC 只用公开 `registerToolRenderer` resolv
 
 Goal/Todo/Processes/Capacity 的持久化、真实计量、认证和网络由领域 owner 负责。CC 只读带版本 semantic DTO，校验 session/shape/version；broadcast 配同步 request/reply，领域 owner 缺席时降级，不反向启动它。一个 channel 有一个 schema owner，一个 statusline key 有一个 producer；`processes` 领域归 Processes，展示贡献唯一归 CC。
 
-保留 legacy session 词汇不等于迁移对应 package：Magic Context 的名称 adapter/`ctx-status` 仅展示旧记录，不依赖其 source/dist/database。通用 lazy delegate 回归使用已有 Processes 实现，不复制退役 package 的生产代码。FFF 不安装：其每进程、每 root 常驻索引会放大并发内存且争用 TUI；代码搜索仍用按需 built-in 工具。
+保留 legacy session 词汇不等于加载对应 package：Magic Context 的名称 adapter/`ctx-status` 仅展示旧记录，不依赖其 source/dist/database。通用 lazy delegate 回归使用已有 Processes 实现，不复制退役 package 的生产代码。FFF 不安装：其每进程、每 root 常驻索引会放大并发内存且争用 TUI；代码搜索仍用按需 built-in 工具。
 
 ## Runtime 与 UI 所有权
 
@@ -28,7 +28,7 @@ Activity phase 只由可见非空 assistant 正文切分。Thinking 与工具共
 
 已有 schema v6 document 启动时轻量读取、完整校验；Conf writer 首次 mutation 才同步 require `dist/config-storage.cjs`。创建/迁移/恢复的原子写时机不延后。root `config.json` 仍用于旧 `CONFIG_PATH` 缺失时的 legacy fallback，不能因 integrations 字段退役删掉文件；不把该示例当现行 schema 默认。
 
-迁移保留原始备份与回执，session naming 不再归 CC。旧 Pinned 的有效 fullscreen 配置只读导入 `layout.*`，已有 CC 值优先；备份失败 fail closed。layout mutation 按命令提示重启/重载，除性能开关外不假称 live。
+配置升级保留原始备份与回执，session naming 由独立插件拥有。旧 Pinned 配置导入规则见[界面行为合同](behavior.md#fullscreen-host-与-pinned-配置迁移)。layout mutation 按命令提示重启/重载，除性能开关外不假称 live。
 
 `balanced/eager/minimal` 控制冷模块时序，不创建第二套 installer engine；Tier-0 pre-history hook 同步存在。lazy import 并发去重、失败缓存、generation-safe，已加载 ES module 不承诺卸载。statusline capacity 详情是有意保留的静态 panel 依赖：真实 compiled continuation 的 loader 可用性优先于消除这一个启动依赖。
 

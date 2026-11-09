@@ -110,7 +110,7 @@ npm run test:integration          # 跨插件及缺失协作方降级
 npm run test:integration:stock-host # Bun PTY；原版无 CC child 视图
 ```
 
-`npm test` 包含所有已跟踪 Markdown 的相对链接目标和从根 README 的可达性检查，排除 node_modules。检查脚本自身也有断链/孤儿等回归。
+`npm test` 包含所有已跟踪 Markdown 的相对链接目标、Markdown 标题锚点和从根 README 的可达性检查，排除 node_modules。锚点按 GitHub 标题 slug 校验，含中文、重复标题后缀、同页及跨文件链接；检查脚本自身有断链、锚点和孤儿回归。
 
 补丁宿主入口须显式指定匹配产物：
 

@@ -51,7 +51,7 @@ node "$PATCH/check.mjs" \
 
 GitHub source archive 没有 `pi-ai/src/providers/data`。脚本只从 SHA-256 固定的官方 `pi-ai@1.5.0` npm tarball 取 `dist/providers/data`，先由上游 `check:model-data` 校验其 catalog/manifest，再走官方根命令 **`npm run build:offline`**。不在线重新生成浮动 model catalog，不复制 npm theme JS，也不替换上游 build 流程。
 
-输出中的 SDK 为 `build/source/packages/coding-agent`，真正 bin 为它的 `dist/bundle/cli.js`。**完整保留 `build/source` workspace 与它的 `node_modules` 解析图**：coding-agent、pi-tui、pi-ai 及其它 workspace peers 全由这次同版本源码构建。不能只覆盖 coding-agent 而保留另一套 pi-tui/pi-ai，也不能只换 CLI 让 SDK consumer 继续读旧 SDK。迁移消费者时，由 Main 显式装配全部 peers；本脚本不改任何外部 link。
+输出中的 SDK 为 `build/source/packages/coding-agent`，真正 bin 为它的 `dist/bundle/cli.js`。**完整保留 `build/source` workspace 与它的 `node_modules` 解析图**：coding-agent、pi-tui、pi-ai 及其它 workspace peers 全由这次同版本源码构建。不能只覆盖 coding-agent 而保留另一套 pi-tui/pi-ai，也不能只换 CLI 让 SDK consumer 继续读旧 SDK。消费者切换补丁宿主时，由 Main 显式装配全部 peers；本脚本不改任何外部 link。
 
 重复运行同一命令会核对 receipt 和全部已记录输出 hashes；匹配则 skip，不改写。输入 hash 不符、非 pristine source、已有未完成 output、输出发生漂移或 patch 改变均明确拒绝，必须选新 output。不要在 output 内手改生成物。依赖安装失败也保留证据，不会自动删掉或覆盖半成品。
 

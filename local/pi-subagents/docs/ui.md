@@ -53,22 +53,9 @@ Host markCompletionsRead 验证精确 Inbox/Completion/projection digest/native 
 
 ## 5. 主题与终端释放
 
-公开 Pi API 与 stock Core 支持以 Pi 1.5.0 为目标，原版也可打开 managed native thread UI。
-共享 [Runtime](../../pi-session-runtime/README.md#theme-watch-与原版降级) 在 Main stop 前核对
-SDK root `THEME_WATCH_CAPABILITY` 与真正 Main native `ExtensionUIContext.themeWatchCapability`：
-双面均为 `"pi.theme-watch.file-version.v1"` 时保留完整 patched 热更新路径；双面都缺失时允许
-交接，沿用交接时配色，不依赖主题文件热更新、不装 repaint bridge，native init 后及返回时避免
-重复 `setTheme` 同名主题。原版可能显示旧配色，首次打开会给一次 warning，说明安装
-[补丁宿主](../../../host-patches/pi/v1.5.0/README.md) 可获得热更新。
-仅一面声明或任一未知值仍明确拒绝相关 UI、保留 Main；不能用 shim 补 marker。
-该能力不授予 tools/model/provider 权限，也不是 provider/OS attestation。
+原生 child 视图遵守共享库的[主题交接与原版降级合同](../../pi-session-runtime/docs/runtime.md#theme-watch-与原版降级)。该合同定义命名主题限制、CLI/SDK 双面能力核对、原版首次提示、补丁热更新和终端释放；这些检查不授予 Task、工具或 provider 权限。
 
-Patched SDK 独占 selected user-theme JSON 的 file-version watcher、loader/cache 与 palette 通知，
-不扩大 package/project hot-reload 范围。Runtime 的 cache-only repaint bridge 不读/parse 正文，
-不新增 theme loader、不 private import；patched 路径不按 name 相同跳过恢复。CLI 与 canonical
-SDK 必须使用一致补丁 peer graph，具体合同见 Runtime 与 host patch 文档。
-
-当前只支持显式单个命名主题（如 profile 显式指定的命名主题），自动 pair/匿名 theme 在暂停 Main 前拒绝。listener 按 public process 引用差集清理，不能移除 Main handler；close 输入/command drain 防重复提交。stable Host interrupt 在 headless/reload 后可用；quit 只释放不重启 Main。Side 额外 configureMode/visibility、emptyDelete/external terminal yield 不改变 Subagents Task policy。
+Subagents 给 managed view 接入稳定的 Host interrupt 端口，headless/reload 后仍可中断同一 Task；返回前等待本包输入与命令准入排空，Main quit 只释放视图、不重启 Main。其他消费者的 visibility、emptyDelete 或 external terminal yield 不改变本包 Task policy。
 
 CC presentation 可选，缺席时使用 Pi 原生消息渲染，任务输入、历史、返回与生命周期不变。
 使用 CC 时须核对声明与工厂 hash；原生主题降级和 presentation 缺席是两个独立边界。

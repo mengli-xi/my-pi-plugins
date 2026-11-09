@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { checkDocs, relativeLinks } from "./check-doc-links.mjs";
+import { checkDocs, headingAnchors, relativeLinks } from "./check-doc-links.mjs";
 
 test("解析实际相对目标，忽略代码、注释与外部 URL", () => {
   const links = relativeLinks(`
@@ -24,6 +24,56 @@ test("解析实际相对目标，忽略代码、注释与外部 URL", () => {
   assert.deepEqual(new Set(links.map(link => link.target)), new Set([
     "docs/说明%20书.md#章节", "docs/a(b).md", "image.png", "docs/ref.md", "docs/html.md",
   ]));
+});
+
+test("GitHub 标题 slug 保留中文、处理行内格式和重复标题，不计代码示例", () => {
+  const anchors = headingAnchors(`
+# 中文标题：API 与 \`Code\`
+## *Hello*, [World](https://example.invalid)! <em>HTML</em>
+## 中文标题：API 与 \`Code\`
+## 中文标题：API 与 Code-1
+## 中文标题：API 与 \`Code\`
+## 😄 Emoji_É 中文
+## A &amp; B &#x4E2D; &eacute; \`&amp;\`
+Setext 标题
+===========
+> ## 引用标题
+- ### 列表标题
+<!--
+## 注释标题
+-->
+\`\`\`md
+## 示例标题
+\`\`\`
+`);
+  assert.deepEqual([...anchors], [
+    "中文标题api-与-code", "hello-world-html", "中文标题api-与-code-1",
+    "中文标题api-与-code-1-1", "中文标题api-与-code-2", "-emoji_é-中文",
+    "a--b-中-é-amp", "setext-标题", "引用标题", "列表标题",
+  ]);
+});
+
+test("同页和跨文件锚点必须存在，百分号编码与查询串不绕过检查", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "pi-doc-anchors-"));
+  const put = (name, text) => writeFileSync(path.join(root, name), text);
+  try {
+    put("README.md", "# 根标题\n[同页](#根标题)\n[跨页](合同.md?view=1#中文-api)\n[重名](合同.md#中文-api-1)\n");
+    put("合同.md", "# 中文 API\n## 中文 API\n");
+    const tracked = ["README.md", "合同.md"];
+    assert.deepEqual(checkDocs(root, tracked), []);
+    put("README.md", "# 根标题\n[编码](%E5%90%88%E5%90%8C.md#%E4%B8%AD%E6%96%87-api)\n");
+    assert.deepEqual(checkDocs(root, tracked), []);
+    put("README.md", "# 根标题\n[跨页](合同.md#旧章节)\n[同页](#不存在)\n[假重名](合同.md#中文-api-2)\n[错误编码](合同.md#%FF)\n");
+    assert.deepEqual(checkDocs(root, tracked), [
+      "README.md:2: 链接锚点不存在 合同.md#旧章节",
+      "README.md:3: 链接锚点不存在 #不存在",
+      "README.md:4: 链接锚点不存在 合同.md#中文-api-2",
+      "README.md:5: 无效链接编码 合同.md#%FF",
+    ]);
+    // 同页锚点不能让未链接的文件变成可达。
+    put("README.md", "# 根标题\n[同页](#根标题)\n");
+    assert.match(checkDocs(root, tracked).join("\n"), /合同.md: 无法从根/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("未使用的引用定义不构成可达链接", () => {

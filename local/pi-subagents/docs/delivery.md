@@ -1,6 +1,6 @@
 # pi-subagents · 交付协议 V1
 
-本文档规定 Task 结算、Completion/Inbox/Outbox、Agent Barrier、runtime-contract Wake 仲裁与已读确认。统一 mailbox 的现行 transport、stable keys、导入与 child 取消顺序见 [mailbox v1](./mailbox-v1.md)，目标 transport build 为 mailbox-v1.0.6，须配套 rebuild/fresh process；本文中旧的直接 native send/append、timeout scan、SDK resume trigger 与递增 epoch 重投描述由该合同取代，不再作为运行路径。持久化 schema 和状态有效性由 [`persistence.md`](./persistence.md) 负责；可信 caller/prepare/lease 与同进程端口由 [`architecture.md`](./architecture.md)负责。旧 Supervisor/Owner IPC 的有效 application/ACK 约束迁入§14，唯一 SDK 无 OS transport。
+本文档规定 Task 结算、Completion/Inbox/Outbox、Agent Barrier、runtime-contract Wake 仲裁与已读确认。统一 mailbox 的现行 transport、stable keys、导入与 child 取消顺序见 [mailbox v1](./mailbox-v1.md)，目标 transport build 为 mailbox-v1.0.6，须配套 rebuild/fresh process；本文中旧的直接 native send/append、timeout scan、SDK resume trigger 与递增 epoch 重投描述由该合同取代，不再作为运行路径。持久化 schema 和状态有效性由 [`persistence.md`](./persistence.md) 负责；可信 caller/prepare/lease 与同进程端口由 [`architecture.md`](./architecture.md)负责。application/ACK 的完整约束见 §14，SDK 不使用 OS transport。
 
 ## 1. 权限边界与保证
 

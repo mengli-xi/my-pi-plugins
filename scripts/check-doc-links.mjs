@@ -2,6 +2,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { marked } from "marked";
+import GithubSlugger from "github-slugger";
+import { decodeHTML } from "entities";
 
 const excluded = name => name.split("/").some(part => part === "node_modules");
 
@@ -20,7 +23,7 @@ export function relativeLinks(markdown) {
   const found = [];
   const add = (target, index) => {
     target = target.replace(/\\([\\()\[\] ])/g, "$1").replaceAll("&amp;", "&");
-    if (!target || /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(target)) return;
+    if (!target || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(target)) return;
     found.push({ target, line: text.slice(0, index).split("\n").length });
   };
   const refs = new Map();
@@ -59,23 +62,43 @@ export function relativeLinks(markdown) {
   return found;
 }
 
+// 先取渲染后的标题文字，再按 GitHub 规则生成 slug；每份文档独立处理重名后缀。
+export function headingAnchors(markdown) {
+  const slugger = new GithubSlugger();
+  const anchors = new Set();
+  marked.walkTokens(marked.lexer(markdown), token => {
+    if (token.type !== "heading") return;
+    const html = marked.Parser.parseInline(token.tokens);
+    const text = decodeHTML(html.replace(/<!--[\s\S]*?-->|<[^>]*>/g, ""));
+    anchors.add(slugger.slug(text));
+  });
+  return anchors;
+}
+
 export function checkDocs(root, tracked) {
   const files = tracked.filter(file => file.endsWith(".md") && !excluded(file));
   const graph = new Map();
   const errors = [];
+  const anchorsByFile = new Map();
   for (const file of files) {
     const absolute = path.resolve(root, file);
     if (!existsSync(absolute)) { errors.push(`${file}: 已跟踪文档不存在`); continue; }
     const edges = [];
     for (const { target, line } of relativeLinks(readFileSync(absolute, "utf8"))) {
-      let pathname;
-      try { pathname = decodeURIComponent(target.split(/[?#]/, 1)[0]); }
-      catch { errors.push(`${file}:${line}: 无效链接编码 ${target}`); continue; }
-      if (!pathname) continue;
-      const destination = path.resolve(path.dirname(absolute), pathname);
+      let pathname, anchor;
+      try {
+        const hash = target.indexOf("#");
+        pathname = decodeURIComponent((hash < 0 ? target : target.slice(0, hash)).split("?", 1)[0]);
+        anchor = hash < 0 ? "" : decodeURIComponent(target.slice(hash + 1));
+      } catch { errors.push(`${file}:${line}: 无效链接编码 ${target}`); continue; }
+      const destination = pathname ? path.resolve(path.dirname(absolute), pathname) : absolute;
       const relative = path.relative(root, destination).split(path.sep).join("/");
       if (excluded(relative)) continue;
       if (!existsSync(destination)) errors.push(`${file}:${line}: 链接目标不存在 ${target}`);
+      else if (anchor && destination.endsWith(".md")) {
+        if (!anchorsByFile.has(destination)) anchorsByFile.set(destination, headingAnchors(readFileSync(destination, "utf8")));
+        if (!anchorsByFile.get(destination).has(anchor)) errors.push(`${file}:${line}: 链接锚点不存在 ${target}`);
+      }
       edges.push(relative);
     }
     graph.set(file, edges);
