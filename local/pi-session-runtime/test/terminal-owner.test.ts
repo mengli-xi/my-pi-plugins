@@ -1,3 +1,6 @@
+import { requirePatchedHost } from "./patched-host.ts";
+requirePatchedHost();
+
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Terminal } from "@earendil-works/pi-tui";

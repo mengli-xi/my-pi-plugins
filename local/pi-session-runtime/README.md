@@ -426,7 +426,9 @@ to the normal Main handoff. Consumers must honor the provided AbortSignal.
 
 ## Usage regression checklist
 
-Run `npm run check` in an isolated installation with the patched Pi peers pinned to 1.5.0.
+默认 `npm test` 只运行 stock Pi 可用的离线测试。`npm run test:patched-host` 单独运行
+`session-realm`、`terminal-frames`、`terminal-owner`；需要同步安装主题补丁 CLI/SDK（Pi 1.5.0），
+缺少补丁会明确失败，不会 skip。`npm run check` 包含默认测试与 typecheck。
 Stock 1.5.0 can typecheck and run `test/theme-watch-contract.test.ts` (which explicitly
 uses marker fixtures), but cannot pass real managed-handoff/dual-loader regressions.
 The existing fixtures use faux providers, temporary sessions and fake terminal ports;

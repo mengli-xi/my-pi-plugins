@@ -21,8 +21,9 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/*.test.ts",
-    "check": "npm run typecheck && npm test"
+    "test": "node --experimental-strip-types --test $(find test -maxdepth 1 -name '*.test.ts' ! -name 'session-realm.test.ts' ! -name 'terminal-frames.test.ts' ! -name 'terminal-owner.test.ts')",
+    "check": "npm run typecheck && npm test",
+    "test:patched-host": "node --experimental-strip-types --test test/session-realm.test.ts test/terminal-frames.test.ts test/terminal-owner.test.ts"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^1.5.0",

@@ -24,7 +24,6 @@
     "test:main-statusline": "node scripts/isolated-agent.mjs bun test/integration/main-statusline.mjs",
     "test:host-fixtures": "node scripts/isolated-agent.mjs bun test/integration/host-fixtures.mjs",
     "test:history:host": "node scripts/isolated-agent.mjs bun test/integration/full-history.mjs",
-    "measure:startup": "bun scripts/measure-startup.mjs",
     "benchmark:long-write": "bun scripts/benchmark-long-write.mjs",
     "benchmark:write-preview": "node scripts/isolated-agent.mjs bun scripts/benchmark-write-preview.ts"
   },

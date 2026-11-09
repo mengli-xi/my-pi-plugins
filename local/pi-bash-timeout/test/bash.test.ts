@@ -93,7 +93,8 @@ test("factory uses Pi's effective settings, including shellPath, with no config 
     getSettings: () => ({ shellPath: shell, shellCommandPrefix: "export BASH_PREFIX=PREFIX_OK" }),
     registerTool: value => { tool = value as unknown as typeof tool; },
   } as ExtensionAPI);
-  const result = await tool!.execute("settings", { command: "printf \"$BASH_PREFIX\"", timeout: 2 }, undefined, undefined, context(root));
+  // 本用例断言 settings 传递，不把宿主 login shell 的启动耗时当性能门禁。
+  const result = await tool!.execute("settings", { command: "printf \"$BASH_PREFIX\"", timeout: 15 }, undefined, undefined, context(root));
   assert.equal(result.content.map(part => part.type === "text" ? part.text : "").join(""), "CUSTOM_SHELL:PREFIX_OK");
 });
 

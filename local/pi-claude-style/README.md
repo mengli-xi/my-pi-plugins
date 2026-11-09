@@ -518,7 +518,6 @@ npm run typecheck
 npm run build
 npm run check-provider-errors:host -- /path/to/final/pi # 本地 faux provider；验证通用重复错误与重试 UI
 npm run test:host-fixtures -- /path/to/final/pi
-npm run measure:startup -- /path/to/final/pi
 ```
 
 `check-provider-errors:host` 使用临时 HOME/agent/session 目录和独立 tmux socket，只注册本地 faux provider；
@@ -540,15 +539,6 @@ agent 目录（显式设 `terminal.showImages=false`）跑分组工具、thinkin
 运行中 Ctrl+T 断言 transcript 里的工具和 assistant 组件身份不变、工具进度照常到达。`--update` 重写或新建快照，
 没有 `--update` 时缺快照算失败；`--only a,b` 只跑指定场景。改变可见行为的提交要同时更新快照。
 
-`npm run measure:startup -- /path/to/pi --source /path/to/isolated-agent`（用 Bun 运行）从显式指定的 agent directory 按白名单建 full、去掉 CC 两个 profile（两者都移除已退役的 Pinned）：只复制 `settings.json`（去掉 pi-scheduler 和被测包）、启动时会读的
-提示词文件、statusline 脚本、各包配置文件，以及 `extensions`、`themes`、`agents`、`model-prompts`、
-`skills` 目录；凭据、`models.json`/`models-store.json`、session、缓存和只有属主可读的文件一律不复制，
-指到源目录外的软链丢掉（当前主题因此缺失时用本包 `themes/` 里的同名文件），装好的 npm/git 包软链回源目录。
-`settings.json` 读取前也检查 realpath 必须位于 source 内、是 regular file 且 group/other 至少一方可读；0600 等 owner-only 文件或外链会明确报错，拒绝携带。
-因为没有 `models.json`，依赖它的 provider 不加载自定义模型，绝对数不代表源 profile，只适合比较两个隔离 profile
-和前后批次。HOME 也是临时目录。先各跑一次预热，再交替各跑 5 次 `pi --offline --no-session`（Bun 伪终端，
-从不输入），输出 `PI_TIMING` 的启动耗时和 `/usr/bin/time -l` 的峰值内存。所有文件都在一个临时目录里，
-正常退出或 SIGINT/SIGTERM 时先停止本次样本和身份已核实的进程、等待退出，再删除临时目录；无法确认清理完成则报错并保留 profile。SIGINT 返回 130，SIGTERM 返回 143。对被测程序强制 KILL 后会单独等待 `/usr/bin/time` 退出，并收齐 RSS/footprint 再关闭 PTY；TOTAL 或内存字段缺失、time 自身被强制终止时，样本明确失败，不发布成功 summary。`--out <dir>` 保留原始输出、`results.json` 和 `summary.md`。
 
 鼠标动作只由组件的 `handleMouse` 定义，且只响应 Pi 判定完成的左键 `click`；press、drag、release、wheel 和 capture 继续归 fullscreen 宿主。custom-entry provider 组件也只实现 `handleMouse`，Magic Context、Skills、Processes、Subagents 的 v1 delegate 转发 `handleMouse`。详情面板继续由 UIKit 绘制。
 
