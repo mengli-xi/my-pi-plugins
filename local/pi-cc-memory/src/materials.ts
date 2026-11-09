@@ -6,7 +6,9 @@ export interface MemoryMaterials { memory: { path: string; hash: string; content
 export async function collectMemoryMaterials(agentDir: string, memoryDir: string, context: string): Promise<MemoryMaterials> {
   const result: MemoryMaterials = { memory: [], known: [] };
   try {
-    const root = join(await realpath(agentDir), "pi-cc-memory", "projects");
+    const agent = await realpath(agentDir);
+    const root = await realpath(join(agent, "pi-cc-memory", "projects")), rootRelative = relative(agent, root);
+    if (isAbsolute(rootRelative) || rootRelative === ".." || rootRelative.startsWith(`..${sep}`)) throw new Error("Memory directory outside owner's project tree");
     const dir = await realpath(memoryDir), project = relative(root, dir).split(sep).join("/");
     if (isAbsolute(project) || !/^[a-f0-9]{64}\/memory$/.test(project)) throw new Error("Memory directory outside owner's project tree");
     const file = async (name: string) => {

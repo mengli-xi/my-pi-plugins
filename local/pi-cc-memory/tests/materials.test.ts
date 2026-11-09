@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, symlink, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { collectMemoryMaterials } from "../src/materials.ts";
@@ -85,4 +85,22 @@ test("deletion after scanning reports the missing topic and continues remaining 
   syncBuiltinESMExports(); t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
   const result = await collectMemoryMaterials(root, dir, "");
   assert.equal(result.memory.at(-1)!.contents, "KEPT"); assert.match(result.known[0]!.statement, /a-deleted.md.*ENOENT/);
+});
+
+
+test("projects symlink within canonical agentDir reads materials and still rejects memoryDir escape", async t => {
+  const temp = await mkdtemp(join(tmpdir(), "memory-project-alias-")); t.after(() => rm(temp, { recursive: true, force: true }));
+  const agentDir = join(temp, "agent"), target = join(agentDir, "memory-projects");
+  const projects = join(agentDir, "pi-cc-memory", "projects"), dir = join(projects, "a".repeat(64), "memory");
+  await mkdir(join(agentDir, "pi-cc-memory"), { recursive: true });
+  await mkdir(join(target, "a".repeat(64), "memory"), { recursive: true });
+  await symlink(target, projects);
+  await writeFile(join(dir, "MEMORY.md"), "[topic](topic.md)"); await writeFile(join(dir, "topic.md"), "ALIAS_TOPIC");
+  const result = await collectMemoryMaterials(agentDir, dir, "topic");
+  assert.deepEqual(result.memory.map(item => item.contents), ["[topic](topic.md)", "ALIAS_TOPIC"]);
+  assert.deepEqual(result.known, []); assert.equal(result.memory[0]!.path, await realpath(join(dir, "MEMORY.md")));
+  const escaped = join(agentDir, "outside-projects"); await mkdir(escaped); await writeFile(join(escaped, "MEMORY.md"), "MUST_NOT_READ");
+  await rm(dir, { recursive: true }); await symlink(escaped, dir);
+  const refused = await collectMemoryMaterials(agentDir, dir, "");
+  assert.deepEqual(refused.memory, []); assert.match(refused.known[0]!.statement, /outside owner's project tree/);
 });
