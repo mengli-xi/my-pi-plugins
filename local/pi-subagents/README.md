@@ -26,7 +26,7 @@ Tool authority 由 role 与 parent 当前 active tools 共同收窄：Pi 基础�
 
 跨插件与降级用例入口见 [根 integration](../../integration/README.md)。
 
-包内 Wake 合同用公开 continuation registry 的 claim/receipt 对端驱动，只验证本包投递、重试、持久化和 barrier，不验证外部 Goal 的命令或排程。
+包内 Wake 合同用公开 continuation registry 的 claim/receipt 对端驱动，只验证本包投递、重试、持久化和 barrier，不验证外部 Goal 的命令或排程。`test/contract/wake-policy-coalescing.test.ts` 参数化 `scheduled` / `coalesced` receipt，验证独立 Outbox 共享 continuation 身份时的结算、重开后的持久化和零额外 producer continuation。
 
 ```bash
 npm install

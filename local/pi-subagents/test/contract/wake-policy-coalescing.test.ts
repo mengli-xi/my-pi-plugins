@@ -11,7 +11,7 @@ import {
 } from "pi-runtime-contracts/continuation-v1";
 import { encodeDomainId } from "../../src/domain/ids.ts";
 import { AgentHostCoreV1 } from "../../src/host/core.ts";
-import { DeliveryEngineV1 } from "../../src/host/delivery-engine.ts";
+import { DeliveryEngineV1, reconcileMainDeliveryV1 } from "../../src/host/delivery-engine.ts";
 import { MainSessionAppendPortV1 } from "../../src/host/main-append-port.ts";
 import { getOrCreateProducerProofRegistryV1 } from "../../src/host/producer-proof.ts";
 import { rootHeaderV1 } from "../../src/persistence/codecs.ts";
@@ -355,12 +355,12 @@ interface Fixture {
 
 async function claimedWakeFixture(
   t: TestContext,
-  input: { readonly prefix: string; readonly children: readonly SeedChild[] },
+  input: { readonly prefix: string; readonly children: readonly SeedChild[]; readonly receipt?: Parameters<typeof wakePeer>[1] },
 ): Promise<Fixture> {
   const root = await fixtureRoot(input.prefix);
   const sessionId = `${input.prefix}${crypto.randomUUID()}`;
-    const transcript = new FakeMainTranscript(sessionId);
-  const peer = wakePeer(sessionId);
+  const transcript = new FakeMainTranscript(sessionId);
+  const peer = wakePeer(sessionId, input.receipt);
   const scenario = await openScenario({
     agentDirectory: root,
     sessionId,
@@ -398,6 +398,62 @@ async function settleAndAppendCards(
   if (!outboxId) throw new Error("settlement produced no Outbox");
   assert.equal((await scenario.engine.deliverOutbox(outboxId)).state, "cards-appended");
   return outboxId;
+}
+
+for (const scheduling of ["scheduled", "coalesced"] as const) {
+  test(`${scheduling} receipts settle independent outboxes with the same continuation identity and no producer turn`, async t => {
+    const continuationId = `shared-continuation-${scheduling}`;
+    const fixture = await claimedWakeFixture(t, {
+      prefix: `wake-receipt-${scheduling}-`,
+      receipt: { scheduling, continuationId },
+      children: [
+        { agentId: AGENT_A, taskId: TASK_A, name: "a", order: 1 },
+        { agentId: AGENT_B, taskId: TASK_B, name: "b", order: 2 },
+      ],
+    });
+    const { scenario, transcript, sessionId } = fixture;
+    const outboxIds = [
+      await settleAndAppendCards(scenario, AGENT_A, TASK_A),
+      await settleAndAppendCards(scenario, AGENT_B, TASK_B),
+    ];
+    for (const id of outboxIds) {
+      assert.deepEqual(await scenario.engine.settleWake(id), { state: "delivered", kind: "goal-claimed" });
+      const outbox = scenario.outboxes().find(item => item.outbox_id === id)!;
+      const receipt = scenario.receipts().find(item => item.outbox_id === id)!;
+      assert.equal(outbox.state, "delivered");
+      assert.equal(outbox.wake_state, "settled");
+      assert.equal(outbox.wake_epoch, 1);
+      assert.equal(outbox.settlement_kind, "goal-claimed");
+      assert.equal(outbox.settlement_proof_id, receipt.receipt_id);
+      assert.equal(receipt.kind, "goal-claimed");
+      assert.equal(receipt.runtime_delivery, "delivered");
+      assert.equal(receipt.continuation_identity, continuationId);
+      assert.equal(receipt.claimant_owner_id, "pi-goal-local");
+      assert.equal(typeof receipt.claimant_generation, "number");
+    }
+    assert.equal(scenario.receipts().length, 2, "separate outboxes retain separate receipts even when the continuation is shared");
+    assert.equal(fixture.peer!.receipts(), 2);
+    assert.equal(scenario.notifyTurns(), 0, "accepting a coalesced receipt must not start a producer turn");
+    assert.equal(transcript.cards("subagent-continuation-v1").length, 0);
+    assert.equal(transcript.cards("subagent-completion-v1").length, 2);
+    await reconcileMainDeliveryV1({ host: scenario.host, delivery: scenario.engine, mainSessionId: sessionId });
+    assert.equal(fixture.peer!.receipts(), 2, "terminal outboxes must not claim or commit again");
+    assert.equal(scenario.notifyTurns(), 0);
+    const receipts = structuredClone(scenario.receipts());
+    await scenario.close();
+    const reopened = await openMainStoreV1({
+      agentDirectory: fixture.root, mainSessionId: sessionId, now: () => new Date(AT),
+      limits: { maxStoreBytesPerMain: 536_870_912, maxStoreBytesPerProcess: 2_147_483_648, maxMetadataBytesPerMain: 33_554_432 },
+      liveRuntimeGenerations: new Map(),
+      inboxProofProvider: state => collectInboxTranscriptProofsV1({ state, mainRoot: join(fixture.root, "pi-subagents"), mainSessionManager: transcript as never }),
+    });
+    try {
+      const state = reopened.snapshot();
+      const persisted = [state.root, ...state.agents].flatMap(item => item.wake_receipts);
+      assert.deepEqual(persisted, receipts, "both receipts and their shared identity survive an actual store reopen");
+      assert.equal(transcript.cards("subagent-continuation-v1").length, 0);
+    } finally { await reopened.close(); }
+  });
 }
 
 /** ③ WAKE-004：A 走普通 settlement 并已投递，B 仍在跑，再 wait_agents([A,B])。 */
