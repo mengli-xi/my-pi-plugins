@@ -1,0 +1,543 @@
+{
+  "branch": [
+    {
+      "type": "message",
+      "message": {
+        "role": "user",
+        "content": "Continue editing the example document; verify the local result before reporting completion.",
+        "timestamp": 946684962000
+      },
+      "id": "example-00000170",
+      "parentId": null,
+      "timestamp": "2000-01-01T00:02:42.000Z"
+    },
+    {
+      "type": "custom",
+      "customType": "pi-skills:binding-v1",
+      "data": {
+        "version": 1,
+        "key": "example-00000171",
+        "text": "Continue editing the example document; verify the local result before reporting completion.",
+        "skills": [
+          {
+            "name": "example-skill-17",
+            "path": "/project/example/.pi/skills/example-skill-17/SKILL.md",
+            "contents": "# example-skill-17\n\nEdit only the example document. Preserve section order, mark missing evidence as pending, and do not publish.\n"
+          },
+          {
+            "name": "example-skill-18",
+            "path": "/project/example/.pi/skills/example-skill-18/SKILL.md",
+            "contents": "# example-skill-18\n\nEdit only the example document. Preserve section order, mark missing evidence as pending, and do not publish.\n"
+          },
+          {
+            "name": "example-skill-19",
+            "path": "/project/example/.pi/skills/example-skill-19/SKILL.md",
+            "contents": "# example-skill-19\n\nEdit only the example document. Preserve section order, mark missing evidence as pending, and do not publish.\n"
+          }
+        ]
+      },
+      "id": "example-00000172",
+      "parentId": "example-00000170",
+      "timestamp": "2000-01-01T00:02:42.000Z"
+    },
+    {
+      "type": "message",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Continue editing the example document; verify the local result before reporting completion."
+          }
+        ],
+        "api": "example-api-v1",
+        "provider": "example-provider",
+        "model": "example-model-1",
+        "timestamp": 946684962000,
+        "stopReason": "stop",
+        "usage": {
+          "input": 100,
+          "output": 10,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 110,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        }
+      },
+      "id": "example-00000173",
+      "parentId": "example-00000172",
+      "timestamp": "2000-01-01T00:02:42.000Z"
+    },
+    {
+      "type": "message",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "example-00000174",
+            "name": "read",
+            "arguments": {
+              "path": "/project/example/files/file-041.log"
+            }
+          }
+        ],
+        "api": "example-api-v1",
+        "provider": "example-provider",
+        "model": "example-model-1",
+        "timestamp": 946684962000,
+        "stopReason": "toolUse",
+        "usage": {
+          "input": 100,
+          "output": 10,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 110,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        }
+      },
+      "id": "example-00000175",
+      "parentId": "example-00000173",
+      "timestamp": "2000-01-01T00:02:42.000Z"
+    },
+    {
+      "type": "message",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "example-00000174",
+        "toolName": "read",
+        "content": [
+          {
+            "type": "text",
+            "text": "Continue editing the example document; verify the local result before reporting completion."
+          }
+        ],
+        "isError": false,
+        "timestamp": 946684962000
+      },
+      "id": "example-00000176",
+      "parentId": "example-00000175",
+      "timestamp": "2000-01-01T00:02:42.000Z"
+    },
+    {
+      "type": "message",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Continue editing the example document; verify the local result before reporting completion."
+          }
+        ],
+        "api": "example-api-v1",
+        "provider": "example-provider",
+        "model": "example-model-1",
+        "timestamp": 946684962000,
+        "stopReason": "stop",
+        "usage": {
+          "input": 100,
+          "output": 10,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 110,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        }
+      },
+      "id": "example-00000177",
+      "parentId": "example-00000176",
+      "timestamp": "2000-01-01T00:02:42.000Z"
+    },
+    {
+      "type": "thinking_level_change",
+      "id": "example-00000178",
+      "parentId": "example-00000177",
+      "timestamp": "2000-01-01T00:02:43.000Z",
+      "thinkingLevel": "low"
+    },
+    {
+      "type": "model_change",
+      "id": "example-00000179",
+      "parentId": "example-00000178",
+      "timestamp": "2000-01-01T00:02:44.000Z",
+      "provider": "example-provider",
+      "modelId": "example-model-1"
+    },
+    {
+      "type": "message",
+      "id": "example-00000180",
+      "parentId": "example-00000179",
+      "timestamp": "2000-01-01T00:02:46.000Z",
+      "message": {
+        "role": "system",
+        "content": "Continue editing the example document; verify the local result before reporting completion.",
+        "sections": {
+          "preamble": "Continue editing the example document; verify the local result before reporting completion.",
+          "tools": "Continue editing the example document; verify the local result before reporting completion.",
+          "rules": "Continue editing the example document; verify the local result before reporting completion.",
+          "docs": "Continue editing the example document; verify the local result before reporting completion.",
+          "cwd": "/project/example",
+          "cc_memory_policy": "Continue editing the example document; verify the local result before reporting completion.",
+          "cc_memory_index": "Continue editing the example document; verify the local result before reporting completion."
+        },
+        "timestamp": 946684965000,
+        "toolsAdded": [
+          {
+            "name": "read",
+            "description": "Continue editing the example document; verify the local result before reporting completion.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Example parameter description."
+                },
+                "offset": {
+                  "type": "number",
+                  "description": "Example parameter description."
+                },
+                "limit": {
+                  "type": "number",
+                  "description": "Example parameter description."
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          },
+          {
+            "name": "bash",
+            "description": "Continue editing the example document; verify the local result before reporting completion.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Example parameter description."
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Example parameter description."
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          },
+          {
+            "name": "edit",
+            "description": "Continue editing the example document; verify the local result before reporting completion.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "path",
+                "edits"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Example parameter description."
+                },
+                "edits": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "oldText",
+                      "newText"
+                    ],
+                    "properties": {
+                      "oldText": {
+                        "type": "string",
+                        "description": "Example parameter description."
+                      },
+                      "newText": {
+                        "type": "string",
+                        "description": "Example parameter description."
+                      }
+                    }
+                  },
+                  "description": "Example parameter description."
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          },
+          {
+            "name": "write",
+            "description": "Continue editing the example document; verify the local result before reporting completion.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "path",
+                "content"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Example parameter description."
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Example parameter description."
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          },
+          {
+            "name": "session_search",
+            "description": "Continue editing the example document; verify the local result before reporting completion.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "query"
+              ],
+              "properties": {
+                "query": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "const": "user"
+                      },
+                      {
+                        "type": "string",
+                        "const": "assistant"
+                      },
+                      {
+                        "type": "string",
+                        "const": "toolResult"
+                      }
+                    ]
+                  }
+                },
+                "branch": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "active"
+                    },
+                    {
+                      "type": "string",
+                      "const": "all"
+                    }
+                  ]
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                },
+                "cursor": {
+                  "type": "string",
+                  "maxLength": 4000
+                }
+              }
+            }
+          },
+          {
+            "name": "session_expand",
+            "description": "Continue editing the example document; verify the local result before reporting completion.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "entry_id"
+              ],
+              "properties": {
+                "entry_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "part_index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "offset": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32768
+                }
+              }
+            }
+          },
+          {
+            "name": "ask_user_question",
+            "description": "Continue editing the example document; verify the local result before reporting completion.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "context": {
+                  "type": "string"
+                },
+                "questions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "question": {
+                        "type": "string"
+                      },
+                      "header": {
+                        "type": "string"
+                      },
+                      "multiSelect": {
+                        "type": "boolean"
+                      },
+                      "options": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "label"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "question",
+                      "options"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "questions"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "message",
+      "id": "example-00000181",
+      "parentId": "example-00000180",
+      "timestamp": "2000-01-01T00:02:47.000Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Continue editing the example document; verify the local result before reporting completion."
+          }
+        ],
+        "timestamp": 946684965000
+      }
+    },
+    {
+      "type": "message",
+      "id": "example-00000182",
+      "parentId": "example-00000181",
+      "timestamp": "2000-01-01T00:02:49.000Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Continue editing the example document; verify the local result before reporting completion.",
+            "phase": "final_answer"
+          }
+        ],
+        "api": "example-api-v1",
+        "provider": "example-provider",
+        "model": "example-model-1",
+        "usage": {
+          "input": 100,
+          "output": 10,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 110,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 946684968000,
+        "responseId": "example-00000183",
+        "responseModel": "example-provider/example-model",
+        "durationMs": 1000,
+        "thinkingLevel": "low"
+      }
+    }
+  ],
+  "skills": [
+    {
+      "sourceEntryId": "example-00000172",
+      "name": "example-skill-17",
+      "path": "/project/example/.pi/skills/example-skill-17/SKILL.md",
+      "contentHash": "dfb4da0e997032b5d21f28e28f14017553274bcc96e8ffac28451aaa0b01c5b9"
+    },
+    {
+      "sourceEntryId": "example-00000172",
+      "name": "example-skill-18",
+      "path": "/project/example/.pi/skills/example-skill-18/SKILL.md",
+      "contentHash": "d57fc9e878cd264cc333726d8fec12c7ac1eadff6c4878b01b776561a719e2f1"
+    },
+    {
+      "sourceEntryId": "example-00000172",
+      "name": "example-skill-19",
+      "path": "/project/example/.pi/skills/example-skill-19/SKILL.md",
+      "contentHash": "31c3cec81872c7e28485e9d1b39acbb8e495151e3698fd1833f6ecaa98bc621b"
+    }
+  ],
+  "renderMode": "verbatim",
+  "summaryBudget": 8015
+}

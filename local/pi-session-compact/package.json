@@ -1,0 +1,44 @@
+{
+  "name": "pi-session-compact",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Whole-session compaction and exact session history retrieval for stock Pi 1.5",
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import ../pi-session-inject/test/ts-resolve.mjs --experimental-strip-types --test tests/*.test.ts",
+    "check": "npm run typecheck && npm test",
+    "test:host": "node scripts/check-host.mjs"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1",
+    "marked": "18.0.11",
+    "pi-li-uikit": "file:../pi-li-uikit",
+    "pi-runtime-contracts": "file:../pi-runtime-contracts",
+    "pi-session-inject": "file:../pi-session-inject",
+    "pi-session-runtime": "file:../pi-session-runtime",
+    "proper-lockfile": "4.1.2"
+  },
+  "peerDependencies": {
+    "@sinclair/typebox": "*",
+    "@earendil-works/pi-ai": "^1.5.0",
+    "@earendil-works/pi-coding-agent": "^1.5.0"
+  },
+  "devDependencies": {
+    "@sinclair/typebox": "^0.34.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@types/node": "^24.0.0",
+    "@types/proper-lockfile": "4.1.4",
+    "typescript": "^5.9.0"
+  }
+}
