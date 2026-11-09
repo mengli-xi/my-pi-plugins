@@ -83,7 +83,7 @@ test("host-lost child input is cancelled before the new Task request without rel
     const runtimeTmp=process.env.PI_MAILBOX_FULL_PROFILE==="1"?JSON.parse(await readFile(join(h.root,"profile-metadata.json"),"utf8")).runtimeTmp:undefined;
     const child = spawn(h.main.spawnfile, h.main.spawnargs.slice(1), { cwd: h.root, env: { ...process.env, HOME: h.root,
       ...(runtimeTmp?{TMPDIR:runtimeTmp}:{}),XDG_CONFIG_HOME:join(h.root,".config"),XDG_DATA_HOME:join(h.root,".local/share"),MAGIC_CONTEXT_STORAGE_DIR:join(h.root,"mc"),PI_SCHEDULER_BINARY:h.main.spawnfile,
-      PI_CODING_AGENT_DIR: h.agentDir, PI_NEXT_AGENT_DIR: h.agentDir, PI_OFFLINE: "1", PI_SUBAGENTS_TEST_HOOKS: "1", PI_SUBAGENTS_TEST_ASYNC: "1",
+      PI_CODING_AGENT_DIR: h.agentDir, PI_NEXT_AGENT_DIR: h.agentDir, PI_OFFLINE: "1", PI_SUBAGENTS_TEST_ASYNC: "1",
       PI_SUBAGENTS_TEST_MESSAGE: "SDK_RELOAD_SUBJECT", PI_SUBAGENTS_HOST_CONTROL: h.root, PI_SUBAGENTS_TEST_LOG: join(h.root, "provider.jsonl") }, stdio: ["pipe", "pipe", "pipe"] });
     const records: any[] = []; let buffer = "", stderr = "", serial = 0;
     child.stdout.on("data", data => { buffer += data; for (let at; (at = buffer.indexOf("\n")) >= 0;) { const line = buffer.slice(0, at); buffer = buffer.slice(at + 1); if (line) records.push(JSON.parse(line)); } });

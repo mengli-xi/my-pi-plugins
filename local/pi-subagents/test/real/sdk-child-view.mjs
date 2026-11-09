@@ -26,10 +26,10 @@ writeFileSync(join(root, "main.jsonl"), JSON.stringify({ type: "session", versio
 const term = new xterm.Terminal({ cols: 112, rows: 38, allowProposedApi: true, scrollback: 2000 });
 let raw = "", serial = 0;
 const child = Bun.spawn({ cmd: [binary, "--offline", "--session", join(root, "main.jsonl"), "--tui-mode", "fullscreen", "--no-extensions",
-  "-e", join(pkg, "../pi-claude-style/dist/index.ts"), "-e", join(pkg, "dist/index.js"),
+  "-e", join(pkg, "../pi-claude-style/dist/index.ts"), "-e", join(pkg, "dist/index.js"), "-e", join(pkg, "test/fixtures/test-commands.ts"),
   "-e", join(pkg, "test/fixtures/sdk-view-main.mjs"), "--provider", "fixture", "--model", "faux-view", "--thinking", "off", "--approve"],
   cwd: root, env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, ".config"), PI_CODING_AGENT_DIR: agent, PI_NEXT_AGENT_DIR: agent, PI_OFFLINE: "1",
-    PI_SDK_VIEW_ROOT: root, PI_SUBAGENTS_TEST_HOOKS: "1", PI_SUBAGENTS_TEST_MESSAGE: "TOOL_FIRST", PI_SUBAGENTS_TEST_TASK_NAME: "view_child", TERM: "xterm-256color" },
+    PI_SDK_VIEW_ROOT: root, PI_SUBAGENTS_TEST_MESSAGE: "TOOL_FIRST", PI_SUBAGENTS_TEST_TASK_NAME: "view_child", TERM: "xterm-256color" },
   stdin: "ignore", stderr: "pipe", terminal: { cols: 112, rows: 38, data(_pty, data) { raw += Buffer.from(data).toString(); term.write(data); } } });
 const stderr = new Response(child.stderr).text();
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));

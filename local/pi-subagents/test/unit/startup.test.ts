@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import extension from "../../src/index.ts";
+import extension, { getSubagentBindingForContext } from "../../src/index.ts";
+import { registerTestCommands } from "../fixtures/test-commands.ts";
 import { mainKey } from "../../src/domain/ids.ts";
 import { getProcessServiceCellV1 } from "../../src/host/service-cell.ts";
 import { hasStoredMainV1 } from "../../src/host/recovery-presence.ts";
@@ -52,7 +53,7 @@ async function fixture(t: test.TestContext) {
     else process.env.PI_CODING_AGENT_DIR = previous;
     await rm(root, { recursive: true, force: true });
   });
-  return { root, sessionId, cell, ctx, events, commands, tools, widgets, notices, calls, binding, service, start, stop, list };
+  return { pi, root, sessionId, cell, ctx, events, commands, tools, widgets, notices, calls, binding, service, start, stop, list };
 }
 
 test("empty startup registers commands, tools and a hidden strip without creating a service or store", async (t) => {
@@ -138,4 +139,24 @@ test("unknown Agent target explains scope without claiming old storage was delet
  await f.commands.get("subagents").handler("agt_migrated",f.ctx);
  assert.match(f.notices.at(-1)[0],/找不到这个 Agent.*当前会话、Agent ID 或 task path.*不会自动转换或删除旧存储/);
  assert.deepEqual(f.calls,["attach"]);assert.equal(f.binding.host.snapshot().agents.length,0);
+});
+
+
+test("production ignores test env; an explicit test extension registers commands and retains owner fences", async t => {
+  const previous = process.env.PI_SUBAGENTS_TEST_HOOKS;
+  process.env.PI_SUBAGENTS_TEST_HOOKS = "1";
+  t.after(() => { if (previous === undefined) delete process.env.PI_SUBAGENTS_TEST_HOOKS; else process.env.PI_SUBAGENTS_TEST_HOOKS = previous; });
+  const f = await fixture(t);
+  assert.deepEqual([...f.commands.keys()], ["subagents"]);
+  await assert.rejects(getSubagentBindingForContext(f.ctx), /unavailable/);
+  registerTestCommands(f.pi, getSubagentBindingForContext);
+  for (const name of ["followup", "send", "spawn"]) assert.ok(f.commands.has(`subagents-test-${name}`));
+  await f.start(); f.cell.promise = Promise.resolve(f.service);
+  assert.equal(await getSubagentBindingForContext({ ...f.ctx, sessionManager: { ...f.ctx.sessionManager } }), f.binding);
+  let followup: any;
+  f.binding.host.snapshot = () => ({ agents: [{ agent: { task_path: "/worker" } }] });
+  f.binding.host.followupTask = async (request: any) => { followup = request; return { ok: true }; };
+  await f.commands.get("subagents-test-followup").handler("", f.ctx);
+  assert.equal(followup.input.target, "/worker");
+  await f.stop(); await assert.rejects(getSubagentBindingForContext(f.ctx), /unavailable/);
 });

@@ -19,12 +19,12 @@ export async function freshHost(t: TestContext, message = "Reply exactly SUBAGEN
   const capture = fullProfile && process.env.PI_MAILBOX_JOINT_EVIDENCE ? join(process.env.PI_MAILBOX_JOINT_EVIDENCE, sessionId) : undefined;
   if (capture) mkdirSync(capture, { recursive: true });
   const extra = fullSettings && !fullProfile ? ["-e", resolve(pkg, "../pi-claude-style/dist/index.ts"), "--tools", "read,bash,edit,write,grep,find,ls"] : [];
-  const owners = fullProfile ? extensions.filter(path => !path.includes("/fork/pi-goal/extensions/pi-goal/dist/") && !path.includes("/local/pi-claude-style/dist/")) : [join(pkg, "dist/index.js"), resolve(pkg, "../pi-processes/dist/index.js"), ...extensions];
+  const owners = fullProfile ? [join(pkg, "test/fixtures/test-commands.ts"), ...extensions.filter(path => !path.includes("/fork/pi-goal/extensions/pi-goal/dist/") && !path.includes("/local/pi-claude-style/dist/"))] : [join(pkg, "dist/index.js"), join(pkg, "test/fixtures/test-commands.ts"), resolve(pkg, "../pi-processes/dist/index.js"), ...extensions];
   if (order === "reverse") owners.reverse();
   const main = spawn(piBinary, ["--offline", "--mode", "rpc", "--session", session, ...(fullProfile ? [] : ["--no-extensions"]), ...(process.env.PI_MAILBOX_JOINT === "1" ? ["-e", join(pkg, "test/fixtures/mailbox-joint-cutoff.ts")] : []), "-e", join(pkg, "test/fixtures/faux-subagent-provider.ts"), ...owners.flatMap(path => ["-e", path]), "-e", join(pkg, "test/fixtures/sdk-host-control.ts"),
     ...extra, ...(fullProfile ? [] : ["--no-skills", "--no-prompt-templates", "--no-context-files"]), "--provider", "fixture", "--model", "faux-1", "--thinking", "off", "--approve"], {
     cwd: root, env: { ...process.env, ...(runtimeTmp ? { TMPDIR: runtimeTmp } : {}), HOME: root, XDG_CONFIG_HOME: join(root, ".config"), XDG_DATA_HOME: join(root, ".local/share"), MAGIC_CONTEXT_STORAGE_DIR: join(root, "mc"), PI_SCHEDULER_BINARY: piBinary, PI_CODING_AGENT_DIR: agentDir, PI_NEXT_AGENT_DIR: agentDir, PI_OFFLINE: "1",
-      PI_SUBAGENTS_TEST_HOOKS: "1", PI_SUBAGENTS_TEST_ASYNC: "1", PI_SUBAGENTS_TEST_MESSAGE: message, PI_SUBAGENTS_HOST_CONTROL: root, PI_SUBAGENTS_TEST_LOG: join(root, "provider.jsonl") }, stdio: ["pipe", "pipe", "pipe"],
+      PI_SUBAGENTS_TEST_ASYNC: "1", PI_SUBAGENTS_TEST_MESSAGE: message, PI_SUBAGENTS_HOST_CONTROL: root, PI_SUBAGENTS_TEST_LOG: join(root, "provider.jsonl") }, stdio: ["pipe", "pipe", "pipe"],
   });
   const records: any[] = []; let stderr = "", pending = "", serial = 0;
   main.stdout.on("data", data => { if (capture) appendFileSync(join(capture, "stdout.jsonl"), data); pending += data; for (let at; (at = pending.indexOf("\n")) >= 0;) { const line = pending.slice(0, at); pending = pending.slice(at + 1); if (line) records.push(JSON.parse(line)); } });

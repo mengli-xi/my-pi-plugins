@@ -32,7 +32,7 @@ test("send_input reaches an Agent that is running a task", { timeout: 120_000 },
 
   const agentDir = await prepareFreshProfile(home); const child = spawn(pi, [
     "--mode", "rpc", "--session", session, "--no-extensions",
-    "-e", join(process.cwd(), "dist", "index.js"),
+    "-e", join(process.cwd(), "dist", "index.js"), "-e", join(process.cwd(), "test", "fixtures", "test-commands.ts"),
     "-e", join(process.cwd(), "test", "fixtures", "faux-subagent-provider.ts"),
     "--no-skills", "--no-prompt-templates", "--no-context-files",
     "--provider", "fixture", "--model", "faux-1", "--thinking", "off",
@@ -42,7 +42,6 @@ test("send_input reaches an Agent that is running a task", { timeout: 120_000 },
       ...process.env,
       HOME: home,
       PI_CODING_AGENT_DIR: agentDir,
-      PI_SUBAGENTS_TEST_HOOKS: "1",
       PI_SUBAGENTS_TEST_ASYNC: "1",
       PI_SUBAGENTS_TEST_TASK_NAME: "mail_child",
       PI_SUBAGENTS_TEST_MESSAGE: "MAILBOX_CHILD",
@@ -139,14 +138,14 @@ test("a mailbox resumes a Process-parked Agent for exactly one extra turn", { ti
 
   await prepareFreshProfile(home); const child = spawn(pi, [
     "--mode", "rpc", "--session", session, "--no-extensions",
-    "-e", join(process.cwd(), "dist", "index.js"),
+    "-e", join(process.cwd(), "dist", "index.js"), "-e", join(process.cwd(), "test", "fixtures", "test-commands.ts"),
     "-e", join(process.cwd(), "..", "pi-processes", "dist", "index.js"),
     "-e", join(process.cwd(), "test", "fixtures", "faux-subagent-provider.ts"),
     "--no-skills", "--no-prompt-templates", "--no-context-files",
     "--provider", "fixture", "--model", "faux-1", "--thinking", "off",
   ], {
     cwd: process.cwd(),
-    env: { ...process.env, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: join(home, ".pi", "agent"), HOME: home, PI_SUBAGENTS_TEST_HOOKS: "1", PI_SUBAGENTS_TEST_ASYNC: "1", PI_SUBAGENTS_TEST_TASK_NAME: "mail_park_child", PI_SUBAGENTS_TEST_MESSAGE: "MAILBOX_PARK_CHILD", PI_SUBAGENTS_TEST_MAILBOX: "MAILBOX_NOTE" },
+    env: { ...process.env, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: join(home, ".pi", "agent"), HOME: home, PI_SUBAGENTS_TEST_ASYNC: "1", PI_SUBAGENTS_TEST_TASK_NAME: "mail_park_child", PI_SUBAGENTS_TEST_MESSAGE: "MAILBOX_PARK_CHILD", PI_SUBAGENTS_TEST_MAILBOX: "MAILBOX_NOTE" },
     stdio: ["pipe", "pipe", "pipe"],
   });
   t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });

@@ -194,3 +194,5 @@ reconcile 记入 deferred、不报诊断，由持有者收尾；新旧 binding �
 Main append 现只通过公开 mailbox/readonly session API；旧三项 Main private probe 已随直接追加路径删除。
 
 可选 Compact 的同步 `pi-session-compact:collect-recovery-v1` 协议在提交前收集本包现有恢复文本，回复声明 `order: 40`，不依赖固定 owner 名单。协议缺席时保留原有独立恢复路径；version 1 的 `compactionEntry.details.recovery` 包含本包 owner/customType 时跳过重复消息，无标记的旧记录仍走原路径。开放排序、请求和 details 兼容由 [pi-session-compact](../pi-session-compact/README.md) 定义；无需安装该插件，收集不改变任务准入、中止围栏或完成投递。
+
+测试命令只由 `test/fixtures/test-commands.ts` 额外 extension 注册，生产入口不读取 `PI_SUBAGENTS_TEST_HOOKS`。同进程 owner 导出 `getSubagentBindingForContext(ctx)`，仅返回当前 session 的 fenced binding；尚未就绪时沿用惰性初始化，退役后拒绝。此导出不绕过 Task、provider、工具或会话权限校验。
