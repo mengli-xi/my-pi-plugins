@@ -1,6 +1,6 @@
 # pi-subagents · 持久化存储格式 V1
 
-本文档是 `pi-subagents` V1 唯一的规范性持久格式契约。它取代 `RUNTIME_MODEL.md` 中的临时文件草图。产品行为、同进程 Host 端口与投递时序分别由 FEATURE/Host/Delivery 负责；本文档定义哪些内容会被持久记录、元数据变更在何时提交，以及恢复如何证明某个状态。
+本文档是 `pi-subagents` V1 唯一的规范性持久格式契约。它取代 `architecture.md` 中的临时文件草图。产品行为、同进程 Host 端口与投递时序分别由 FEATURE/Host/Delivery 负责；本文档定义哪些内容会被持久记录、元数据变更在何时提交，以及恢复如何证明某个状态。
 
 ## 1. 权威来源与不变量
 
@@ -114,7 +114,7 @@ SHA-256("pi-subagents/main-key/v1\0" + exact UTF-8 Main session ID)
         <timestamp>-<transactionId>.tail
 ```
 
-只有与上述精确 grammar 匹配的名称才是合法的。`owner.json`、`CURRENT`、checkpoint files、journal files 和 prepared records 都由 package 拥有。`session.jsonl` 是 Pi-native JSONL。`recovery/` 只包含被保留下来的损坏或截断尾部；它绝不会被解析为状态。diagnostics 位于该 store 之外，路径由 `OPERATIONS.md` 定义。
+只有与上述精确 grammar 匹配的名称才是合法的。`owner.json`、`CURRENT`、checkpoint files、journal files 和 prepared records 都由 package 拥有。`session.jsonl` 是 Pi-native JSONL。`recovery/` 只包含被保留下来的损坏或截断尾部；它绝不会被解析为状态。diagnostics 位于该 store 之外，路径由 `maintenance.md` 定义。
 
 `store-v2/owner.json`:
 
@@ -648,10 +648,10 @@ interface OutboxRecordV1 {
 字段矩阵：
 
 - `pending|delivering`：Wake 为 `not-offered|foreground-pending|open|claimed`；Completion cards 可以不完整。
-- `cards-appended`：每个被引用的 Inbox 都已 appended 或完成 projection 校验；Wake 可以是 not-offered/foreground/open/claimed。producer 的 append/prove 失败会把记录留在 `cards-appended/open`——runtime 的 offer 已经 abort，durable 记录还开着。同 process 的下一个正常 reconcile 边界按原 entry 身份（`outbox_id` + `wake_epoch`）去重后重试一次：认到已经物理追加的 continuation 就用它终态化，Main 原 fallback 已 accepted 且无 native 时等待，不 re-offer、不重写 open；未接管的失败才用 detached offer，不重启也不轮询（`DELIVERY_PROTOCOL.md §7.6`）。
+- `cards-appended`：每个被引用的 Inbox 都已 appended 或完成 projection 校验；Wake 可以是 not-offered/foreground/open/claimed。producer 的 append/prove 失败会把记录留在 `cards-appended/open`——runtime 的 offer 已经 abort，durable 记录还开着。同 process 的下一个正常 reconcile 边界按原 entry 身份（`outbox_id` + `wake_epoch`）去重后重试一次：认到已经物理追加的 continuation 就用它终态化，Main 原 fallback 已 accepted 且无 native 时等待，不 re-offer、不重写 open；未接管的失败才用 detached offer，不重启也不轮询（`delivery.md §7.6`）。
 - `cards-appended/consumer-deferred`：**只可能来自旧 store。**D-007 之前的一个版本用它记录「被 claim 却没交出 proof」；现在这种 epoch 当场由 producer 接管并终态化，不再产生该状态。store 打开时 recovery 把它连同 `wake_deferral` 归一成 `cards-appended/not-offered`，下一次 reconciliation 正常重投一次。
 - `wake-settlement-pending`：cards 已 appended，并且 Wake 必须精确为 `claimed|fallback-appended`。`settlement_kind` 标识该分支；Outbox 上的 `settlement_proof_id`、`settlement_proof_sha256` 与 `delivered_at` 都不存在。但这一 `(outbox_id, wake_epoch)` 的 `WakeSettlementReceiptV1` **已经在同一笔 pending transaction 里落盘**：owner 在 `wake.commit(...)` 时就定了，而 Goal receipt 与 producer proof 都活不过进程，所以先落盘再链接。「receipt 已存在、Outbox 还没链接它」是合法组合，`delivered` 只由链接那一笔成立。
-  终态事务失败会把记录留在这里，缺的只是最后那一笔链接。同 process 的下一个正常 reconcile 边界和重开 store 的 recovery 都取这份 receipt 链接成 `delivered`，不重投也不重新 append，也不再触发 Goal；`fallback-appended` 在终态事务提交后才归还 proof reservation（`DELIVERY_PROTOCOL.md §7.6`）。
+  终态事务失败会把记录留在这里，缺的只是最后那一笔链接。同 process 的下一个正常 reconcile 边界和重开 store 的 recovery 都取这份 receipt 链接成 `delivered`，不重投也不重新 append，也不再触发 Goal；`fallback-appended` 在终态事务提交后才归还 proof reservation（`delivery.md §7.6`）。
   **老 store 兼容**：写在这条规则之前的 `wake-settlement-pending` 记录没有 receipt。`fallback-appended` 仍认原 `(outbox_id, wake_epoch)` 的 native continuation entry（重算冻结 projection 校验 digest 后终态化）；`claimed` 拿不出真实证据就保持 nonterminal，由重开 store 的 recovery 重置为 `cards-appended/not-offered`、清除 settlement kind、创建新的 offer epoch，再次允许 claim 或 fallback；不可变 IDs 让它在逻辑上保持幂等。
 - `delivered`：Wake **必须** 为 `settled`，每个 Inbox 都已 appended，并且必须存在 `settlement_kind`、`settlement_proof_id`、`settlement_proof_sha256`、`delivered_at`。对于 `(outbox_id,wake_epoch)`，必须恰好存在一个 `WakeSettlementReceiptV1`；它匹配 Outbox/epoch/kind，由 pending transaction 创建（老 store 的无 receipt pending 记录则由终态事务补写），终态事务只链接它，绝不写第二份。`settlement_proof_sha256` 是对完整 receipt 做规范 JSON 后计算的 SHA-256，但仅排除 `record_revision`。只有在带版本的 Goal settlement callback 证明了 continuation scheduling identity 后，Subagent Host 才会写入 `goal-claimed`；`producer-fallback` 记录的是经过验证的原生 continuation 条目。只有当 recovery 证明同一个 continuation identity 已经 started 或 settled 时，才允许 `runtime_delivery="skipped"`。单独一个易失性 claim 永远不能产生 `delivered`。
 - `handled`：Main 专用成功终态，Wake 必须为 `settled`，`handling_proof` 必须存在且只允许出现在该状态；禁止 Wake settlement_kind/proof/delivered_at 和 turn_settlement。proof 的 session/epoch 必须匹配 recipient/原 epoch，cards 与 completion_ids 顺序、基数一一对应且 Inbox/native IDs 唯一，逐项匹配已 appended Inbox 的原 entry/projection。每张 card 保存真实成功 marker 的 ID/摘要及其 assistant；不同 card 可来自不同成功 run。只有 Main owner 完成原 marker/branch/fsync 验证后才能授权此事务，不能从 A fulfilled 推导；epoch=0 合法。已有同 epoch Wake receipt 时禁止转 handled。重复同 proof 是 no-op；handled 状态、handling_proof 不可回退或改写；按 §11.1 合法回收的 Inbox 可以缺席，已有 Inbox 仍须逐项匹配 proof。冷 importer 必须用精确 A 退休 receipt 识别这种状态，不能把“缺席”本身当作退休或降回 pending。
@@ -659,7 +659,7 @@ interface OutboxRecordV1 {
 
 封闭组合规则如下：`pending|delivering` 允许 `not-offered|foreground-pending|open|claimed`，并禁止所有 settlement/proof 字段；`cards-appended` 允许相同的 Wake 状态，另外为兼容旧 store 接受 `consumer-deferred`（`wake_deferral` 当且仅当此时存在，且 recovery 会立即归一掉它）；`wake-settlement-pending` 只允许 `claimed|fallback-appended`，要求存在 settlement kind，并禁止 Outbox 上的 proof 字段与 timestamp（这一 epoch 的 receipt 记录本身可以已经存在）；`delivered` 只允许 `settled`，并要求匹配的 receipt/proof/timestamp；`delivery-failed` 只允许 `not-offered|foreground-pending|aborted`，要求 error/correlation，并禁止所有 settlement/proof 字段；`handled` 只允许 Main/settled/handling_proof 的上述组合。任何其他组合都属于 schema-invalid。
 
-`turn_settlement` 只允许出现在 `delivered` 上，`wake_epoch` 必须等于 Outbox 的 `wake_epoch`，`settled_at` 当且仅当 `state="settled"`。它由终态事务（或 recovery 的 receipt 补链接）以 `pending` 写下，是 `delivered` 之后允许推进的业务字段：只能同一 `(wake_epoch, continuation_identity, pending_at)` 从 `pending` 翻成 `settled`（`settle-outbox-turn` 事务），除下面的首次 native 观察外，其余改动仍按「delivered Outbox 不可变」拒绝。没有这个字段的旧记录不猜、不改写。语义见 `DELIVERY_PROTOCOL.md §7.9`。
+`turn_settlement` 只允许出现在 `delivered` 上，`wake_epoch` 必须等于 Outbox 的 `wake_epoch`，`settled_at` 当且仅当 `state="settled"`。它由终态事务（或 recovery 的 receipt 补链接）以 `pending` 写下，是 `delivered` 之后允许推进的业务字段：只能同一 `(wake_epoch, continuation_identity, pending_at)` 从 `pending` 翻成 `settled`（`settle-outbox-turn` 事务），除下面的首次 native 观察外，其余改动仍按「delivered Outbox 不可变」拒绝。没有这个字段的旧记录不猜、不改写。语义见 `delivery.md §7.9`。
 
 `continuation_native` 是 Main 对本 mail native ACK 的独立持久副本，只有 `{wake_epoch,entry_id,sha256}`，必须匹配原 continuation projection 和 epoch。
 第一次接收写一次；已在 source observation 或同 epoch producer Wake receipt 里的相同事实零写入，冲突拒绝。
@@ -670,7 +670,7 @@ Main mailbox import 的 recovery 保留原 accepted key/epoch/open。handled 保
 其后独立 importer 仍校验原 active branch 并续作 card import/continuation cancel，不自动解除 A 的 recovery-held。
 以下旧同步 offer reset 规则不覆盖 Main 已 accepted 的 waiting-native 或 handled 义务。
 
-runtime offer/lease IDs 保持易失性，不会被序列化。`wake_epoch` 会在成功创建新的 runtime offer object **之后** 的同一个 Host mutation 中递增；仅仅加载或重置 recovery 状态不会导致它递增。在进程 recovery 时，`delivering|cards-appended|wake-settlement-pending` 会根据冻结的 projection/continuation IDs 做协调，然后回到最早可证明的状态。`open|claimed` 没有可持续的 runtime authority，因此会重置为 `not-offered`；它不是终态证据。同 process 在正常 reconcile 边界上的重试不做这次重置：它从 `open` 直接递增到新 epoch，或者拿当前 epoch 已经追加过的 continuation 终态化。带落盘 receipt 的 `wake-settlement-pending` 两条路径都不重置——同进程的边界与重开 store 的 recovery 都只补那一笔链接，并且不因 transcript 证据缺失把它引用的 Inbox 退回 `pending-append`（receipt 本身就是 card append 的证明）；只有老 store 里没有 receipt 的那种才归一回 `cards-appended/not-offered`（`DELIVERY_PROTOCOL.md §7.6`）。旧 store 里的 `consumer-deferred` 与 `open|claimed` 同样处理：重置为 `not-offered` 并丢掉 `wake_deferral`，`wake_epoch` 保留，下一次 reconciliation 用 detached offer 重投一次。只有当 active-branch/compaction 证据与 `completion_id` 和 `projection_sha256` 匹配时，`appended` 才可信；否则会回到 `pending-append`。
+runtime offer/lease IDs 保持易失性，不会被序列化。`wake_epoch` 会在成功创建新的 runtime offer object **之后** 的同一个 Host mutation 中递增；仅仅加载或重置 recovery 状态不会导致它递增。在进程 recovery 时，`delivering|cards-appended|wake-settlement-pending` 会根据冻结的 projection/continuation IDs 做协调，然后回到最早可证明的状态。`open|claimed` 没有可持续的 runtime authority，因此会重置为 `not-offered`；它不是终态证据。同 process 在正常 reconcile 边界上的重试不做这次重置：它从 `open` 直接递增到新 epoch，或者拿当前 epoch 已经追加过的 continuation 终态化。带落盘 receipt 的 `wake-settlement-pending` 两条路径都不重置——同进程的边界与重开 store 的 recovery 都只补那一笔链接，并且不因 transcript 证据缺失把它引用的 Inbox 退回 `pending-append`（receipt 本身就是 card append 的证明）；只有老 store 里没有 receipt 的那种才归一回 `cards-appended/not-offered`（`delivery.md §7.6`）。旧 store 里的 `consumer-deferred` 与 `open|claimed` 同样处理：重置为 `not-offered` 并丢掉 `wake_deferral`，`wake_epoch` 保留，下一次 reconciliation 用 detached offer 重投一次。只有当 active-branch/compaction 证据与 `completion_id` 和 `projection_sha256` 匹配时，`appended` 才可信；否则会回到 `pending-append`。
 
 人工已读使用 ViewedInboxReceiptV1={inbox_id,completion_id,projection_sha256,entry_id}。Host 核验 appended Inbox 和对应 native entry 后，在同 transaction 写首次 ui_read_at/ui_read_revision，revision 是新 Host revision。当前 D 规则：成功 native onLoaded 清目标 Agent 自产活动标记，点击只清精确卡片；不清目标收到的 descendant 卡片。close/resume/选行/loading/stale/error/render/scroll/model 消费不标读；空/坏/混合 invalid receipt 或 persistence 失败保 unread。规则与用户最终确认边界见 UI_SPEC。
 
@@ -989,9 +989,9 @@ Task settlement 是一个 metadata transaction，其中会：
 - 当最后一个被覆盖的 Task settled 时，将 Barrier 标记为 satisfied，并基于有序 Completion 集合创建它唯一的聚合 Barrier Outbox；
 - 更新 Agent 的当前或排队状态，以及 Barrier 的 completion 子集。
 
-只有在这次 commit 之后，runtime code 才会释放 lease。中间 Barrier Tasks 使用 `releaseWithoutWake`；普通或最终 Barrier settlement 在仍欠请求机会时使用 `releaseAndOfferWake`；已有持久 Main 全体成功时走 handled，无 Wake 释放并持久标 released。一个后续 metadata transaction 会将 lease disposition 标记为 released，并推动 Outbox 经过 `cards-appended → wake-settlement-pending → delivered/settled`。单独一个进程本地 claim 本身永远不是终态持久证据。如果进程在 metadata settlement 与 release 之间死亡，那么进程内 registry 会消失；recovery 绝不会重新获取一个已 settled 的 Task（`phase="settled"` 就跳过，不管 disposition 还是 `release-pending`——重新 acquire 会拿一个已完成的任务把 Main 标成 busy），而是从持久的 Outbox 状态重建所需的 delivery/Wake：detached offer 补投，成功的 `open` transaction 把 disposition 提交成 `released`。如果同进程内的 release 或 follow-up 写入失败，则 health 会降级，owner 会从持久化的 release-pending 状态重试；允许出现重复的物理 Wake/delivery，并通过 Completion/Outbox IDs 去重。这次重试不重放已经释放掉的 lease：`releaseAndOfferWake` 一旦返回，进程内的易失 handle 就没了，`wake_epoch` 是否已经递增都不改变这一点，所以本进程不再持有该 root Task lease 时只能用 detached `offerWake` 补投（`DELIVERY_PROTOCOL.md §7.6`）。
+只有在这次 commit 之后，runtime code 才会释放 lease。中间 Barrier Tasks 使用 `releaseWithoutWake`；普通或最终 Barrier settlement 在仍欠请求机会时使用 `releaseAndOfferWake`；已有持久 Main 全体成功时走 handled，无 Wake 释放并持久标 released。一个后续 metadata transaction 会将 lease disposition 标记为 released，并推动 Outbox 经过 `cards-appended → wake-settlement-pending → delivered/settled`。单独一个进程本地 claim 本身永远不是终态持久证据。如果进程在 metadata settlement 与 release 之间死亡，那么进程内 registry 会消失；recovery 绝不会重新获取一个已 settled 的 Task（`phase="settled"` 就跳过，不管 disposition 还是 `release-pending`——重新 acquire 会拿一个已完成的任务把 Main 标成 busy），而是从持久的 Outbox 状态重建所需的 delivery/Wake：detached offer 补投，成功的 `open` transaction 把 disposition 提交成 `released`。如果同进程内的 release 或 follow-up 写入失败，则 health 会降级，owner 会从持久化的 release-pending 状态重试；允许出现重复的物理 Wake/delivery，并通过 Completion/Outbox IDs 去重。这次重试不重放已经释放掉的 lease：`releaseAndOfferWake` 一旦返回，进程内的易失 handle 就没了，`wake_epoch` 是否已经递增都不改变这一点，所以本进程不再持有该 root Task lease 时只能用 detached `offerWake` 补投（`delivery.md §7.6`）。
 
-精确的 append/offer/claim/commit/ack 顺序以及 transcript entry schema 由 `DELIVERY_PROTOCOL.md` 定义；这个 store 保证它所消费的持久状态。
+精确的 append/offer/claim/commit/ack 顺序以及 transcript entry schema 由 `delivery.md` 定义；这个 store 保证它所消费的持久状态。
 
 ## 11. Checkpoint 与 journal compaction
 
@@ -1055,7 +1055,7 @@ journal 只记录实体 mutation，Root 和各分区的集合会随长会话一�
 
 ## 13. Quotas、retention 与 ENOSPC
 
-V1 中没有任何 limit 具有 unlimited 值。`CONFIG.md` 负责 public overrides 和 ranges；下面这些是格式默认值以及硬性结构上限：
+V1 中没有任何 limit 具有 unlimited 值。`usage.md` 负责 public overrides 和 ranges；下面这些是格式默认值以及硬性结构上限：
 
 | 资源 | 默认值 | 结构上限 / 行为 |
 |---|---:|---|

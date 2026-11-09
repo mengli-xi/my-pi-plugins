@@ -1,4 +1,4 @@
-# Pi 1.5.0 — theme-watch host patch
+# Pi 1.5.0 主题监听补丁
 
 这是 **`pi-1.5.0+theme-watch-file-version-v1` patched build**，不是原版 Pi 1.5.0。SDK 的 upstream package version 仍为 `1.5.0`；构建根目录的 `host-patch-build.json` 另记 build ID、输入及输出 hashes、Node/npm 版本。这里只维护 source patch、构建/检查脚本和 focused tests；不提交 `node_modules` 或 `dist`，不安装到日常 Pi，不部署或 push。
 
@@ -15,7 +15,7 @@
 
 没有第二份手写 theme loader/parser 或 bundle 实现。上游 TypeScript 同时生成 JS、`.d.ts` 和准确 source maps；上游 `scripts/build-coding-agent-bundle.mjs` 从同一编译输出生成完整真实 CLI bundle（不是只修 unbundled SDK）。
 
-## Public contract / ownership
+## 公开合同与所有权
 
 Provider 是本 **Pi host patch**；consumer 是 **`pi-session-runtime` managed UI**。
 
@@ -55,7 +55,7 @@ GitHub source archive 没有 `pi-ai/src/providers/data`。脚本只从 SHA-256 �
 
 重复运行同一命令会核对 receipt 和全部已记录输出 hashes；匹配则 skip，不改写。输入 hash 不符、非 pristine source、已有未完成 output、输出发生漂移或 patch 改变均明确拒绝，必须选新 output。不要在 output 内手改生成物。依赖安装失败也保留证据，不会自动删掉或覆盖半成品。
 
-## Focused 验证
+## 定向验证
 
 `check.mjs` 每次使用新的显式 test output，并为各 case 建独立 HOME/agent/XDG/cache/tmp；不读真实凭据，不发 provider 请求。测试包括：
 
@@ -75,4 +75,4 @@ GitHub source archive 没有 `pi-ai/src/providers/data`。脚本只从 SHA-256 �
 - 不删除或改写任何 session、agent、auth、config 数据。保留旧 pristine artifact 及链接记录，直到新 build 全量 fresh 联验完成。本脚本不做部署或自动 rollback。
 - 升级必须重新 pin 官方 commit/archive/source hashes，审查原 theme lifecycle 与 public contract，再重新构建和验证；禁止把此 patch fuzz apply 到别的版本，或只补 marker 假装修复仍在。
 - 200ms poll + 100ms debounce 是 nominal 设置，不是繁忙 event loop 的硬 deadline。metadata 无法识别所有字段都刻意保持不变的内容替换；本修复没有为此增加轮询 digest/第二 loader。
-- 当前 focused 与 upstream theme 子集已验证；完整 upstream SDK suite、其它 OS/网络文件系统、真实 provider、人工 IME/终端验收未运行。Main 仍须用此正式 fresh SDK/CLI graph 重跑消费者核心回归和三套真实 UI runner；不能把之前 npm-JS 实验结果冒充这次正式 build 的联验结果。
+- 定向测试不能代替完整上游 suite、其他 OS/网络文件系统、真实 provider 或人工终端验证。升级后用正式 SDK/CLI peer graph 重跑消费者与真实 UI runner。

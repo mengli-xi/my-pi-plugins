@@ -16,7 +16,7 @@ Claude Code 式项目记忆。Pi 1.5 公开 API，TypeScript 直接加载，无 
 
 每轮检查顶层 `.md` 普通文件的 stat（排除 MEMORY.md），不读取正文。超过 12,288 字节时向用户发中文提醒；同一文件、大小和 mtime 在该 extension 实例中只提醒一次。给模型的主题大小说明属于 `cc_memory_index` 快照，与索引正文一起冻结，只有刷新快照时才改变。主题正文仍可完整 read。
 
-只拥有 `systemPromptOptions.sections.cc_memory_policy` 和 `cc_memory_index`。保留其他 owner，不返回完整 systemPrompt，不用 context hook。模型政策和程序生成的索引/大小说明使用英文，用户 UI 提醒保留中文。不注入当前日期。会话内每轮注入同一份快照，磁盘索引或主题大小变化不会产生新的 memory system patch；模型以本轮工具结果了解自己写入的记忆，不应采取任何动作来刷新索引。每轮比较当前分支最新 compaction entry 的 ID 与快照记录的 ID，变化后在该轮重读磁盘；不只依赖 `session_compact`，因此也覆盖其他 owner 直接 `appendCompaction` 的路径。压缩完成时不立即修改系统段，在下一次 `before_agent_start` 刷新；同 run 的自动压缩续跑不强制刷新。`cc_memory_policy` 保持稳定。Pi 持久化系统段和 compaction checkpoint，历史保留旧快照。身份失败时仍停止注入并提醒。
+只拥有 `systemPromptOptions.sections.cc_memory_policy` 和 `cc_memory_index`。保留其他 owner，不返回完整 systemPrompt，不用 context hook。模型政策和程序生成的索引/大小说明使用英文，用户 UI 提醒保留中文。不注入当前日期。会话内每轮注入同一份快照，磁盘索引或主题大小变化不会产生新的 memory system patch；模型以当前请求工具结果了解自己写入的记忆，不应采取任何动作来刷新索引。每轮比较当前分支最新 compaction entry 的 ID 与快照记录的 ID，变化后在该轮重读磁盘；不只依赖 `session_compact`，因此也覆盖其他 owner 直接 `appendCompaction` 的路径。压缩完成时不立即修改系统段，在下一次 `before_agent_start` 刷新；同 run 的自动压缩续跑不强制刷新。`cc_memory_policy` 保持稳定。Pi 持久化系统段和 compaction checkpoint，历史保留旧快照。身份失败时仍停止注入并提醒。
 
 ## 文件维护
 
@@ -83,7 +83,7 @@ role 仅有 `main | child | side`，默认 main；每个实例独立，不读 ch
 ## 验证
 
 ```sh
-npm ci # 在仓库根运行
+npm ci # 在仓库根运行；以下验证命令在包目录运行
 npm run check
 npm run test:host
 ```

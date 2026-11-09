@@ -1,18 +1,14 @@
-# Explicit SDK provider factories
+# 外部 SDK provider 工厂
 
-Subagents discovers external providers through the existing child capability registry,
-not provider/package brand names. The manager uses storage ABI 2:
-`Symbol.for("pi.child-capability-registry.v2")`, `version: 2`,
-`operationVersion: 2`, brand `pi-child-capability-registry-v2`. Historical V1
-export/type names and manifest/register/bind/snapshot DTO versions stay V1.
-The ABI-1 cell remains untouched and isolated; its old register closure cannot
-validate the expanded schema or supply authority to the new manager. All Core
-publishers must resolve the current library (and rebuild compiled consumers).
-Old provider packages can keep publishing legacy ABI-1 declarations while external
-publishes an independent ABI-2 supplemental owner, in either loading order.
-A malformed/ABI-1-shaped holder at the ABI-2 key fails closed, with no fallback.
+## 发现与 ABI
 
-A target may add `sdk_provider_factory`:
+通过 child capability registry 发现，不按品牌/包名识别 provider。存储 ABI 2 使用 `Symbol.for("pi.child-capability-registry.v2")`、version 2、operationVersion 2、brand `pi-child-capability-registry-v2`。V1 export/type 名和 manifest/register/bind/snapshot DTO 仍为 V1。
+
+ABI 1 cell 保持隔离、不覆盖；旧 register closure 不能校验扩展 schema，也不能给新 manager 授权。发布方须解析当前共享库，编译消费者须重建。外部可独立发布 ABI 2 supplemental owner，与旧 ABI 1 provider 任意顺序共存。ABI 2 key 上出现坏/ABI 1 shape 拒绝，不 fallback。
+
+## 声明与独立批准
+
+目标可声明 `sdk_provider_factory`：
 
 ```ts
 {
@@ -22,7 +18,7 @@ A target may add `sdk_provider_factory`:
   export: "createChildFactory",
   config: {},
   artifacts: [captureEntrypointDescriptorV1("/actual/package/src/delegate.ts")],
-  observer: { // optional
+  observer: { // 可选
     module: captureEntrypointDescriptorV1("/approved/observer.ts"),
     export: "installActivityBridge",
     input_channel: "example:activity"
@@ -30,15 +26,11 @@ A target may add `sdk_provider_factory`:
 }
 ```
 
-The target declares exactly this provider, no tools/commands/dependencies. The package
-manifest must be the actual nearest package.json of factory and child entrypoint.
-All descriptors pin canonical current-UID regular files, identity and SHA256. A
-canonical path replaced with a symlink fails live identity validation. Artifacts
-must list the known delegates/assets used by the approved factory; this is not a
-transitive JavaScript dependency sandbox. Config is a closed, bounded JSON object
-(12 levels, 2048 nodes, 32 KiB; strings at most 8192 UTF-16 units).
+target 只声明这一个 provider，不带 tools/commands/dependencies。manifest 必须是 factory 和 child entrypoint 最近的实际 package.json。descriptor 固定 canonical 当前 UID 常规文件、身份和 SHA256；canonical 路径被软链替换则 live identity 校验拒绝。artifacts 列出已知 delegate/assets，不是 JavaScript 传递依赖沙箱。
 
-The administrator independently reviews and writes `<actual-agentDir>/sdk-provider-grants.json`:
+config 为封闭有界 JSON 对象：12 层、2048 节点、32 KiB，字符串最多 8192 UTF-16 单元。
+
+管理员独立审阅并写实际 `<agent-dir>/sdk-provider-grants.json`：
 
 ```ts
 {
@@ -47,45 +39,18 @@ The administrator independently reviews and writes `<actual-agentDir>/sdk-provid
 }
 ```
 
-`sdkProviderApprovalV1` returns `{owner_id,target_id,manifest}` with exactly one
-target. The grant exactly approves owner, actual Main descriptor, child, package,
-factory/export/config/artifacts and optional observer. It is not enough for two
-self-reported hashes to agree: discovery and execution verify the actual files.
-The grant file itself must be a non-symlink current-UID regular file. Readers
-cache parsed metadata by inode/size/mtime/ctime; unchanged files are not re-parsed.
-No runtime API writes grants. No grant means no external factory execution.
+sdkProviderApprovalV1 返回 `{owner_id,target_id,manifest}`，只含一个 target。grant 精确批准 owner、真实 Main descriptor、child、package、factory/export/config/artifacts 和可选 observer。两份自报 hash 相同不够，发现与执行都检查真实文件。grant 文件本身须非软链、当前 UID 常规文件，按 inode/size/mtime/ctime 缓存，未变不重解析。没有运行时写 grant API，缺 grant 不执行外部 factory。
 
-Frozen entries carry `sdk_provider: {version:1,owner_id,target_id,manifest,model_scope}`.
-The fingerprint includes the complete proof. Main/role/frozen/parent model scope
-remains the sole model authority; the proof binds the exact scope of this assembly.
-Nested children may only narrow a parent proof. A new declaration or grant cannot
-add a provider to an old frozen role. Old profiles without proofs remain readable
-as presentation-only history, but cannot execute external providers.
+## 冻结与装配
 
-Assembly passes exactly:
+冻结 entry 携带 `sdk_provider:{version:1,owner_id,target_id,manifest,model_scope}`，完整 proof 进入指纹。Main/role/frozen/parent model scope 仍是模型权限唯一来源；proof 绑定本次精确 scope。嵌套只能缩窄，新增声明/grant 不给旧 frozen role 增 provider。无 proof 的旧 profile 可看历史，不能执行。
 
-```ts
-{ version: 1, target: "pi-subagents", agentDir, providerId, modelIds, config }
-```
+装配精确传入 `{version:1,target:"pi-subagents",agentDir,providerId,modelIds,config}`，config 嵌套，不能覆盖核心字段。export 必须返回 Pi extension factory；发现阶段不 import。执行在 await 前后重验 grant、文件、冻结 scope、live binding，再用 `getSessionAssemblyPublicModules()` 原表加载批准模块。
 
-Config is nested and cannot overwrite core fields. Factory export must return a
-Pi extension factory. Discovery never imports it. Execution revalidates grant,
-files, frozen scope and live registry binding around awaits, then uses the approved
-loader with `getSessionAssemblyPublicModules()` unchanged. Loaded same-path code
-or known delegate digest changes demand a fresh process, even after re-granting.
-Current public provider references only fence replacement during preparation;
-they are not host-attested provenance. Registry/grants/disposal are cooperative:
-already-loaded malicious JavaScript is outside this boundary. There is no new host
-private seam, owner receipt or sandbox.
+已加载同路径代码/已知 delegate 的 digest 变化，即使重新批准也须新进程。公开 provider 引用只 fence 准备期间的替换，不是宿主认证来源。registry/grant/disposal 都是同进程合作合同，不隔离恶意 JS，不新增 host private seam、owner receipt 或沙箱。
 
-The optional observer uses the same approved loader/grant. Its only argument is a
-narrow bus: `on` permits only `input_channel`, and `emit` permits only validated
-`provider:activity-v1` for this provider. It never receives ExtensionAPI. Startup
-failure, execution dispose and reload release listeners; ordinary view detach does
-not. Missing observer means no provider-specific activity translation.
+## observer 与目标隔离
 
-Side requires an independent `pi-side-chat` declaration and grant; Subagents grants
-never imply Side support. External supplemental owners coexist with legacy provider
-owners; root closure selects only explicitly granted SDK proofs. Generic builtin,
-Timeout, Processes and Search tool-owner guards remain separate. Search factories
-receive the actual parent Main event bus for explicit backend discovery.
+observer 使用相同批准 loader/grant，只收到窄 bus：on 只允许 input_channel，emit 只允许该 provider 经校验的 `provider:activity-v1`，不收到 ExtensionAPI。启动失败、execution dispose/reload 释放 listener；普通 view detach 不释放。缺 observer 则无专用活动翻译。
+
+其他 target（如 pi-side-chat）须独立声明/grant，Subagents grant 不暗示支持它。root closure 只选明确批准的 SDK proof；builtin、Timeout、Processes、Search 的 tool owner guard 独立。Search factory 接收真实父 Main event bus，用于显式后端发现。

@@ -101,7 +101,7 @@ unknown-key 拒绝，已有任一终态返回原证据，第一份持久终态�
 重获锁或 uncertain-write 必须重新读盘。SlotStorage 不在取得 writer 锁前重复读取同一 snapshot。
 Session JSONL 的解析和 entry 索引按 identity 合并并发、只保留最新版；每次核对当前文件版本和 session identity，
 追加/替换/截断或读取失败后失效，binding 退役释放。读取前后同时核对打开 inode 和路径的 dev/ino/size/mtimeNs/ctimeNs，
-不靠解析 cache 代替 native readback、writer token、业务 guard 或 fsync。同 inode 的增长仅标为 `read-race`，单次读取最多三次尝试取得稳定版本；不返回不稳定字节，也不放宽 header、branch、正文或 receipt 校验。持续读取竞争保留内存拒绝，在后续真实安全边界重新证明，不写持久 blocked、不自行循环调度。投影仍 abort 并清空本轮 messages；只对本轮读取竞争的内部 abort 避免误写 durable aborted，用户 abort 与真实损坏仍按原规则停用。旧版已经持久记录的 suspension 不自动清除。
+不靠解析 cache 代替 native readback、writer token、业务 guard 或 fsync。同 inode 的增长仅标为 `read-race`，单次读取最多三次尝试取得稳定版本；不返回不稳定字节，也不放宽 header、branch、正文或 receipt 校验。持续读取竞争保留内存拒绝，在后续真实安全边界重新证明，不写持久 blocked、不自行循环调度。投影仍 abort 并清空当前请求 messages；只对当前请求读取竞争的内部 abort 避免误写 durable aborted，用户 abort 与真实损坏仍按原规则停用。旧版已经持久记录的 suspension 不自动清除。
 
 每个 callback 都允许同步返回或 Promise，均 await；同步 throw 与 reject 含义相同。
 callback fence 固定 `{slotKey,session,bindingGeneration,ownerEpoch,producerToken,attemptId}`，
@@ -219,7 +219,7 @@ proof conflict/unknown 与 guard 错误分开保存；guard allow 不清 proof �
 其它健康 source 仍可推进。每次请求都重新检查 guard，包括已经 recorded 的 pending；hold、cancel、project=false、
 guard 异常或 participant-held 都不能因正文已在 native history 就绕过过滤。cancel 决策仍须 durable cancel。
 共享 carrier 只要还有合法 live/fulfilled reference 就保留，不误删历史或其它合法 key；拒绝只影响本次 projection。
-投影异常用公开 ctx.abort() 停止对应操作，并清空本轮可见列表；仅 throw/notify 会被 Pi 报告后保留原 messages，不能当 fail-closed。
+投影异常用公开 ctx.abort() 停止对应操作，并清空当前请求可见列表；仅 throw/notify 会被 Pi 报告后保留原 messages，不能当 fail-closed。
 迟到回调不 abort signal 已变化的新 run。每次异步 guard/proof 后及不可撤回 enqueue 前，同步核对最新 snapshot 的
 pending/terminal、冻结身份、branch/fence。cancel 不等待这些 callback。公开 turn_end 已有 tool result/
 continue 时先只 append，交自然下一请求消费；到 before-settle 仍欠机会才补 control。已被当前请求观察的
@@ -269,34 +269,13 @@ host 提供，不运行其它工作树的 node_modules。check 另含 transport 
 profile 内其它 context/provider adapter 必须在 full-profile faux gate 中保留 active mail 的最终投影；
 任意第三方在本库最后一个可观测 public context hook 之后破坏请求，不属于自动送达保证。
 
-## Read-only message projection for summary consumers
+## 供摘要消费者使用的只读消息投影
 
-`mailbox-v1/light` and `mailbox-v1` export
-`filterMailboxMessages(ctx, messages, { agentDir? }): Promise<AgentMessage[]>`.
-The context needs only its public `sessionManager` and `cwd`. The result is a subset
-of the input, preserving retained message objects and bytes; no messages are added.
-It is the owner-supported filter for consumers that must summarize a public session
-projection without running arbitrary extension hooks. Pi Session Compact uses it
-before flattening rebuilt Main, small and native fallback inputs.
+mailbox-v1/light 与 mailbox-v1 导出 filterMailboxMessages(ctx,messages,{agentDir?}):Promise<AgentMessage[]>。
+ctx 只需公开 sessionManager/cwd，结果是输入子集，保留原消息对象与字节，不增加消息。消费者可过滤公开会话投影，不必运行任意扩展 hook；Compact 在展开重建 Main、small 和原生 fallback 前调用。
 
-The API uses a conservative read-only predicate, guarded by owner/readonly contract
-tests and byte comparisons for shared persistence rules: cancelled messages,
-including receipt-backed tombstones after snapshot GC, and recovery-held/legacy/proof-error
-carriers are hidden. A separate live or fulfilled reference to the same canonical
-carrier retains the owner's existing shared-carrier semantics. With no live slot,
-the reader reads only this session's snapshot/receipts and treats disk pending mail
-as recovery-held. Session identity, ABI/build, stale binding and unreadable or
-ambiguous storage fail closed. No customType-wide deletion or raw-body heuristics
-are used.
+保守只读 predicate 与 owner/readonly 合同测试、持久规则逐字节比较共同保护：cancelled（含 snapshot GC 后 receipt-backed tombstone）、recovery-held、legacy、proof-error carrier 均隐藏。同 canonical carrier 还有独立 live/fulfilled 引用时沿用共享语义。无 live slot 只读本 session 的 snapshot/receipt，磁盘 pending 视作 recovery-held。session identity、ABI/build、stale binding、不可读或含糊存储均拒绝。不按 customType 整类删除，不猜 raw body。
 
-Importing the light entry remains cold. Projection helpers load only on a call
-that can contain a custom carrier; even an empty-slot call never imports the delivery
-engine/writer or creates mailbox storage. The reader can await existing owner readiness,
-but never binds/elects/activates an owner, reconciles proofs, invokes producer callbacks,
-writes/ACKs/sends anything, or releases recovery hold. It also filters known live guard
-errors/refusals, participant holds and missing registrations, without refreshing business
-authority. This reader does not establish a new permission decision; the delivery owner
-reruns guards on every actual request. Normal projection uses request-local admitted
-references and preserves a carrier only when an admitted or fulfilled reference remains.
-Readonly state is scoped to the public SessionManager, reuses unchanged snapshot/session
-versions and is replaced when its session identity changes; it never creates a writer.
+轻入口保持冷加载，只有可能含 custom carrier 的调用才加载投影 helper；空 slot 也不 import delivery engine/writer、不建存储。可等已有 owner ready，但不绑定/选举/激活 owner，不 reconcile proof、不跑 producer callback、不写/ACK/send、不解 recovery hold。
+
+也过滤已知 live guard 错误/拒绝、participant hold 和缺注册，不刷新业务权限。这不是新权限决定；delivery owner 每次实际请求仍重跑 guard。普通投影用请求局部 admitted 引用，只有仍有 admitted/fulfilled 引用才保留 carrier。readonly 状态按公开 SessionManager 归属，未变 snapshot/session 复用、身份变更即替换，永不创建 writer。

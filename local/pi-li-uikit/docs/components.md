@@ -39,7 +39,7 @@ Pi 1.5.0 extension 共用的 TUI component。私有包，通过 workspace 依赖
   **新增 component 必须新增 `exports` entry。** 不要把 root package 变成所有 component 的隐式 registry。
 
 - **clipboard support 保持轻量且异步。** 当前 helper 不从 coding-agent root 做 runtime import，避免只为复制功能额外加载宿主分发图；type-only import 不变。overlay 使用基于 `spawn` 的非阻塞 platform command，失败时回退 OSC52，不用 `execSync` 阻塞 TUI。具体首开/RSS 收益必须在目标 Pi 版本 fresh process 实测，不能沿用旧 checkout 的性能数字。
-  现有 helper 在 SSH/MOSH 或 `PI_CLIPBOARD_OSC52=1` 时先尝试系统复制，再额外发直接 OSC 52（不包 tmux passthrough）；base64 长度上限为 100,000，超限仍保留成功的系统复制。变量未设或不等于 `1` 时不额外启用此路径。行为、验证边界与生效要求见 [OSC52_REPORT.md](.././OSC52_REPORT.md)。
+  现有 helper 在 SSH/MOSH 或 `PI_CLIPBOARD_OSC52=1` 时先尝试系统复制，再额外发直接 OSC 52（不包 tmux passthrough）；base64 长度上限为 100,000，超限仍保留成功的系统复制。变量未设或不等于 `1` 时不额外启用此路径。行为、验证边界与生效要求见 [OSC52_REPORT.md](clipboard.md)。
 
 ## 实例状态与跨扩展共享
 
@@ -54,7 +54,7 @@ npm test        # node --experimental-strip-types --test
 npm run typecheck
 ```
 
-`test/support.ts` 是 `pi-goal/test/support.ts` 中 `createCustomSelectorHarness` 的逐字副本；后者也为另外三套 suite 维护自己的副本。
+测试使用本包 panel harness，不加载领域插件。
 
 information-panel 测试固定 accent 标题 frame 与 3 行正文、terminal 70% 与 editor slot 双重高度上限、breadcrumb 左侧截断、外部点击关闭且不穿透、loading/cached/error state、`renderKeyValue()` 的 muted key、`fillsBody` 的精确 row budget（含 state 行占位）与固定 frame 高度、`onMouse` 消费顺序（外部左键先关闭）以及 `bodyPointAt()` 的坐标换算。editor-panel 测试固定 `A → B → Escape → A`、root close、replace semantics、每个 screen 的 search / selection 恢复、bracketed paste、外部点击关闭且不穿透、overlay 关闭后输入焦点回到原 editor 和 abort-safe async teardown。text-panel 测试固定 editor-position 放置、完整 editor 宽度、fullscreen layout 的 allocated-height 与 trailing-row 保留、滚动、clean-text copy 和 close behavior；collapsible-block 测试固定共享两列 row grammar、bounded preview、themed marker 与 payload reclamation 后仍至少保留 summary row。selectable-collapsible-panel 测试固定同色右端 title/footer rule、相邻 item 的 muted divider、divider 不参与点击/selection、窄宽度 label 保留、稳定 id selection、上下选择、Enter/Space/点击折叠、viewport 跟随，以及 live reorder 后 selection 迁移并保持可见。process-panel 测试固定 SearchSelect list grammar、右对齐 command、runtime formatting、nested / direct Escape behavior、follow-newest scrolling、confirmed stop、callback title/hint 的逐帧刷新，以及 `statusShort` 只在完整 status 放不下时替换、替换后不被裁断、缺省时行为不变、search 按语义字段在窄宽和宽宽给同一结果。
 

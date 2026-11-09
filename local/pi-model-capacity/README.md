@@ -1,89 +1,36 @@
 # pi-model-capacity
 
-Provider-neutral capacity observation for Pi 1.5.0. This package owns polling, authentication observation, response validation, credential-private caching, and immutable semantic snapshots. It does not own `/model`, statusline UI, SDK assembly, tools, or provider execution. TypeScript loads directly; no build output.
+## 用途
 
-## Builtin adapters
+观察 provider 容量、订阅窗口和余额，发布不可变语义快照，不执行模型请求。
 
-- **OpenAI Codex**: Pi-resolved ChatGPT OAuth; `GET https://chatgpt.com/backend-api/wham/usage`. Windows are classified by the declared duration, never primary/secondary position.
-- **Grok**: Pi-resolved xAI subscription OAuth and the Grok CLI token-auth marker; `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits`. API-key billing is deliberately unsupported. An omitted proto scalar means 0% only inside a valid current period.
-- **DeepSeek**: Pi-resolved API key; official `GET https://api.deepseek.com/user/balance`. Publishes prepaid remaining/granted/topped-up balances, never invented used/limit values. Custom provider origins are rejected.
+## 加载与构建
 
-Environment-specific adapters are not builtin and are never imported by this package. A separately loaded external extension may register them. Provider IDs are lowercase public identifiers matching `[a-z0-9][a-z0-9._-]{0,127}`; there is no closed provider list.
+按[根安装说明](../../README.md#安装与加载)加载本包。TypeScript 直接加载，没有 build/dist。
 
-## Observation adapter registration
+依赖统一在仓库根 `npm ci`，不在包目录另建 lockfile。目标 Pi 1.5.0；编译消费者改源码或共享库后须重建并启动新进程。
 
-Public exports: `pi-model-capacity/adapter` (adapter types and shared parsing/HTTP helpers), `pi-model-capacity/contracts` (V2 data validation and channel names), and `pi-model-capacity/registration` (the small event client).
+## 配置与命令
 
-```ts
-import { registerCapacityAdapter } from "pi-model-capacity/registration";
+`/usage` 显式刷新并查看所有已注册 adapter；TUI 用信息面板，RPC/headless 输出文本。内置 Codex、Grok、DeepSeek 观测；外部 adapter 通过注册协议接入。Codex 已结算使用量保存在 `<agent-dir>/codex-usage.jsonl`。
 
-const registration = registerCapacityAdapter(pi.events, {
-  provider: "example-capacity",
-  intervalMs: 30_000,
-  staleMs: 90_000,
-  async resolveAuth(ctx, signal) {
-    // Honor signal for asynchronous discovery or CLI observation.
-    // ctx.modelRegistry exposes only config/auth observation methods.
-    // Return undefined when unconfigured. fingerprint is private cache identity.
-    return { apiKey: "fixture", headers: {}, fingerprint: "account-revision" };
-  },
-  async fetch(auth, { fetch, now, signal, ctx }) {
-    return { models: { example: { loadPercent: 25, quota: { remaining: 9, limit: 10 } } } };
-  },
-}, (error) => { /* surface admission failure in the integration's diagnostics */ });
+`<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。
 
-// The integration owns this handle and must dispose it at shutdown.
-pi.on("session_shutdown", () => registration.dispose());
-```
+## 可选协作与降级
 
-The helper subscribes before its initial synchronous `model-capacity:register-adapter-v1` request. The owner installs that listener, then broadcasts `model-capacity:adapter-ready-v1` with `{ version: 1, ownerId }`. This covers integration-first and owner-first loading, as well as owner replacement. No owner means no admission yet, not a fabricated success. The handle exposes `accepted` and `error`; errors are also delivered to the optional callback.
+发布 snapshot/request/watch V2 和 adapter 注册/ready V1；CC 仅展示，不拥有认证或轮询。无 watcher 不轮询，无 adapter 不伪造容量，无展示方仍可 `/usage`。
 
-Raw registration request: `{ version: 1, adapter, reply(result) }`. Reply is `{ version: 1, ownerId, accepted: true, release() }` or `{ version: 1, ownerId, accepted: false, error }`. Duplicate ready for the same owner is ignored; a new owner ID re-admits the integration. Unknown versions are rejected. Duplicate provider IDs (including builtin IDs) fail closed: no replacement or merging. Release is idempotent and identity-bound; an old lease cannot remove a later registration. Release aborts flights, cancels timers, deletes private auth/cache state and publishes the removal with a new revision. Late registration joins existing all-provider watches and explicit watches of that ID. A provider's last watcher release invalidates pending auth resolution and aborts its fetch; stale asynchronous results cannot reappear after release/re-registration.
+## 验证
 
-Admission grants only capacity observation. The passed context projects the registry to `getProviderAuthStatus`, `getAvailable`, `getAll`, `isUsingOAuth`, `getProviderAuth` and a base-URL-only `getProvider`. No `complete`, SDK factory, tool registration/execution, session or UI port is passed. This is an in-process cooperative contract, not an OS sandbox: loading arbitrary JavaScript itself is not a security boundary.
-
-## V2 snapshot/request/watch
-
-V1's closed provider set is intentionally retired. Core and presenters must upgrade together; V1 and unknown versions are not silently accepted or dual-published.
-
-- `model-capacity:snapshot-v2`: immutable `ModelCapacitySnapshotV2` (`version: 2`, required UUID `ownerId`, monotonic owner-local `revision`, optional `sessionId`, `providers`). Consumers compare revision only within one owner, reset on a new owner, and reject late data from retired owners.
-- `model-capacity:request-snapshot-v2`: synchronous cache recovery:
-
-```ts
-pi.events.emit("model-capacity:request-snapshot-v2", {
-  version: 2,
-  sessionId,
-  reply(snapshot, refreshReceipt) {},
-});
-```
-
-Add `refreshProviders: ["example-capacity"]` for confirmed refresh. The reply waits for one post-request deduplicated fetch; a flight that started before the request cannot satisfy it. The V2 receipt reports each requested provider's `refreshed`, final `state`, and optional observation/error. Unknown or removed IDs return `unavailable`, never success. Removal/replacement during a refresh cannot produce a successful receipt for the replacement.
-
-- `model-capacity:watch-v2`: `{ version: 2, watcherId, action: "acquire" | "release", sessionId?, providers? }`. Omitted providers means all current **and future** registered adapters. Acquire refreshes immediately. Only the union of live watches is polled, at each adapter's cadence; release cancels only providers no longer watched.
-
-CC keeps its live watch set and uses the same `adapter-ready-v1` handshake to recover after late owner loading/replacement. It first corroborates the announced `ownerId` through a synchronous V2 cache request, then replays only live acquires; snapshots emitted before listener readiness do not prematurely trigger replay. Duplicate/unknown readiness, retired-owner data and late cache/confirmed replies fail closed. Session replacement and client disposal release recorded watches and reject pending refreshes; the existing ready receipt consistency checks remain mandatory.
-
-Schema and validators live in [`src/contracts.ts`](./src/contracts.ts). Provider shape includes state, observed/stale timestamps, optional plan, windows, gateway concurrency, model load/quota and balances. Model and quota source times remain epoch milliseconds; reset times remain epoch seconds. CC is the only presenter and renders these shapes without provider-brand dispatch. No presentation implementation lives in an integration.
-
-## Failure, account and lifecycle policy
-
-- Transient fetch failure retains the last successful data as stale; missing auth clears it to unavailable; malformed data reports error (or stale with the last successful value).
-- Auth fingerprints never enter snapshots. A changed fingerprint clears the prior account's data before publishing refreshing. An older auth resolution cannot overwrite a newer resolution.
-- Results are validated and copied before caching; snapshots and nested data are frozen, so mutation cannot bypass validation or revisions.
-- Confirmed refreshes and fetches deduplicate per provider. All builtin requests have bounded timeout/body size. Auth discovery also receives an optional abort signal; superseding resolution, final-watch release, adapter release and disposal abort it. An external adapter must honor the auth/fetch signals and bound its own I/O; generation/identity checks reject late results even if it ignores abort.
-- Session change clears watches, pending work and cached auth/data. Dispose publishes an empty snapshot, cancels timers, aborts work and removes listeners. An integration must dispose its registration handles too.
-
-## `/usage` and Codex history
-
-`/usage` refreshes every registered adapter and formats capacity by data shape. TUI uses a UIKit information panel: cached/loading first frame, then refresh; failures retain cached data and show context. RPC/headless prints text.
-
-Codex burn history remains `<agent-dir>/codex-usage.jsonl`. Only settled Codex traffic or an explicit `/usage` check appends a sample; selector polling never creates zero-traffic history. Legacy history fields remain readable. `<agent-dir>` comes from Pi public `getAgentDir()` (`PI_CODING_AGENT_DIR` override), not a guessed home path.
-
-## Verification
+仓库根运行：
 
 ```sh
-npm test
-npm run typecheck
+npm run typecheck -w pi-model-capacity
+npm test -w pi-model-capacity
 ```
 
-Tests use neutral synthetic adapters and injected HTTP fixtures, without real provider services. Environment-specific parser and discovery tests belong to their external adapters, not to the Core test prerequisites. Real credentials, billing, and full-profile TUI remain separate acceptance gates.
+自动测试使用临时配置、fixture 或 faux provider，不证明真实 provider、人工终端或完整 profile。跨插件联测见 [integration](../../integration/README.md)。
+
+## 文档
+
+- [docs/capacity.md](docs/capacity.md)：adapter、snapshot/watch、认证、账户和生命周期。

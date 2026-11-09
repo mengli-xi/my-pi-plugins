@@ -68,7 +68,7 @@ Pi 1.5 已有原生 `/thinking`、`Shift+Tab` 和 `/settings` 入口。这个包
 pi install /path/to/my-pi/local/pi-effort
 ```
 
-也可以将路径加入目标 `<agent-dir>/settings.json` 的 `packages`，安装相邻 workspace 的 `pi-li-uikit` 依赖后新开 Pi process。本包没有 build；若更新了内联 UIKit 的消费者，须按其构建约定重建，不用 `/reload` 替代 rebuild/restart 验收。本包的相对 `file:` 依赖不代表它能脱离 workspace 独立发布到 registry。
+也可以将路径加入目标 `<agent-dir>/settings.json` 的 `packages`，安装相邻 workspace 的 `pi-li-uikit` 依赖后新开 Pi process。本包没有 build；若更新了内联 UIKit 的消费者，须按其构建约定重建，不用 `/reload` 替代 rebuild/restart 验收。本包的 workspace 依赖不代表它能脱离 workspace 独立发布到 registry。
 
 ## 绘制方式
 
@@ -83,7 +83,7 @@ pi install /path/to/my-pi/local/pi-effort
 在隔离 HOME/config/cache 中安装官方 Pi 1.5.0 锁定依赖，不读取日常配置：
 
 ```bash
-npm ci # 在仓库根运行
+npm ci # 在仓库根运行；以下验证命令在包目录运行
 npm run typecheck
 npm test
 ```
@@ -92,90 +92,26 @@ npm test
 
 测试覆盖级别阶梯（模型可用级别、参数解析、前缀、位置、别名和歧义情况）、滑杆（间距与居中、轨道覆盖标签、光标落在自身标签内、箭头/数字/Home/End、两端 clamp、确认、取消、针对不同/扁平/近似扁平 theme 的选色、七种面板尺寸下的行宽、窄面板回退），以及使用 Pi stand-in 测试命令本身（设置、拒绝、clamp、picker 往返、无 UI / 无 reasoning 路径，以及随模型切换变化的 completion）。
 
-## The `ultra` rung
+## ultra 与片段门控
 
-The ladder carries one rung pi does not have. pi's `ThinkingLevel` is a closed
-union (`off … max`), so `ultra` is presented by this package rather than passed
-to `setThinkingLevel`:
+Pi 的 ThinkingLevel 是 off 到 max 的封闭联合；ultra 是本包的会话模式，不传给 setThinkingLevel。它固定当前模型的最高真实档位（不要求支持 max），并在允许时通过 prompt:fragments-v1 贡献主动委派片段。
 
-- it pins the **model's top real level** — whatever that is. It does not require
-  `max`, so every reasoning model can offer ultra;
-- it contributes a proactive-delegation fragment to the system prompt over
-  `prompt:fragments-v1` (owner: pi-model-prompts).
+选择 max 与 ultra 不同，只有 ultra 可贡献。显式选择普通 /effort 档位或经原生选择器真实变档会退出 ultra；Pi 1.5 同档重选不发变更事件，此时用 /effort max 等显式退出。标记以 pi-effort:ultra-v1 custom entry 按会话持久，跟随 reload/resume/fork/rewind。
 
-**Picking `max` and picking `ultra` are different acts, and only `ultra`
-can contribute a fragment.** An explicit non-ultra `/effort` choice, or a real
-level change through Pi's native selector, leaves ultra. Pi 1.5 does not emit a
-change event when the same native level is selected again; use `/effort max`
-(or another plain level) to explicitly leave ultra in that case. The flag is
-per session, persisted as a `pi-effort:ultra-v1` custom entry, so it survives
-reload/resume/fork and follows rewind.
+Model Prompts 必须显式加载。缺席只改真实档位，不向请求追加片段；本包不单独请求或启动 Agent。默认文字尊重用户要求、审批和工具权限，ultra 不扩权。
 
-The prompt owner must also be explicitly loaded. Without `pi-model-prompts`,
-the command can change the real thinking level but cannot add the fragment to
-a model request. The fragment goes to the current provider as part of the normal
-system prompt; this package does not send a separate request or launch agents.
-The default wording respects user instructions and existing approval/tool
-permissions. Selecting ultra grants no additional authority.
+委派工具须在该 run 确认的 selectedTools 中；缺失、坏值、未知工具集不贡献，保持 ultra 并在每次激活只提示一次（换 session 重置）。启用时还尽力检查配置包是否启用。
 
-### The violet ripple
-
-While the caret rests on `ultra`, a violet ripple spreads across the panel from
-that rung's caret: concentric rings of background colour, brightest at the
-wavefront, fading through an eight-step gradient behind it. The animated field
-fills every cell between the title and footer rules, including blank space on
-both sides, but never paints or crosses either rule.
-
-The geometry and timing are Claude Code's own `/effort` slider, read out of its
-shipped bundle rather than guessed — 8 steps from `rgb(62,22,118)` to
-`rgb(140,80,240)`, a 20-column wavelength, 0.03 columns per millisecond,
-repainted every 80ms. Two details carry the look and are worth keeping if it is
-ever tuned: distance weights rows twice as heavily as columns (a terminal cell
-is about twice as tall as it is wide, so without it the rings render as tall
-ovals), and the ring profile is a raised cosine rather than a hard edge, which
-is what makes the wave roll instead of march.
-
-It starts when the caret arrives, restarts from zero each time it comes back,
-and stops when the caret leaves or the panel closes. Cells the wavefront has
-not reached keep their normal colours, so the panel stays readable throughout.
-Confirming a level plays nothing — Claude Code has no confirm-time animation
-either, just the notification.
-
-Implementation notes: `ripple.ts` is pure (distance, gradient step, and an
-ANSI-aware per-cell painter that preserves the theme's foreground escapes and
-resets only the background), so the whole effect is tested without a terminal.
-The panel owns a raw timer, which pi does not tear down for extensions the way
-it does event subscriptions, so it is cleared on leave, on select/cancel, and
-on `dispose()`.
-
-### Gating on the sub-agent tool
-
-Telling a model to spawn sub-agents when no such tool is registered is how runs
-derail, so the fragment is injected only when the configured tool is in the
-turn's confirmed toolset (`selectedTools`). Missing, malformed or unknown
-toolsets fail closed. Without confirmation the session stays ultra, contributes
-nothing, and warns once per ultra activation (reset on session change). Switching ultra on also does a best-effort check that
-the configured package is enabled in settings.
-
-### Configuration
-
-`<agent-dir>/pi-effort.json`:
+配置在 <agent-dir>/pi-effort.json：
 
 ```json
 { "ultra": { "subagentTool": "spawn_agent", "subagentPackage": "local/pi-subagents" } }
 ```
 
-`<agent-dir>/ultra-prompt.md` overrides the contributed text; a missing or blank
-file uses the shipped default. Each use checks inode/size/mtime/ctime and reuses
-unchanged bytes and parsed config, including cached failures. Editing, replacing
-or deleting a file is observed on the next use without rewriting any config.
+<agent-dir>/ultra-prompt.md 覆盖文字；缺失/空文件用随包默认。每次按 inode/size/mtime/ctime 缓存正文、解析及失败，编辑/替换/删除下次使用可见。缺配置用默认；坏配置或不可读文件禁用贡献并按失败版本诊断一次，只含路径/原因不含正文，真实档位保持。模式开关由片段贡献，委派规则留在 subagents 技能；自定义覆盖仍须遵守权限。
 
-Missing config uses defaults. Invalid config or unreadable config/prompt files
-disable contribution and emit one safe diagnostic per failed version; they do
-not silently enable a default delegation policy. Diagnostics include the file
-and failure context, not file contents. The real thinking level remains set.
-The mode switch is contributed, while delegation instructions stay in the
-`subagents` skill. Custom overrides remain the operator's responsibility and
-must respect existing permissions.
+## 紫色波纹
 
-`<agent-dir>` is Pi's public `getAgentDir()` (`PI_CODING_AGENT_DIR` when set). Pi 1.5.0 is required.
+光标停在 ultra 时，以光标为圆心播放背景同心波纹，覆盖标题/底线之间所有 cell，绝不跨边线。8 档颜色从 rgb(62,22,118) 到 rgb(140,80,240)，波长 20 列、速度每毫秒 0.03 列、每 80ms 重画；行距离权重是列的两倍，波形用 raised cosine，避免椭圆或硬边。
+
+光标进入开始、重入归零、离开/关闭停止；波前未到的 cell 保持原色，确认不播放额外动画。ripple.ts 是纯距离/梯度/ANSI-aware 单元格绘制，不改前景，只 reset 背景。面板拥有 timer，离开、选择/取消和 dispose 都清理，不依赖 Pi 代清扩展 timer。

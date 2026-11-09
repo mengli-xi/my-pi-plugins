@@ -1,6 +1,6 @@
 # 本地维护策略
 
-本 package 主动维护自身实现，不跟踪独立 upstream merge 生命周期。现行行为见 [README](./README.md) 和 [contracts](./docs/README.md)；这里只保留未来改动容易破坏的取舍，不保存实施计划、旧审批或性能样本。
+本 package 主动维护自身实现，不跟踪独立 upstream merge 生命周期。现行行为见 [README](../README.md) 和 [contracts](../README.md)；这里只保留未来改动容易破坏的取舍，不保存实施计划、旧审批或性能样本。
 
 ## 展示不接管领域
 
@@ -52,4 +52,4 @@ Bun splitting 保留首次使用 import，UIKit 内联，Pi API、`typebox`、�
 
 CC Main 不要求 Pi 源码 patch。native child 仍遵守 `pi-session-runtime` 的 named-theme / theme-watch capability gate：双面能力缺失时允许原版主题降级并首次提示；单面或未知声明仍在停止 Main 前拒绝。命名主题资源发现和真实 `ui.theme.name` 才能证明生效，仅出现在 `/theme` 列表不是应用成功。
 
-Statusline 是真实 shell 边界，不是 sandbox，payload 带真实 session path；取消预算只回收本端 fd 和原进程组，不能追杀主动另建 session 的后代。完整数据、首帧、slot 与进程回收规则见 [statusline contract](./docs/statusline-provenance.md)。
+Statusline 是真实 shell 边界，不是 sandbox，payload 带真实 session path；取消预算只回收本端 fd 和原进程组，不能追杀主动另建 session 的后代。完整数据、首帧、slot 与进程回收规则见 [状态栏合同](statusline-provenance.md)。

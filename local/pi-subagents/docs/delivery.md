@@ -1,6 +1,6 @@
 # pi-subagents · 交付协议 V1
 
-本文档规定 Task 结算、Completion/Inbox/Outbox、Agent Barrier、runtime-contract Wake 仲裁与已读确认。统一 mailbox 的现行 transport、stable keys、导入与 child 取消顺序见 [mailbox v1](./mailbox-v1.md)，目标 transport build 为 mailbox-v1.0.6，须配套 rebuild/fresh process；本文中旧的直接 native send/append、timeout scan、SDK resume trigger 与递增 epoch 重投描述由该合同取代，不再作为运行路径。持久化 schema 和状态有效性由 [`PERSISTENCE_FORMAT.md`](./persistence.md) 负责；可信 caller/prepare/lease 与同进程端口由 [`HOST_API.md`](./architecture.md)负责。旧 Supervisor/Owner IPC 的有效 application/ACK 约束迁入§14，唯一 SDK 无 OS transport。
+本文档规定 Task 结算、Completion/Inbox/Outbox、Agent Barrier、runtime-contract Wake 仲裁与已读确认。统一 mailbox 的现行 transport、stable keys、导入与 child 取消顺序见 [mailbox v1](./mailbox-v1.md)，目标 transport build 为 mailbox-v1.0.6，须配套 rebuild/fresh process；本文中旧的直接 native send/append、timeout scan、SDK resume trigger 与递增 epoch 重投描述由该合同取代，不再作为运行路径。持久化 schema 和状态有效性由 [`persistence.md`](./persistence.md) 负责；可信 caller/prepare/lease 与同进程端口由 [`architecture.md`](./architecture.md)负责。旧 Supervisor/Owner IPC 的有效 application/ACK 约束迁入§14，唯一 SDK 无 OS transport。
 
 ## 1. 权限边界与保证
 
@@ -34,7 +34,7 @@ const SUBAGENT_OWNER_ID = "pi-subagents";
 
 ## 2. Completion 引用与结果
 
-所有 ID 使用 `PERSISTENCE_FORMAT.md`。公开引用不携带 path 或 authority token：
+所有 ID 使用 `persistence.md`。公开引用不携带 path 或 authority token：
 
 ```ts
 interface CompletionReferenceV1 {
@@ -142,7 +142,7 @@ close/timeout/interrupt/settlement 取消相关 pending Mailbox 与 pending/sent
    - Task 被覆盖且是最后一个 covered Task → satisfy Barrier，并创建恰好一个覆盖全部有序 Completion ID（包括此次最终 Completion）的 `barrier-wake` Outbox；
 7. 暴露下一条 FIFO Task 为 admitted，但不在本 transaction 中启动它。
 
-这也是 `PERSISTENCE_FORMAT.md` settlement bullet 的必要判定方式：“不是 armed Barrier 的 intermediate member”依据 transaction 前的 coverage 测试，在最后一个 Task 将 Barrier 改为 satisfied 之前完成。因此，仍被 armed Barrier 覆盖的每一个 Task——包括最后一个 Task——都不满足 ordinary-Outbox 条件。最后一个 Task 只走 aggregate branch。实现不得把“intermediate”重解释为“final”的数学否定，也不得在 mutation Barrier state 后判定 ordinary 条件。
+这也是 `persistence.md` settlement bullet 的必要判定方式：“不是 armed Barrier 的 intermediate member”依据 transaction 前的 coverage 测试，在最后一个 Task 将 Barrier 改为 satisfied 之前完成。因此，仍被 armed Barrier 覆盖的每一个 Task——包括最后一个 Task——都不满足 ordinary-Outbox 条件。最后一个 Task 只走 aggregate branch。实现不得把“intermediate”重解释为“final”的数学否定，也不得在 mutation Barrier state 后判定 ordinary 条件。
 
 Barrier arm 只 snapshot 当时还没 settle 的 Task。在 arm 之前就已经 settle 的 Task 已经拿到了自己的投递载体，并且按 D-008 独立唤醒过；Barrier 不把它的 Completion 收进 `completion_ids`，聚合 Outbox 也不再引用它，否则同一个 Completion 会有两条载体。`wait_agents` 的 tool result 仍然分别报告完整 snapshot、`settled_task_ids` 与 `remaining_task_ids`，模型据此知道哪些已经完成。
 
@@ -268,7 +268,7 @@ Conversation execution state 为 `idle | running | retrying | compacting | settl
 - **已经存在 claim：**调用 `wake.hasClaim()`，若为 true，则在同一同步 JS turn 中立即调用 `wake.commit("delivered")`。不得追加 producer continuation。Goal listener 只能为该 `delivery="delivered"` settlement 安排任务。
 - **尚无 claim：**追加并验证冻结的 producer continuation。在 offer 保持 open 时，该 append 有意为异步。在最终 claim observation 前，为精确的 `(session_id, offer_id, offer_generation, outbox_id, wake_epoch)` 发布一个 process-local、不可变的 `ProducerContinuationProofV1`。随后调用 `wake.hasClaim()`，无论是否出现 late claim，均在同一同步 JS turn 中立即调用 `wake.commit("delivered")`。
 
-Consumer 无法在最终同步 observation 与 commit 之间 replace/claim。该 observation 前已 retired 的 claim 会消失。若 producer append 期间出现 Goal claim，其 settlement listener 必须同步查询 producer proof；若找到精确已验证 continuation，则记录 settlement 但不安排另一轮 turn。因此 runtime delivery 保持 `delivered`，producer continuation 仍拥有 Wake。`wake.commit("skipped")` 保留给 recovery：它已经证明相同 continuation 已经 started/settled，与 `PERSISTENCE_FORMAT.md` 一致。
+Consumer 无法在最终同步 observation 与 commit 之间 replace/claim。该 observation 前已 retired 的 claim 会消失。若 producer append 期间出现 Goal claim，其 settlement listener 必须同步查询 producer proof；若找到精确已验证 continuation，则记录 settlement 但不安排另一轮 turn。因此 runtime delivery 保持 `delivered`，producer continuation 仍拥有 Wake。`wake.commit("skipped")` 保留给 recovery：它已经证明相同 continuation 已经 started/settled，与 `persistence.md` 一致。
 
 runtime commit 成功后，必须按**实际 continuation proof**而不是按易失 offer 恰好是否有 claim 来分类 durable branch：
 
@@ -282,7 +282,7 @@ runtime commit 成功后，必须按**实际 continuation proof**而不是按易
 
 ### 7.5 Runtime settlement proof、精确 receipt mapping 与终态 commit
 
-`wake.commit(...)` 同步返回向后兼容的 `WakeSettlementV1`，并扩展可选的 `consumerReceipt`，它来自 `INTEGRATION.md`。被 claim 的 Goal 的单个 `onSettledWithReceipt` provider 会先查询下文的 producer-proof registry；仅在 `state="committed" && delivery="delivered"` 且没有精确 active producer proof 时安排任务，然后在同一调用中返回经过校验的 receipt。现有普通 settlement listener 随后运行。`skipped` 仍只用于 recovery。
+`wake.commit(...)` 同步返回向后兼容的 `WakeSettlementV1`，并扩展可选的 `consumerReceipt`，它来自 `architecture.md`。被 claim 的 Goal 的单个 `onSettledWithReceipt` provider 会先查询下文的 producer-proof registry；仅在 `state="committed" && delivery="delivered"` 且没有精确 active producer proof 时安排任务，然后在同一调用中返回经过校验的 receipt。现有普通 settlement listener 随后运行。`skipped` 仍只用于 recovery。
 
 Producer fallback proof 是经验证的 continuation native entry identity/digest。由于该 proof 阻止 late Goal claim 安排任务，它的 transport 与 lifecycle 属于规范，而非实现细节。
 
@@ -374,7 +374,7 @@ Receipt field 精确如下：
 2. 把 Outbox 改成 `state="delivered", wake_state="settled"`；
 3. 写入 receipt ID、`settlement_proof_sha256=SHA-256(canonicalJSON(receipt excluding record_revision))` 与 delivered timestamp。
 
-分两笔而不是只在终态那一笔写 receipt，是因为这一 epoch 的 owner 证据活不过进程：Goal receipt 只在 registry 的 `commit` 内部产生一次，producer proof 只活在 process-local registry 里。owner 一定下来就先把它落盘，终态事务失败、甚至进程直接死掉之后，下一个边界和重开 store 的 recovery 才有一份不必重新 offer 就能收尾的事实。每个 `(outbox_id, wake_epoch)` 至多一份 receipt，这条不变量由 `PERSISTENCE_FORMAT.md §7.7` 保证。老 store 里写在这条规则之前的 `wake-settlement-pending` 记录没有 receipt，终态事务照旧补写一份。
+分两笔而不是只在终态那一笔写 receipt，是因为这一 epoch 的 owner 证据活不过进程：Goal receipt 只在 registry 的 `commit` 内部产生一次，producer proof 只活在 process-local registry 里。owner 一定下来就先把它落盘，终态事务失败、甚至进程直接死掉之后，下一个边界和重开 store 的 recovery 才有一份不必重新 offer 就能收尾的事实。每个 `(outbox_id, wake_epoch)` 至多一份 receipt，这条不变量由 `persistence.md §7.7` 保证。老 store 里写在这条规则之前的 `wake-settlement-pending` 记录没有 receipt，终态事务照旧补写一份。
 
 Goal-claimed terminalization 要求 runtime `delivery="delivered"`。Producer fallback 在正常运行时使用 `delivered`，包括同步 producer proof 抑制 Goal scheduling 的 late-claim 情形。它只在 recovery 证明同一 continuation 已 started/settled 时使用 `skipped`。其他任何路径不得使用 `skipped`。
 
@@ -421,7 +421,7 @@ producer 的 append/prove/activate 任一步失败时，必须释放已经 reser
 
 ### 7.8 State / owner / 证据 / 恢复边界对照表
 
-一条 Outbox 在任一时刻只有一个 owner，只有一份跨重启的证据。下表是 §§7.2–7.6 的收敛结论，字段组合以 `PERSISTENCE_FORMAT.md §7.7` 为准。
+一条 Outbox 在任一时刻只有一个 owner，只有一份跨重启的证据。下表是 §§7.2–7.6 的收敛结论，字段组合以 `persistence.md §7.7` 为准。
 
 | durable state | 这一步的 owner | 跨重启的证据 | 一次失败后的下一个合法边界 |
 |---|---|---|---|
@@ -438,7 +438,7 @@ producer 的 append/prove/activate 任一步失败时，必须释放已经 reser
 ### 7.9 Turn settlement：owner 级「模型是否处理过」
 
 `delivered/settled` 只证明消息落盘并请求过一次 wake，不证明模型处理过这批 card。是否处理过由 Outbox 上的 `turn_settlement`
-（`PERSISTENCE_FORMAT.md §7.7`）另记。它是 D-007R 要求的 owner 待处理状态，不是 provider exactly-once：
+（`persistence.md §7.7`）另记。它是 D-007R 要求的 owner 待处理状态，不是 provider exactly-once：
 
 - **写 pending**：终态事务把 Outbox 链接成 `delivered` 时，同一笔事务写下 `turn_settlement = { wake_epoch, continuation_identity（这一 epoch receipt 的
   continuation）, state: "pending", pending_at }`；重开 store 的 recovery 用落盘 receipt 补链接成 `delivered` 时同样写 pending。
@@ -537,7 +537,7 @@ Wake:
 
 `consumer-deferred` 只保留旧格式读取兼容。它没有写入路径；codec 仍能读出旧 store 里的这个值，recovery 在打开时把它归一成 `not-offered` 并丢掉 `wake_deferral`，下一个边界按正常流程重投一次。
 
-有效 field combination 精确由 `PERSISTENCE_FORMAT.md §7.7` 定义。`wake_epoch` 只在创建新 offer object 后递增。`delivered` 要求同一 metadata transaction 中有匹配 Wake receipt。
+有效 field combination 精确由 `persistence.md §7.7` 定义。`wake_epoch` 只在创建新 offer object 后递增。`delivered` 要求同一 metadata transaction 中有匹配 Wake receipt。
 
 Outbox creation 将 `delivery_attempts=0`。每个已提交的 `pending → delivering` transition 恰好递增一次。该 attempt 内对 card append/proof 的 retry、safe-boundary waiting、branch reconciliation 和从 `cards-appended` 重建 Wake offer 都不递增。`delivery-failed → pending` 不递增；下一次 `pending → delivering` 才递增。
 

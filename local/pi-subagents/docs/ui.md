@@ -73,3 +73,11 @@ SDK 必须使用一致补丁 peer graph，具体合同见 Runtime 与 host patch
 CC presentation 可选，缺席时使用 Pi 原生消息渲染，任务输入、历史、返回与生命周期不变。
 使用 CC 时须核对声明与工厂 hash；原生主题降级和 presentation 缺席是两个独立边界。
 验证要求见 [维护与测试](maintenance.md)。
+
+## 压缩状态补注
+
+Main 的公开 session_compact 后，若有 queued/starting/running/waiting Task 且未被 recovery marker 覆盖，追加隐藏 subagent-compact-state-v1，声明压缩时实时状态优先，逐项给 Agent ID/path、Task ID/phase、最近已完成正文/工具活动（不含 thinking）及结果获取方式。只读现有 runtime；空会话不初始化，空集合不发；同 compaction ID 一次，恢复/reload 不补发，不改 Task admission 或 Completion。
+
+用公开 sendMessage(display:false, triggerTurn:false, deliverAs:steer)。idle 压缩在 compaction 后立即落盘；运行中由 Pi 延至最早安全 turn_end 或 run flush，因此不承诺紧接着首请求可见。不开额外请求，不用会延至下次外部输入的 nextTurn，不依赖压缩插件/private seam。
+
+手动压缩期间完成任务保留 durable Completion 队列；session_compact/session_compact_failed 后等 Pi guard 退出，再通知既有 Main idle，活跃 run 仍用 agent_settled。有界 timer 受 session/runtime fence 与 shutdown 清理，不能投旧会话或落 compaction 前。

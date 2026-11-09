@@ -27,13 +27,13 @@ projection 只写 user/assistant 的标识、parent 和 assistant usage，不把
 
 测试 `test/statusline/external-script.test.ts` 使用包内真实脚本，不读取用户脚本或数据库；`sdk-default.test.ts` 通过 Pi 1.5 SDK 与 faux provider 验证未配置 command 时默认输出替换兜底帧，不发送 provider 请求。
 
-## Usage、压缩与 cache
+## 用量、压缩与缓存
 
 compaction 在 branch 顺序中位于有效 usage 之后时立即清掉旧 request baseline、cache quality、duration 与 200k 标记，但保留会话累计流量、费用和 cache samples。原生/extension compaction 共用边界；`session_compact/session_tree` 使缓存失效，reload 从 branch 重建。下一条成功且非零 usage 恢复 measured baseline，error/aborted/全零 usage 不冒充新观测。
 
 等待新 usage 时，用公开 `buildSessionContext(branch)` 与 `estimateTokens` 估算有效 conversation；包含 summary、保留消息和 system replay，但不包含 provider 后续 prompt/tool overhead。估算填入 `current_usage.input_tokens`，output/cache 为 null，百分比来自同一值；`usage_source` 为 `estimate/usage/pending/null`，`estimated_tokens` 仅估算时有值。projection 失败则清 usage/百分比并置 pending，不回退压缩前值。外部资产在 estimate 时显示 `~`，pending 显示待更新状态。
 
-`CH` 为当前 `cacheRead/(input+cacheRead+cacheWrite)`，`RU` 为相对上一轮可复用 prompt 的命中率，`M` 为未复用 token；无 cache activity 不把未知当 0。host 拥有 `cache-quality` slot，点击与 `/cc-style cache` 打开同一 active-branch 趋势。compaction/branch summary 断开 reuse baseline，model switch 保留并标记；面板固定 0–100% 刻度、token 加权汇总和有界请求明细。
+`CH` 为当前 `cacheRead/(input+cacheRead+cacheWrite)`，`RU` 为相对前次请求可复用 prompt 的命中率，`M` 为未复用 token；无 cache activity 不把未知当 0。host 拥有 `cache-quality` slot，点击与 `/cc-style cache` 打开同一 active-branch 趋势。compaction/branch summary 断开 reuse baseline，model switch 保留并标记；面板固定 0–100% 刻度、token 加权汇总和有界请求明细。
 
 ## 首帧、刷新与贡献项
 

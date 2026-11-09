@@ -2,7 +2,7 @@
 
 目标运行时为 stock Pi 1.5.0。Main 不要求 Pi 源码 patch；native child 的主题能力检查另由 `pi-session-runtime` 负责，不能据此跳过其 capability gate。
 
-现行设计与边界见 [runtime contract](./spec.md)、[工具呈现 contract](./important-tool-presentation-spec.md) 和 [statusline contract 与来源](./statusline-provenance.md)；[维护策略](.././LOCAL_PATCHES.md) 说明必须保留的设计取舍。
+现行设计与边界见 [runtime contract](./spec.md)、[工具呈现 contract](./important-tool-presentation-spec.md) 和 [statusline contract 与来源](./statusline-provenance.md)；[维护策略](maintenance.md) 说明必须保留的设计取舍。
 
 为 Pi 提供 Claude Code 风格的 transcript 展示：
 
@@ -15,7 +15,7 @@
 - render Claude 风格的工作指标以及持久的最终 `done` 行；
 - 移植 cyber-ui 的呼吸指示器、字母波浪 shimmer 和 500 ms 实时 TPS 平滑；
 - 在紧凑的框中 render 已提交的用户消息：超过 `userMessages.maxLines`（默认 3）行、且至少能藏起 3 行时才折叠成前几行加 `… +N lines`，否则完整显示；
-- 在保留 Pi 原生 thinking render 的同时，为每个 assistant 文本块添加 Claude 风格的 `●` 前缀，增加文本/thinking 间距；`Ctrl+T` 交给 Pi 1.4 原生实现，原地切换，不重建聊天；
+- 在保留 Pi 原生 thinking render 的同时，为每个 assistant 文本块添加 Claude 风格的 `●` 前缀，增加文本/thinking 间距；`Ctrl+T` 交给 Pi 1.5 原生实现，原地切换，不重建聊天；
 - 将突发的 assistant 文本快照平滑为受帧预算约束的打字机流，而不是为每个 provider delta 重建 Markdown；
 - 持久保存不进入上下文的 turn 分隔线和 Codex 风格的运行完成分隔线；
 - 在 Pi 的 TUI 展示边界装饰由 Pi 直接加载的工具，因此折叠无需把源 plugin 的 lifecycle 交给此 package；
@@ -141,7 +141,7 @@ transcript.assistantMessages.typewriter.maxFrameMs
 报告还包括 presentation-adapter resolve、activity 和 group-summary 延迟；adapter/fallback/error 数量；以及 identity-cache hit/miss。`/perf` 会将同一 producer 与其他已连接 plugin 一起显示，`/perf top` 则按 p95 对所有 plugin span 排名。执行 `/cc-style perf on` 前指标保持关闭；`/cc-style perf log on` 会要求集中式 provider 将此 producer 的慢 span 追加到 `<agent-dir>/perf-ui.jsonl`。
 `/perf export` 生成自包含的可视化 dashboard，`/perf open` 在默认浏览器中打开同一报告；两者都会将 CC Style span 与全局 input、paint、event-loop、resize、memory 和其他 producer 指标结合起来。
 
-Prompt cache 面板与 statusline 共用 active-branch analyzer。`CH` 是本轮 `cacheRead / (input + cacheRead + cacheWrite)`；`RU` 是相对上一轮可复用 prompt 的命中率；`M` 是未复用 token。provider 从未报告 cache activity 时，`RU/M` 保持不可观测，不把 0 错报成完整 miss。面板显示固定 0–100% 刻度的 CH/RU 双趋势、token 加权汇总和逐 provider request 明细。analyzer 最多保留最近 120 个请求；趋势按面板宽度截取，宽屏/窄屏明细分别显示最近 20/12 个请求，汇总仍覆盖完整 active branch。`compaction`/`branch_summary` 会断开 RU baseline，model switch 保留 baseline 并显式标记，超过 5 分钟的间隔会显示 idle note。数据直接从 session branch 重建，因此 `/reload`、resume 和 tree navigation 不需要另一份缓存文件。
+Prompt cache 面板与 statusline 共用 active-branch analyzer。`CH` 是当前请求 `cacheRead / (input + cacheRead + cacheWrite)`；`RU` 是相对前次请求可复用 prompt 的命中率；`M` 是未复用 token。provider 从未报告 cache activity 时，`RU/M` 保持不可观测，不把 0 错报成完整 miss。面板显示固定 0–100% 刻度的 CH/RU 双趋势、token 加权汇总和逐 provider request 明细。analyzer 最多保留最近 120 个请求；趋势按面板宽度截取，宽屏/窄屏明细分别显示最近 20/12 个请求，汇总仍覆盖完整 active branch。`compaction`/`branch_summary` 会断开 RU baseline，model switch 保留 baseline 并显式标记，超过 5 分钟的间隔会显示 idle note。数据直接从 session branch 重建，因此 `/reload`、resume 和 tree navigation 不需要另一份缓存文件。
 
 Thinking 区块保持 native Markdown，可用 `Ctrl+T` 查看或折叠历史内容。`assistantMessages.collapsedThinking` 默认为 `"activity"`：当前进行中的 thinking 无视历史折叠开关，默认显示完整正文，并在正文末尾显示 `▴ Thinking 42s`；点击 footer 可切成单行 `▸ Thinking 42s`，再次点击恢复。手动折叠会跨后续 streaming delta 保持，正文行不消费点击，便于选择文字。正文、tool call 或 assistant settle 结束当前 thinking 后，当前展开状态继续保留，直到另一个不同的 thinking block 开始。新 block 默认展开并接管 disclosure；前一个 block 才折叠为单行耗时，若所在 phase 已有 grouped Tool transcript 入口，则归档到 Activity transcript。这个交接只属于 TUI presentation，不改变 Activity 或模型生命周期；历史恢复不会把 completed block 误当成刚结束的当前 block。CC Style 同时建立跨 assistant message 的 Activity phase，唯一业务边界是**实际可见、非空的 assistant 正文**；tool call/result、user message、agent start/end 和 assistant message 结束不切 phase。每段可测量耗时附在它后面的 grouped transcript 行上，例如 `Ran 2 tools · Thinking 42s`；phase 末尾的 Thinking 归到最后一行，同一段不会重复计时。phase 没有 grouped 入口时，completed standalone Thinking 继续保留，避免内容不可达。
 
@@ -253,7 +253,7 @@ card 会将位置读数（`8-18/30`）保留在标题行而非 footer 中，因�
 **标题和 footer bar 由分隔线隔开**；分隔线比 frame 更亮，并在两侧各提前两列结束。碰到边框的线看起来像另一条边；内缩的线看起来才像分隔。panel 会在 footer 上方使用同一种分隔线，而不再绘制此前的全宽 `├───┤`。
 `Enter` 也会关闭它，与该 dialog 保持一致。工具 transcript 保留自己的全高 panel：它用于阅读较长的捕获输出，如果 card 会随调用折叠和展开而改变尺寸，体验反而更差。
 
-Pi 1.4 fullscreen 自己维护 viewport、滚动、选区和鼠标捕获，将 normalized `handleMouse` 事件派给 CC 内容行，包括 Skills 委托来的 `Loaded skill` 行。regular 已退役，CC 行不响应 regular 点击，可用 `Alt+O` 或 `/tool-transcript` 打开详情；详情面板属于 UIKit。
+Pi 1.5 fullscreen 自己维护 viewport、滚动、选区和鼠标捕获，将 normalized `handleMouse` 事件派给 CC 内容行，包括 Skills 委托来的 `Loaded skill` 行。regular 已退役，CC 行不响应 regular 点击，可用 `Alt+O` 或 `/tool-transcript` 打开详情；详情面板属于 UIKit。
 
 点击会在松开时派发，并且只会在期间未选择任何内容时派发，因此从可点击行开始拖动选区仍会执行选择。
 
@@ -481,7 +481,7 @@ todo provider 也可以使用自己的视觉语言，在编辑器旁保留自己
 
 ### Pi 兼容边界
 
-Pi 1.5 host surface 统一登记在 `src/compat/pi-1.3.ts` 中（保留历史文件名）。不安全的 instance 访问位于 `src/compat/` 下的 feature adapter 中；transcript 和 selector 策略不再重复声明 Pi 的私有对象布局。catalog 将 TypeScript 验证的已导出公共 member 与 private contract 分开；prototype contract 由 `npm run check-internals` 检查，instance contract 在实时 session 中运行。Pi 1.4 的 native thinking 会包在 `MouseRegion` 中，`assistant-message.childShape` 会同时校验 wrapper 的 `child` 和内部 Markdown 的 `defaultTextStyle`。测试会验证 catalog/probe 集合相等，因此添加没有 probe 的私有依赖会导致测试套件失败。
+Pi 1.5 host surface 统一登记在 `src/compat/pi-1.3.ts` 中（保留历史文件名）。不安全的 instance 访问位于 `src/compat/` 下的 feature adapter 中；transcript 和 selector 策略不再重复声明 Pi 的私有对象布局。catalog 将 TypeScript 验证的已导出公共 member 与 private contract 分开；prototype contract 由 `npm run check-internals` 检查，instance contract 在实时 session 中运行。Pi 1.5 的 native thinking 会包在 `MouseRegion` 中，`assistant-message.childShape` 会同时校验 wrapper 的 `child` 和内部 Markdown 的 `defaultTextStyle`。测试会验证 catalog/probe 集合相等，因此添加没有 probe 的私有依赖会导致测试套件失败。
 
 Probe 状态变化以内存为先。持久化通过异步 atomic writer 合并，并在 session shutdown 时 flush；render 和 input 路径不会运行同步 mkdir/write/rename 调用。Pi 升级后，`/internals` 仍是实时验证界面。
 
@@ -646,17 +646,11 @@ child 仍可打开正文、最后释放 child 撤除 provider。
 `CC_CHILD_UI_ARTIFACTS` 指定产物根目录，其中 styled-user/native-user 各有 terminal text/raw
 和 JSON 结果。
 
-Managed child factories must be installed when the execution session is assembled,
-not on the first view entry. Their lightweight run recorder owns RunMetrics and
-native run/turn separator entries for the session, including headless execution.
-The same CC renderer is installed on view attach; it reads that recorder without
-counting its events twice. View rebind/detach never resets pending run facts, and
-session shutdown releases the recording listeners. Main keeps its existing event
-order and working-row/divider handoff. No historical timing is invented on entry.
+managed child factory 必须在 execution 装配时安装，不等首次 view。轻 recorder 记录 headless 与 attach/detach 间的真实 RunMetrics、run/turn 分隔线；view 读取同一记录，不重复计数、不重置 pending facts，shutdown 释放 listener，不补造历史 timing。
 
-### SDK child entry ownership
+### SDK child 入口所有权
 
-`dist/child.ts` only exports the explicit named SDK factory. Main owns capability registration; the child factory reads no OS identity env and installs no Main commands. The obsolete default process wrapper has been removed.
+`dist/child.ts` 只导出具名 SDK factory。Main 登记能力，child 不读 OS identity 环境变量、不安装 Main 命令。
 
 ### Fullscreen host 与 Pinned 配置迁移
 
@@ -682,7 +676,7 @@ Above-editor widget 非空时，CC 用一个受 probe 保护的 `renderWidgetCon
 
 置顶条在 Pi 原生选区着色后会恢复未被面板覆盖的那一行，所以正文选区滚到顶边时不会给问题条染色；选区与复制文本仍由 Pi 维护。浮动补全要等有效布局才隐藏 native 列表，帧接缝失配时退回原生补全。`/cc-style config set layout.enabled|stickyUserMessage|floatAutocomplete` 补全 true/false；`layout.popupGap` 为 0..100 整数，`layout.minViewportRows` 为 1..1000 整数，补全描述会提示范围。
 
-长工具参数流式呈现只使用 Pi 公开的 renderer `state`、`argsComplete` 与 `executionStarted`：折叠摘要复用同一组件及其 wrap cache；`write`/`write_file` 的 native 或 inline 内容预览在参数未完成时最多展示前 4096 个 UTF-16 code unit 加省略号，截点避开高代理字符，前缀相同就复用组件。以每行 state 为弱键分别保存原生 call/result child 和 CC 包装；交给原生 renderer 的 `lastComponent` 始终是它自己的 child。完成、执行开始、路径或展开状态变化会重新渲染；完整参数始终交给执行器和 transcript。真实 Pi 1.4.0 write renderer 与公开 `ToolExecutionComponent` 的回归覆盖完成、执行、结果及 invalidate，并逐行对比固定快照（规范化终端样式、链接 escape 和行尾空格）。没有额外配置、timer 或 Pi private seam。
+长工具参数流式呈现只使用 Pi 公开的 renderer `state`、`argsComplete` 与 `executionStarted`：折叠摘要复用同一组件及其 wrap cache；`write`/`write_file` 的 native 或 inline 内容预览在参数未完成时最多展示前 4096 个 UTF-16 code unit 加省略号，截点避开高代理字符，前缀相同就复用组件。以每行 state 为弱键分别保存原生 call/result child 和 CC 包装；交给原生 renderer 的 `lastComponent` 始终是它自己的 child。完成、执行开始、路径或展开状态变化会重新渲染；完整参数始终交给执行器和 transcript。真实 Pi 1.5.0 write renderer 与公开 `ToolExecutionComponent` 的回归覆盖完成、执行、结果及 invalidate，并逐行对比固定快照（规范化终端样式、链接 escape 和行尾空格）。没有额外配置、timer 或 Pi private seam。
 
 ## 交互回归清单
 

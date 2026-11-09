@@ -1,55 +1,42 @@
 ---
 name: subagents
-description: Create and coordinate persistent background agents for independent investigation, implementation, or review.
+description: 为独立调查、编码或审查创建和协调持久后台 Agent。
 ---
 
-# Subagents
+# 子代理协作
 
-Use collaboration tools for concrete independent work. All agents share the workspace; assign distinct file ownership and preserve concurrent edits.
+把具体、独立的工作交给协作工具。所有 Agent 共用工作区，明确文件归属，保留并发修改。
 
-## Create work
+## 创建工作
 
-`spawn_agent` creates an open persistent agent and admits its first Task. Omit `model` to inherit the current model. Query `list_subagent_models` only when the user names a model or the work needs another one. Choose `explorer` for read-only inspection and `worker` for implementation and commands; delegation never adds tools the parent lacks.
+spawn_agent 创建 open Agent 并准入首个 Task。省略 model 沿用当前模型；只在用户指定或工作需要其他模型时查 list_subagent_models。explorer 用于只读，worker 用于编码/命令；委派不增加父会话没有的工具。
 
-`fork_turns` defaults to `none`. `all` inherits the effective context, and a positive integer takes that many complete turns. On `effective-context-unavailable`, use `none`; do not rebuild discarded context from raw history.
+fork_turns 默认 none；all 继承有效上下文，正整数取完整业务轮次。遇 effective-context-unavailable 改用 none，不从 raw history 重建丢弃内容。
 
-The default Task timeout is 30 minutes. `task_timeout_ms` accepts 60,000–86,400,000 milliseconds and overrides the role/config timeout. Each new Task starts its deadline on its first execution grant; steering and waiting activation never extend it.
+Task timeout 默认 30 分钟，task_timeout_ms 接受 60000..86400000，覆盖 role/config；首次执行 grant 才开始 deadline，steer/wait activation 不延长。
 
-Names remain reserved after completion or close. Continue the existing target instead of spawning the same name. The default limits are 32 open agents per Main and 10 active Tasks per Main/process. Closed agents do not consume open slots. Waiting agents release active slots. Excess active work queues in admission order.
+完成/关闭后名称仍保留，应继续已有目标，不重复 spawn 同名。默认每 Main open 32，Main/process active 各 10；closed 不占 open，waiting 释放 active，多余工作按准入顺序排队。
 
-## Continue, resume, and close
+## 继续、恢复和关闭
 
-Use `send_input({target, message})` to continue an open agent:
+send_input({target,message})：idle 新 Task，running steer 当前 Task，starting/queued 绑定所选 Task，waiting 为原 Task 申请 active 位、满位等待。以上都不改已有 Task ID/owner/lease/deadline。interrupt:true 停所选 Task 并以消息创建优先新 Task，其余队列保留。
 
-- Idle input starts a new Task.
-- Running input steers the current Task. It keeps the Task ID, owner, lease, and deadline.
-- Starting/queued input binds to the selected Task, without adding another Task.
-- Waiting input immediately requests a slot for the same Task; when capacity is full it waits for that slot.
-- `interrupt: true` stops the selected Task and starts a new Task with your message. Other queued Tasks remain after the replacement.
+忙 Agent 的独立后续工作可等 Completion 再发；普通忙输入是 steer，用户 UI Alt+Enter 可排 after-current 新工作。
 
-To assign independent work to a busy agent, wait for its Completion and then send input. Ordinary busy input is steering. The user can enqueue independent subsequent work through the UI's after-current intent.
+只有 Main 有 resume_agent/close_agent。closed 拒绝所有输入（含 interrupt），先 resume_agent({target})，再 send_input。resume 只恢复目标 idle，沿用冻结 profile/history，零 Task/lease/provider/compact，不自动恢复祖先/后代；已 open 幂等。
 
-Only Main has `resume_agent` and `close_agent`. A closed target rejects input, including interrupting input. Use:
+收集结果、暂无工作后 close 闲子树。普通 close 要整结构子树 idle；force:true 取消全部 current/queued，再关闭，每个取消 Task 恰一 interrupted Completion。历史/未读保留，cleanup_pending 时等 closed 再恢复，不为腾位取消有用工作，不保留闲置池。
 
-```text
-resume_agent({target: "/root/reviewer"})
-send_input({target: "/root/reviewer", message: "Review the new patch."})
-```
+返回 Main 不关闭 Agent；quit/new/switch/reload 强关旧 Main 整树，回去后须显式 resume。
 
-Resume opens only the target, idle, using its frozen profile and history. It starts no Task, lease, provider call, or automatic compaction. Already open targets return idempotently. It never resumes ancestors or descendants automatically.
+## 等待与汇报
 
-Close an idle subtree after collecting its results when no immediate work remains. `close_agent({target})` requires every agent in its structural subtree to be idle. `force: true` cancels all current and queued work in that subtree, then closes it. Every cancelled Task gets one interrupted Completion. History and unread results remain. Closing may report pending cleanup while cancellation drains; do not resume until it is closed. Do not retain idle agents as a pool or cancel useful work just to release capacity.
+结果自动到达，不轮询 list_agents。下一步确实依赖自己拥有的 Task 时才 wait_agents；它冻结已准入 Task，后续工作不延长 barrier。该 assistant 消息只调用 wait_agents，armed 后结束该轮。
 
-Returning to Main does not close an agent. Quit, new session, session switch, and reload force-close the previous Main's complete tree. Returning to that Main leaves its agents closed until explicitly resumed.
+Main/用户给任意后代新 Task，其 Completion 回 Main；child-origin 回该 child，steer 不改 owner。child send_input 只限 open 直接后代；完成用普通 final 或 finish_task。
 
-## Wait and report
+默认 depth 1 的 child 没有 spawn；maxDepth=2 时可建孙 Agent，孙没有 spawn。恢复权限只可收紧，不扩张。
 
-Results arrive automatically. Do not poll `list_agents`. Use `wait_agents` only when the next step depends on Tasks you own. It snapshots admitted Task IDs; later Tasks do not extend the barrier. Call it as the only tool in its assistant message and stop that turn after an armed result.
+普通 final 结为 completed；可用但未完用 finish_task partial；需外部动作则 blocked 并带 user-input-required/approval-required/external-prerequisite。后台 Agent 不能打开交互或审批流程。
 
-Main can assign a new Task to any descendant; that Task's Completion returns to Main. User new Tasks also return to Main. Child-origin Tasks return to that child. Steering never changes the current Task's owner. Child `send_input` is limited to its open direct descendants; child completion reporting uses normal final replies or `finish_task`.
-
-The default delegation depth is 1; those children have no spawn tool. With `execution.maxDepth=2`, children may spawn grandchildren, which have no spawn tool. Frozen permissions can tighten on resume and never expand.
-
-A normal final reply records completed. Use `finish_task` with partial for usable unfinished work, or blocked with a reason (`user-input-required`, `approval-required`, `external-prerequisite`) when another action is required. Background agents cannot open interactive dialogs or approval flows.
-
-`list_agents` includes closed records, lifecycle, current/queued work, latest outcome, and resume diagnostics. Tool errors contain a code and the next action. Configuration errors reject new work while Main, close, read-only lists, and accepted delivery remain available.
+list_agents 含 closed、生命周期、当前/排队工作、结果及恢复诊断。错误带 code/后续动作；坏配置拒绝新工作，但 Main、close、只读列表和 accepted delivery 继续可用。

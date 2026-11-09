@@ -38,7 +38,7 @@ npm run check
 npm run check-internals -- /path/to/pi-1.5.0
 ```
 
-支持 Pi 1.5，TypeScript 直接加载，无 build/dist。相邻 `pi-li-uikit` 需安装自身开发依赖。验证使用独立 HOME、agent/config/cache 与 session directory，不读取或改动日常 profile，不迁移真实 session、归档或图片。
+支持 Pi 1.5，TypeScript 直接加载，无 build/dist。共享依赖统一由根 workspace 安装。验证使用独立 HOME、agent/config/cache 与 session directory，不读取或改动日常 profile，不迁移真实 session、归档或图片。
 
 检查脚本只证明 `setSessionFile`、`branch`、`resetLeaf` 的形状；文件裁剪、事件链与恢复行为还须用临时会话验证。测试以假 Trash 替代系统 Trash，以 faux provider 替代真实模型；fixture 操作 UI 不等于人工 TUI 验收。
 
@@ -53,7 +53,7 @@ npm run check-internals -- /path/to/pi-1.5.0
 - 裁剪准备期间追加 entry，应保留新内容并取消文件裁剪；文件系统无 hard link 时普通裁剪仍能完成，但自动恢复拒绝。不要据此推断能锁住任意外部写进程。
 - undo/history 正常恢复；有后来写入、branch 改动或备份篡改时拒绝覆盖。归档 metadata 暂时不可读时保留数据、报错，恢复权限后仍可读取。
 - 导航被否决、重绑/回滚失败时检查具体错误及恢复文件，不继续盲目提交。回退期间按 Enter 只在成功且文本未改时发送一次；失败、取消或编辑后均保留文本不自动发送。
-- CC Style 另行获批装配后，人工检查图片 marker、Enter/Alt+Enter、换行与 IME；缺 owner 或图片失效时应退回无路径的 `[Image]` 并提示重贴。人工完整 TUI 尚需单独验收。
+- 启用 CC Style 后，人工检查图片 marker、Enter/Alt+Enter、换行与 IME；缺 owner 或图片失效时应退回无路径的 `[Image]` 并提示重贴。人工完整 TUI 尚需单独验收。
 
 设置 `PI_REWIND_TRACE_LOG=<file>` 可以让一次 rewind 把分段耗时写成 JSONL（abort 等待、tree 导航、JSONL 裁剪、
 SessionManager 重绑、Trash）。不设这个变量时不碰文件系统。

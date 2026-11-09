@@ -15,7 +15,7 @@
 从 package 目录运行：
 
 ```sh
-npm ci # 在仓库根运行
+npm ci # 在仓库根运行；以下验证命令在包目录运行
 npm run typecheck
 npm test
 ```
@@ -28,7 +28,7 @@ clipboard 测试 mock 系统命令并捕获 stdout，覆盖未设置变量、`0`
 
 ## 运行时生效
 
-1. 在使用方实际 checkout 安装本库及其依赖，核对 `file:` 链接和 public subpath 的解析位置。
+1. 在使用方实际 checkout 安装本库及其依赖，核对 workspace 链接和 public subpath 的解析位置。
 2. 若消费者内联 UIKit，重建该消费者的完整产物；保留 bare-package import 的消费者仍须按自身构建约定验证。仅重启不保证 bundle 已更新。
 3. 新开 Pi process，继承明确选择的 clipboard 环境；不使用 `/reload` 替代 rebuild/restart，不修改日常 profile 来凑测试。
 4. 需要人工验收时，由操作者显式复制无敏感信息的短文本，再检查目标剪贴板。没有运行就记录 NOT_RUN。
