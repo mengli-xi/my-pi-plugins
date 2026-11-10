@@ -55,8 +55,10 @@ function gitRunner(root, extraEnv = {}) {
 // 暴露下载注入点供离线合同测试；CLI 不使用环境变量切换生产来源。
 export async function upgrade({ root = process.cwd(), fork, version, dryRun = false, download: get = download, log = console.log }) {
   if (!/^pi-[a-z0-9-]+$/.test(fork ?? "") || !version || version.startsWith("-")) throw new Error("用法: node scripts/fork-upgrade.mjs <fork> <版本或tag> [--dry-run]");
-  const git = gitRunner(root);
+  let git = gitRunner(root);
   root = git(["rev-parse", "--show-toplevel"]);
+  git = gitRunner(root);
+  const initialHead = git(["rev-parse", "HEAD"]);
   if (git(["status", "--porcelain", "--untracked-files=all"])) throw new Error("工作区不干净，请先提交或暂存到 stash（含未跟踪文件）");
   const branch = git(["symbolic-ref", "--short", "HEAD"]);
   if (branch === "vendor/upstream") throw new Error("不能在 vendor/upstream 上运行升级");
@@ -125,7 +127,7 @@ export async function upgrade({ root = process.cwd(), fork, version, dryRun = fa
     log(differences || `${fork}: 原版文件逐字节一致（含文件模式，不计 UPSTREAM.json 来源记录）`);
     if (dryRun) { log("dry-run：已下载、校验、展开；未提交、未更新分支或工作区"); return { identical: !differences, metadata }; }
     // 下载期间可能有其他操作，提交前重新检查，不覆盖并发分支更新。
-    if (git(["status", "--porcelain", "--untracked-files=all"]) || git(["symbolic-ref", "--short", "HEAD"]) !== branch) throw new Error("下载期间工作区或分支改变，拒绝提交");
+    if (git(["status", "--porcelain", "--untracked-files=all"]) || git(["symbolic-ref", "--short", "HEAD"]) !== branch || git(["rev-parse", "HEAD"]) !== initialHead) throw new Error("下载期间工作区或分支改变，拒绝提交");
     const commit = git(["commit-tree", tree, "-p", oldVendor, "-m", `导入 ${fork} 上游原版 ${version}`]);
     git(["update-ref", vendorRef, commit, oldVendor]);
     // UPSTREAM.json 随 vendor merge 同时进入当前分支，不另造 main-only 修改。

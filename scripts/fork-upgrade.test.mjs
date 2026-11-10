@@ -94,3 +94,43 @@ test("拒绝带符号链接的 tarball，即使 integrity 正确", async t => {
   f.info.dist.integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`; f.saveMeta();
   await assert.rejects(f.run(), /归档只允许普通文件/);
 });
+
+
+test("git codeload 来源按子目录导入，记录 commit 和 sha256，可从包目录启动", async t => {
+  const f = fixture(t);
+  const previous = { type: "git", repository: "https://github.com/example/repo.git", tag: "v1", commit: "1".repeat(40), subdirectory: "extensions/goal" };
+  f.git("checkout", "-q", "vendor/upstream");
+  f.put(`${f.prefix}/UPSTREAM.json`, JSON.stringify(previous, null, 2) + "\n");
+  f.git("add", "."); f.git("commit", "-qm", "git 来源");
+  f.git("checkout", "-q", "main"); f.git("merge", "--no-edit", "vendor/upstream");
+  const top = path.join(f.temp, "github/repo-commit");
+  mkdirSync(path.join(top, "extensions/goal"), { recursive: true });
+  writeFileSync(path.join(top, "extensions/goal/index.txt"), "Goal 新原版\n");
+  writeFileSync(path.join(top, "ignored.txt"), "其他上游内容\n");
+  const tarball = path.join(f.temp, "git.tgz");
+  execFileSync("tar", ["-czf", tarball, "-C", path.dirname(top), "repo-commit"]);
+  const bytes = readFileSync(tarball);
+  const sha = "2".repeat(40);
+  const urls = [];
+  const result = await f.run({ root: path.join(f.root, f.prefix), version: "v2", download: async url => {
+    urls.push(url);
+    if (url === "https://api.github.com/repos/example/repo/commits/v2") return Buffer.from(JSON.stringify({ sha }));
+    assert.equal(url, `https://codeload.github.com/example/repo/tar.gz/${sha}`);
+    return bytes;
+  } });
+  assert.equal(urls.length, 2);
+  assert.equal(result.metadata.commit, sha);
+  assert.equal(result.metadata.sha256, createHash("sha256").update(bytes).digest("hex"));
+  assert.equal(f.git("show", "HEAD:fork/pi-demo/index.txt"), "Goal 新原版");
+  assert.equal(f.git("ls-tree", "--name-only", "vendor/upstream:fork/pi-demo"), "UPSTREAM.json\nindex.txt");
+});
+
+test("下载期间当前分支发生干净提交时拒绝，不推进 vendor", async t => {
+  const f = fixture(t); const before = f.git("rev-parse", "vendor/upstream");
+  let changed = false;
+  await assert.rejects(f.run({ download: async url => {
+    if (!changed) { changed = true; f.git("commit", "--allow-empty", "-qm", "并发提交"); }
+    return download(url);
+  } }), /下载期间工作区或分支改变/);
+  assert.equal(f.git("rev-parse", "vendor/upstream"), before);
+});
