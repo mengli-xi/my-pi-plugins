@@ -169,6 +169,8 @@ for (const scenario of ["只报告", "失败后继续", "应用", "工作区变�
       finally { console.log = originalLog; }
       reportDirectory = lines.join("\n").match(/报告：(.*)\/report.json/)[1];
       const report = JSON.parse(readFileSync(join(reportDirectory, "report.json")));
+      if (process.platform === "darwin") assert.match(report.directory, /^\/tmp\/pi-upgrade-/);
+      assert.throws(() => readFileSync(join(reportDirectory, "repository/package.json")), { code: "ENOENT" });
       assert.equal(result, ["失败后继续", "工作区变动"].includes(scenario) ? 1 : 0);
       for (const item of ["typecheck", "test", "test:integration", "check:internals", "check:host"]) assert.ok(report.steps.some(step => step.item === item), item);
       assert.equal(report.steps.some(step => step.item === "test:patched-host"), false);

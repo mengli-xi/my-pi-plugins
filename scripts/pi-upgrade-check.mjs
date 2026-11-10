@@ -105,7 +105,8 @@ export async function main(args) {
   const manifest = JSON.parse(git(source, "show", `${head}:package.json`));
   const dependencies = Object.keys(manifest.devDependencies ?? {}).filter(isPiDependency);
   if (!dependencies.length) throw new Error("根 devDependencies 没有 Pi 依赖");
-  const directory = await mkdtemp(join(tmpdir(), "pi-upgrade-"));
+  // 避免 macOS 长 TMPDIR 影响 Unix socket，以及终端测试中的路径截断。
+  const directory = await mkdtemp(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "pi-upgrade-"));
   const checkout = join(directory, "repository"), environment = join(directory, "environment");
   for (const name of ["home", "agent", "sessions", "config", "cache", "data", "state", "tmp"]) await mkdir(join(environment, name), { recursive: true });
   const env = checkEnvironment(environment);

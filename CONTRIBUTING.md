@@ -46,7 +46,7 @@ node scripts/pi-upgrade-check.mjs 1.6.0 --keep   # 保留临时副本排查
 node scripts/pi-upgrade-check.mjs 1.6.0 --apply  # 全部通过才更新版本与 lock
 ```
 
-脚本先向 registry 核对根 `@earendil-works/pi-*` devDeps 的精确目标版本，再 clone 当前提交到临时目录（不使用硬链接），只在那里改根 devDeps 并安装目标依赖。依次运行全仓 `npm run typecheck`、`npm test`、`npm run test:integration`，然后按 workspace 的约定名字发现私有 seam 检查，不维护包名清单。一项失败后继续运行其他可执行项；依赖安装失败则明确列出未运行项。结束时终端汇总包、步骤、失败项和原始日志路径，并将结构化报告写入打印出的 `report.json`。默认删除临时副本，但保留报告和原始日志；`--keep` 额外保留副本。
+脚本先向 registry 核对根 `@earendil-works/pi-*` devDeps 的精确目标版本，再 clone 当前提交到临时目录（不使用硬链接；macOS 使用短路径，避免套接字和终端路径截断问题），只在那里改根 devDeps 并安装目标依赖。依次运行全仓 `npm run typecheck`、`npm test`、`npm run test:integration`，然后按 workspace 的约定名字发现私有 seam 检查，不维护包名清单。一项失败后继续运行其他可执行项；依赖安装失败则明确列出未运行项。结束时终端汇总包、步骤、失败项和原始日志路径，并将结构化报告写入打印出的 `report.json`。默认删除临时副本，但保留报告和原始日志；`--keep` 额外保留副本。
 
 检查入口只用两个名字：
 
