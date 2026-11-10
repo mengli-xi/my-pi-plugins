@@ -51,7 +51,7 @@ node scripts/pi-upgrade-check.mjs 1.6.0 --apply  # 全部通过才更新版本�
 检查入口只用两个名字：
 
 - `check:internals`：只使用已安装 Pi SDK 的进程内探针，不启动 `pi`。用 `scripts/isolated-agent.mjs` 隔离配置。
-- `check:host`：启动真实 `pi`，统一经 `scripts/check-host.mjs` 传递 `PI_BIN`；缺省为仓库根 `node_modules/.bin/pi`，不用日常 PATH 上的 Pi。CLI 版本必须与已安装 SDK 一致。包可以串联多个子检查，失败后仍继续；该包需要的构建也放在入口中。公共 runner 在启动任何子命令前隔离 HOME、agent、session、XDG 和 npm 配置，不传日常 provider 凭据；子检查继续使用各自临时 profile 和本地 faux provider。`PI_OFFLINE` 只禁止 Pi 的自动联网，不能冒充 provider 网络沙箱。
+- `check:host`：启动真实 `pi`，统一经 `scripts/check-host.mjs` 传递 `PI_BIN`；缺省为仓库根 `node_modules/.bin/pi`，不用日常 PATH 上的 Pi。CLI 版本必须与已安装 SDK 一致。包可以串联多个子检查，失败后仍继续；该包需要的构建也放在入口中。公共 runner 在启动任何子命令前隔离 HOME、agent、session、XDG 和 npm 配置，不传日常 provider 凭据；子检查继续使用各自临时 profile 和本地 faux provider；macOS 使用短临时路径，避免 Unix socket 长度限制。`PI_OFFLINE` 只禁止 Pi 的自动联网，不能冒充 provider 网络沙箱。
 
 可单独运行 `npm run check:internals -w <包名>` 或 `PI_BIN=/absolute/path/to/pi npm run check:host -w <包名>`。当前检查范围与预期耗时如下；时间是量级，不是时限承诺：
 

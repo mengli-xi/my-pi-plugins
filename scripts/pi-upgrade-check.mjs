@@ -42,11 +42,11 @@ export function diagnostics(output) {
     if (header) current = header[1];
     const workspace = line.match(/npm error workspace (\S+)/);
     const location = line.match(/(?:local|fork)\/([^/]+)\/.*error TS/);
-    if (workspace || location || /error TS\d+|^\s*not ok\b|^FAIL\b|^SNAPSHOT\b|^失败：/.test(line)) {
-      failures.push({ package: workspace?.[1] ?? location?.[1] ?? current, item: line.trim() });
+    if (workspace || location || /error TS\d+|^\s*not ok\b|^\s*✖ (?!failing tests:)|^\s*FAIL\b|^SNAPSHOT\b|^失败：/.test(line)) {
+      failures.push({ package: workspace?.[1] ?? location?.[1] ?? current, item: line.trim().replace(/\s+\([\d.]+ms\)$/, "") });
     }
   }
-  return failures;
+  return failures.filter((failure, index) => failures.findIndex(other => other.package === failure.package && other.item === failure.item) === index);
 }
 
 export function renderReport(report) {

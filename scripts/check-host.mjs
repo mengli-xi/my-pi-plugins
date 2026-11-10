@@ -12,7 +12,8 @@ for (const arg of process.argv.slice(2)) {
 }
 if (commands.some(command => !command.length)) throw new Error("用法：check-host.mjs <命令> [参数] [:: <命令> [参数]]");
 const binary = piBin();
-const root = mkdtempSync(join(tmpdir(), "pi-host-check-"));
+// macOS Unix socket 路径很短；不要把子检查的 tmux socket 嵌入长 TMPDIR。
+const root = mkdtempSync(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "pi-host-"));
 const env = checkEnvironment(root, { PI_BIN: binary });
 for (const name of ["home", "agent", "sessions", "config", "cache", "data", "state", "tmp"]) mkdirSync(join(root, name));
 try {

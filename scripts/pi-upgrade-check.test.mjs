@@ -49,6 +49,10 @@ test("报告区分包、步骤和失败项，并列出原始日志与验证边�
   const failures = diagnostics("> pi-example@0.1.0 test\n  not ok 3 - host seam\nnpm error workspace pi-example@0.1.0\nfork/new/index.ts(1,1): error TS2322: wrong type\n");
   assert.equal(failures[0].package, "pi-example");
   assert.equal(failures.at(-1).package, "new");
+  assert.deepEqual(diagnostics("> pi-example@0.1.0 test\n✖ failed seam (20.3ms)\n✖ failing tests:\n✖ failed seam (20.3ms)\n FAIL  cold-loading.test.ts > loads production\n"), [
+    { package: "pi-example", item: "✖ failed seam" },
+    { package: "pi-example", item: "FAIL  cold-loading.test.ts > loads production" },
+  ]);
   const text = renderReport({ from: ["1.5.0"], target: "1.6.0", directory: "/tmp/check", notices: ["真实 provider 未覆盖"], steps: [
     { package: "pi-example", stage: "私有 seam", item: "check:host", status: "failed", log: "/tmp/check/host.log", failures },
     { package: "new", stage: "私有 seam", item: "check:internals", status: "passed" },
