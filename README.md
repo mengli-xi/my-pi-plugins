@@ -48,6 +48,7 @@ pi -e "$PWD/local/pi-todo"
 
 | 包 | 类型 | 用途 |
 | --- | --- | --- |
+| [pi-ask-user-question](fork/pi-ask-user-question/README.md) | Fork 插件 | 结构化问答、预览、自填和独立 Chat/Explain 控制 |
 | [pi-bash-timeout](local/pi-bash-timeout/README.md) | 插件 | 要求 bash 显式填写正数 timeout |
 | [pi-cc-memory](local/pi-cc-memory/README.md) | 插件 | 项目记忆与冻结索引 |
 | [pi-claude-style](local/pi-claude-style/README.md) | 插件 | 工具、Thinking、编辑器和默认状态栏展示 |
@@ -78,6 +79,9 @@ pi -e "$PWD/local/pi-todo"
 
 | 协议名 / 能力名 | 提供方 | 使用方 | 缺失时降级 |
 | --- | --- | --- | --- |
+| `rpiv:ask-user:prompt`、`rpiv:ask-user:blocked`（上游无版本兼容） | [Ask](fork/pi-ask-user-question/README.md) 发布当前问卷及等待状态 | 可选可信通知/观测方 | 无消费者仍正常提问，不读取其他插件存储 |
+| `rpiv-ask-user-question:host-allocated-rows`（上游无版本 Symbol 兼容） | [Ask](fork/pi-ask-user-question/docs/hosts.md#宿主已分配行高) 读取 | 可信自定义 UI Host | 无标记按普通 inline/overlay 布局；仅影响行高，不授予执行权限 |
+| `rpiv:ask-user:answer`、`rpiv:ask-user:answer-result`（上游无版本兼容） | [Ask](fork/pi-ask-user-question/README.md) 校验并接收，返回 verdict | 可信同进程 Host 桥接 | 无桥接由用户在面板回答；未知/已结束 toolCallId 拒绝，不授予网络或任意 loader |
 | `prompt:fragments-v1` | [Model Prompts](local/pi-model-prompts/README.md) 发同步收集；Effort 贡献 | Model Prompts 汇总，Effort 接收请求 | 只有文件规则；缺汇总方时 Effort 只改真实档位 |
 | `todo:snapshot-v1`、`todo:request:snapshot-v1` | [Todo](local/pi-todo/README.md) | CC Style | 不显示托管列表，Todo 内联与 /todos 不受影响 |
 | `todo:changed`（旧兼容） | [Todo](local/pi-todo/README.md) | CC Style | 以版本化 snapshot 为主，不要求旧事件 |
@@ -131,6 +135,7 @@ npm test                         # 文档链接/可达性 + 各包离线测试
 npm run check:goal               # Goal retained Fork 检查；不把 Biome 扩到全仓
 npm run test:integration          # 跨插件及缺失协作方降级
 npm run test:integration:mcp      # MCP 与共享 transport、Goal/CC 的定向联测
+npm run test:integration:ask      # Ask 与 CC 的问答呈现及可选依赖降级
 npm run test:integration:stock-host # Bun PTY；原版无 CC child 视图
 ```
 
