@@ -74,7 +74,13 @@ function textOf(content) {
 }
 
 let retryResponses = 0;
+let compactionResponses = 0;
 function respond(context) {
+  if (process.env.CC_HOST_FIXTURE_COMPACTION) {
+    const turn = ++compactionResponses;
+    return fauxAssistantMessage([fauxText(turn < 3 ? `Compaction fixture turn ${turn}.` :
+      ["# COMPACTION_START", ...Array.from({ length: 60 }, (_, index) => `- Retained fact ${index + 1}`), "COMPACTION_END"].join("\n"))]);
+  }
   const messages = context.messages ?? [];
   let lastUser = -1;
   for (let index = messages.length - 1; index >= 0; index--) {

@@ -158,7 +158,7 @@ Thinking 区块保持 native Markdown，可用 `Ctrl+T` 查看或折叠历史内
 
 不会显示 `(Ctrl+T to expand)` 后缀：它占用的宽度大于带来的价值，`Ctrl+T` 仍然有效，点击活动计时器或预览即可完整打开该次运行。`"label"` 仍可用于 Pi 的旧式静态隐藏 thinking 行。
 
-`assistantMessages.hideCodeFenceMarkers` 隐藏 render 后的代码围栏起止行，保留代码正文。范围只有 assistant 正文、CC 的 thinking 行和 Thinking/Activity 面板，都用包装组件实现；用户消息、compaction/branch summary、skill invocation 和其他扩展的 Markdown 保持 Pi 原样。
+`assistantMessages.hideCodeFenceMarkers` 隐藏 render 后的代码围栏起止行，保留代码正文。范围只有 assistant 正文、CC 的 thinking 行和 Thinking/Activity 面板，都用包装组件实现；用户消息、压缩摘要详情、branch summary、skill invocation 和其他扩展的 Markdown 不隐藏围栏。
 
 从 clipboard 粘贴图片时，Pi Editor 中显示的 `[Image #n]` 是原子占位符：左右移动会跨过整个 marker，Backspace 与 Delete 一次删除整个 marker，Undo 会连同 path 映射一起恢复。提交给模型和 session 的仍是原始图片路径。programmatic `setText()` 收到仍存在的 `pi-clipboard-*` path 时也会重建同样的 marker，供 Rewind 恢复历史输入；缺失文件保持原 path，让 caller 安全降级。CC Style 还通过 `pi.claude-style.editor-image-source.v2` 提供只读 source projection 和明确的恢复回执，供 Rewind 保存当前 draft 的可恢复 source，不暴露内部 Map。这个行为复用 Pi 0.85 的 `Editor.segment()` 编辑边界；custom editor 没有该 seam 时保留原路径，不生成不可安全编辑的占位符。
 
@@ -184,6 +184,18 @@ Activity transcript 每次打开时默认将全部 Thinking segment 与 tool cal
 
 Pi fullscreen 拥有鼠标解码、滚轮与选区。CC 只把命中 overlay 之外的左键按下交给声明 `wantsMouse` 的焦点面板，使其关闭且不穿透；UIKit 不写 DECSET 鼠标模式。
 
+## 压缩记录
+
+每次压缩在原来的历史位置显示一条紧凑分隔行：
+
+```text
+---- [compaction] compacted from 123456 tokens ------
+```
+
+数字直接取该次 Pi 压缩记录的 `tokensBefore`，不是压缩后 token 数。左键单击打开 `Compaction summary` 文本面板，用 Markdown 展示**该次实际保留的完整摘要**，可以滚动、选择和复制，Esc/Enter 关闭；多个压缩记录各自打开自己的摘要，不混入之后的消息。空摘要明确显示为空。Ctrl+O 不把摘要铺回 transcript。
+
+Main、Side 和 Subagent 视图共用该展示，点击只使用所属 runtime 的面板入口。仅装饰通过 Pi 原生 append 路径加入的 compaction summary，不改 session entry、模型上下文、压缩触发或 branch summary；复用 `user-message.timestampBinding` 已有的 append/container probe，不读取组件的私有 message。接缝失配时保留原生显示，runtime 释放后旧行不再打开面板。
+
 ## 点击 transcript 行
 
 点击 transcript 中的行会打开该行所摘要的内容：
@@ -194,6 +206,7 @@ Pi fullscreen 拥有鼠标解码、滚轮与选区。CC 只把命中 overlay 之
 | `View Image (123 KB)` / `View N Images` | 当次 tool result 中的图片（`terminal.showImages=false` 时才有这一行）；不重新读取磁盘路径 |
 | Web Search / Web Fetch / 已回答的问卷 | 同一个 `SelectableCollapsiblePanel`，其中包含完整查询和结果 |
 | 单文件 Edit | 同一个 `SelectableCollapsiblePanel`，其中包含完整参数和 diff |
+| `[compaction] compacted from … tokens` | 当次压缩实际保留的完整摘要，使用可滚动、可复制的 Markdown TextPanel |
 | 当前 active Thinking footer | 切换该 segment 的 inline disclosure；历史 compact Thinking 行才打开文本详情 |
 | 已折叠的 `process` 结果（参见*外部工具输出*） | 命令的完整输出 |
 
@@ -534,7 +547,7 @@ history anchor predicate 和 editor-slot geometry reader 从源码加载，分�
 
 `test:host-fixtures` 先 build CC，再用真实 Pi 1.5 TUI、faux provider 和临时
 agent 目录（显式设 `terminal.showImages=false`）跑分组工具、thinking 归批、nested、
-用户消息折叠和围栏、图片入口（`read` 和非 read 工具；`showImages=true` 时 Pi 画图、CC 不加入口）、
+用户消息折叠和围栏、压缩摘要点击/滚动/关闭及新进程恢复（Main/Side/Subagent 三种 presentation）、图片入口（`read` 和非 read 工具；`showImages=true` 时 Pi 画图、CC 不加入口）、
 `/session`、`/model`、运行中 Ctrl+T、跑完一轮后 `/internals` 无缺失几组场景，与 `test/integration/host-fixtures/`
 的快照比对。快照只截被测区域（从第一个用户框或置顶问题条往下，不含 pi 启动横幅和底部 cwd、状态栏）；
 路径、时钟、耗时和计数归一化，只有含这些值的行压缩横线和空白，其余行保持原宽度，框和面板变宽变窄会失败。

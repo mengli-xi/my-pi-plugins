@@ -8,8 +8,8 @@ export interface TimestampOwner { addMessageToChat?: AppendMessage; }
 /** Shared by presentation ownership even when user-message decoration is off. */
 export const TIMESTAMP_BINDING_PROBE: Probe = {
   id: "user-message.timestampBinding",
-  needs: "InteractiveMode.addMessageToChat and chatContainer.children bind a user component to its message; entry timestamp comes from public SessionManager.getBranch",
-  breaks: "用户消息继续显示，但不猜测发送时间",
+  needs: "InteractiveMode.addMessageToChat and chatContainer.children bind user/compaction components to public messages; entry timestamp comes from public SessionManager.getBranch",
+  breaks: "用户消息不猜测发送时间，压缩摘要保留原生显示",
   check: () => typeof interactiveUserMessagePrototype<TimestampOwner>().addMessageToChat === "function",
 };
 

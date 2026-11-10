@@ -1,0 +1,7 @@
+  COMPACTION_START                                                                                                     █
+                                                                                                                       █
+  - Retained fact 1                                                                                                    █
+  - Retained fact 2                                                                                                    █
+  - Retained fact 3
+  - Retained fact 4
+  - Retained fact 5

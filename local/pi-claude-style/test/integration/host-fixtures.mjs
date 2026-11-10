@@ -374,7 +374,7 @@ async function run(name, options, body) {
     await resumed.wait("restored transcript", () => resumed.screen().includes("╭ user"));
     const screen = await resumed.settle(500);
     writeFileSync(join(root, "hydrate.txt"), screen);
-    compare(`${name}.hydrate`, snapshotRegion(normalize(screen, root), name === "user-fold"));
+    compare(`${name}.hydrate`, snapshotRegion(normalize(options.hydrateExtract?.(screen) ?? screen, root), name === "user-fold"));
     const liveRegion = normalize(transcriptRegion(live), root);
     const hydrateRegion = normalize(transcriptRegion(screen), root);
     writeFileSync(join(root, "parity.json"), JSON.stringify({ liveRegion, hydrateRegion }, null, 2));
@@ -564,6 +564,41 @@ await scenario("custom-messages", { prompt: "FIXTURE_MESSAGES say hello" }, asyn
   pi.send("\x1b");
   await delay(200);
 });
+
+function compactionRow(screen) {
+  const row = screen.split("\n").find(line => line.includes("[compaction] compacted from"));
+  assert.ok(row, `missing compaction row\n${screen}`);
+  return row.trimEnd();
+}
+for (const presentation of ["main", "side-chat", "subagent"]) {
+  await scenario(`compaction-${presentation}`, {
+    prompt: "Prepare the first compaction fixture turn.", presentation, hydrate: "live", hydrateExtract: compactionRow,
+    env: { CC_HOST_FIXTURE_COMPACTION: "1" },
+    settings: { pi: { compaction: { enabled: false, keepRecentTokens: 1, reserveTokens: 1024 } } },
+  }, async ({ pi, capture }) => {
+    await pi.waitEvents("first turn settled", events => events.some(event => event.event === "settled"));
+    pi.send("Prepare the second compaction fixture turn.\r");
+    await pi.waitEvents("second turn settled", events => events.filter(event => event.event === "settled").length === 2);
+    pi.send("/compact\r");
+    await pi.wait("compact summary row", () => pi.screen().includes("[compaction] compacted from"));
+    const file = pi.events().find(event => event.event === "ready").sessionFile;
+    const entry = readFileSync(file, "utf8").trim().split("\n").map(line => JSON.parse(line)).filter(entry => entry.type === "compaction").at(-1);
+    assert.ok(entry?.summary.includes("COMPACTION_START"));
+    assert.ok(pi.screen().includes(`compacted from ${entry.tokensBefore} tokens`));
+    assert.ok(!pi.screen().includes("COMPACTION_START"), "summary stays out of inline transcript");
+    await capture("live", compactionRow(await pi.settle()));
+    await clickText(pi, "[compaction]");
+    await pi.wait("compaction panel", () => pi.screen().includes("Compaction summary") && pi.screen().includes("COMPACTION_START"));
+    // Snapshot the retained content, not unrelated startup/footer layout.
+    const panel = (await pi.settle()).split("\n");
+    const start = panel.findIndex(line => line.includes("COMPACTION_START"));
+    await capture("panel", panel.slice(start, start + 7).join("\n"));
+    pi.send("G");
+    await pi.wait("summary scroll end", () => pi.screen().includes("COMPACTION_END"));
+    pi.send("\x1b");
+    await pi.wait("summary panel closed", () => !pi.screen().includes("Compaction summary") && pi.screen().includes("[compaction]"));
+  });
+}
 
 await scenario("session", { prompt: "FIXTURE_SESSION say hello" }, async ({ pi, capture }) => {
   await pi.waitEvents("settled", (events) => events.some((event) => event.event === "settled"));

@@ -39,6 +39,7 @@ import { finalRunStatus, latestAssistantMessage, type TranscriptRunRecording } f
 import { registerTranscriptSeparators, registerTranscriptSeparatorRenderers } from "../../separators.ts";
 import type { RunStatus, TranscriptConfig } from "../../types.ts";
 import { installCompactUserMessages } from "../../user-message.ts";
+import { installCompactCompactionSummaries } from "../../compaction-summary.ts";
 import { snapshotExtensionContext } from "../../extension-context.ts";
 import type { CcStyleObservability } from "../../observability.ts";
 import {
@@ -368,6 +369,9 @@ export function installTranscriptFeature(options: InstallTranscriptFeatureOption
     pi,
     config.userMessages,
     openers.openTextFor,
+  );
+  const restoreCompactionSummaries = installCompactCompactionSummaries(
+    pi, openers.openTextFor, () => activeTheme,
   );
   const restoreCommandOutput = registerCompactMessageRenderers(
     pi,
@@ -793,6 +797,7 @@ export function installTranscriptFeature(options: InstallTranscriptFeatureOption
       // Registered in installation order; disposal intentionally runs in the
       // reverse order so UI state is cleared before prototype patches vanish.
       resources.defer(restoreUserMessages);
+      resources.defer(restoreCompactionSummaries);
       resources.defer(restorePresentationBoundary);
       resources.defer(restoreNativeOutput);
       resources.defer(restoreSessionInfo);
