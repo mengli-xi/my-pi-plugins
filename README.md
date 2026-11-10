@@ -57,6 +57,7 @@ pi -e "$PWD/local/pi-todo"
 | [pi-mcp-adapter](fork/pi-mcp-adapter/README.md) | Fork 插件 | MCP 网关、按需连接、OAuth、Apps 与 durable 后台结果 |
 | [pi-model-capacity](local/pi-model-capacity/README.md) | 插件 | 容量、订阅窗口和余额观测 |
 | [pi-model-prompts](local/pi-model-prompts/README.md) | 插件 | 模型规则、命名提示词与片段汇总 |
+| [pi-native-search](fork/pi-native-search/README.md) | Fork 插件 | 公共原生搜索、可选 backend、DuckDuckGo 与网页抓取 |
 | [pi-package-manager](local/pi-package-manager/README.md) | 插件 | 已配置包的启停、过滤和显式更新 |
 | [pi-processes](local/pi-processes/README.md) | 插件 | 监督后台命令、滚动日志、进程通知与 deadline |
 | [pi-rewind](local/pi-rewind/README.md) | 插件 | 会话裁剪、归档和校验恢复 |
@@ -88,6 +89,7 @@ pi -e "$PWD/local/pi-todo"
 | `pi-mcp-adapter:runtime-register:v1`、`pi-mcp-adapter:runtime-snapshot:v1`、`pi-mcp-adapter:runtime-tool-call:v1` | [MCP Adapter](fork/pi-mcp-adapter/docs/extension-api.md) | 可信外部扩展 | 无回复视为能力不可用，不绕过审批或自行补发 |
 | `pi-mcp-adapter:protocol:v1` | [MCP Adapter](fork/pi-mcp-adapter/docs/protocol-extensions.md) | 可信自定义协议扩展 | 无 hook 明确拒绝，不暴露原始 client/transport |
 | `pi-mcp-adapter:tool-approval-request`（无版本旧兼容） | [MCP Adapter](fork/pi-mcp-adapter/docs/tools.md) 发请求 | 可选外部审批方 | 无 claim 为 abstain；保留本包审批或拒绝，不默许执行 |
+| `native-search:backends-request-v1` | [Native Search](fork/pi-native-search/README.md) 发同步收集 | 可选 backend；Host 显式向 SDK child 传发现通道 | 无贡献使用公共 provider/DDG，不探测未知 provider 的配置或凭据；冲突拒绝执行 |
 | `provider:activity-v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义 DTO；provider adapter 发布 | CC Style、Compact、SDK observer | 无队列/负载展示，压缩时钟正常计时 |
 | `model-capacity:snapshot-v2`、`model-capacity:request-snapshot-v2`、`model-capacity:watch-v2` | [Model Capacity](local/pi-model-capacity/README.md) | CC Style | 不显示容量，模型选择和请求照常 |
 | `model-capacity:register-adapter-v1`、`model-capacity:adapter-ready-v1` | [Model Capacity](local/pi-model-capacity/README.md) 与外部 adapter | adapter 注册 helper、CC watch 恢复 | 尚未准入不伪造成功；缺 adapter 不观测该 provider |
@@ -98,7 +100,7 @@ pi -e "$PWD/local/pi-todo"
 | `pi-skills:compact-restore-request-v1`、`pi-skills:compact-restore-response-v1` | [Skills](local/pi-skills/README.md#旧独立恢复通道) | 外部旧恢复调用方 | 当前 Compact 不依赖旧回复；旧调用方不能假定规则已恢复 |
 | `ui-pack.user-message-render-transforms.v1` | [Skills](local/pi-skills/README.md#消息装饰协议) 注册 transform；CC 提供 host，Skills 提供原生 fallback | CC/Skills 消息 renderer | 装饰不可用时保留原生显示，技能加载不变 |
 | `statusline:row`、`statusline:refresh` | [CC Style](local/pi-claude-style/README.md) 状态栏 host | Effort、Memory、Compact、Subagents、Side Chat；CC 自有 Goal/Todo/Processes/Capacity 行 | 贡献无人接收不报错，不影响业务；Goal 可退 widget/setStatus |
-| `child-capabilities-v1`（存储 key `pi.child-capability-registry.v2`） | [Runtime Contracts](local/pi-runtime-contracts/README.md)；Timeout/CC/Processes/外部 factory 注册 | Subagents、Side Chat、SDK provider loader | 无声明不复制 extension 工具；注册不等于执行授权 |
+| `child-capabilities-v1`（存储 key `pi.child-capability-registry.v2`） | [Runtime Contracts](local/pi-runtime-contracts/README.md)；Timeout/CC/Processes/Native Search/外部 factory 注册 | Subagents、Side Chat、SDK provider loader | 无声明不复制 extension 工具；注册不等于执行授权 |
 | `presentation/claude-style-v1` | [CC Style](local/pi-claude-style/README.md)，具名 `dist/child.ts` factory | Subagents、Side Chat，外部 SDK 消费者 | child 使用 Pi 原生渲染，输入/历史/返回不变 |
 | `pi.claude-style.custom-entry-presentations.v1` | [CC Style](local/pi-claude-style/README.md) | Subagents completion、Skills Loaded 行、Processes lifecycle；外部 entry renderer | 各 producer 保留自己的 fallback，不改变正文或投递 proof |
 | `pi.claude-style.editor-image-source.v2` | [CC Style](local/pi-claude-style/README.md) | Rewind | 整体退为无路径 `[Image]`，不暴露临时文件路径 |

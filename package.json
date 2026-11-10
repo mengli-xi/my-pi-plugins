@@ -5,7 +5,8 @@
   "workspaces": [
     "local/*",
     "fork/pi-goal/extensions/pi-goal",
-    "fork/pi-mcp-adapter"
+    "fork/pi-mcp-adapter",
+    "fork/pi-native-search"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces && tsc -p integration/tsconfig.json",
@@ -17,7 +18,8 @@
     "test:integration:subagents": "npm run build -w pi-subagents && node integration/run-subagents.mjs",
     "check:goal": "node scripts/isolated-agent.mjs npm --prefix fork/pi-goal run check",
     "test:integration:goal-ui": "npm run build -w @narumitw/pi-goal && npm run build -w pi-claude-style && node scripts/isolated-agent.mjs bun integration/goal/ui-e2e.mjs",
-    "test:integration:mcp": "npm run build -w pi-claude-style && npm run build -w @narumitw/pi-goal && npm run build -w pi-mcp-adapter && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/mcp*.test.ts"
+    "test:integration:mcp": "npm run build -w pi-claude-style && npm run build -w @narumitw/pi-goal && npm run build -w pi-mcp-adapter && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/mcp*.test.ts",
+    "test:integration:search": "npm run build -w pi-claude-style && npm run build -w pi-subagents && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/search*.test.ts"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.5.0",
