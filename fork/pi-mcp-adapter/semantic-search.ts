@@ -7,7 +7,7 @@ import { combineAbortSignals } from "./runtime-owner.ts";
 import { rankToolMatches, type RankedToolMatch } from "./search-ranking.ts";
 import type { McpExtensionState } from "./state.ts";
 import type { ToolMetadata } from "./types.ts";
-import { isServerDisabled } from "./types.ts";
+import { isServerDisabled } from "./runtime-types.ts";
 
 /** The part of Pi's ModelRegistry semantic search uses. `ctx.modelRegistry` satisfies it on Pi >= 0.99. */
 export interface SemanticClassifierRegistry {

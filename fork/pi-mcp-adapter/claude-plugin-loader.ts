@@ -1,6 +1,6 @@
 import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync, readdirSync, realpathSync, statSync, type Dirent, type Stats } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
-import { formatServerNamespace, type ClaudePluginConfig, type McpConfig, type ServerEntry } from "./types.ts";
+import { formatServerNamespace, type ClaudePluginConfig, type McpConfig, type ServerEntry } from "./runtime-types.ts";
 import { parseJsonWithComments } from "./utils.ts";
 
 interface ClaudePluginManifest {

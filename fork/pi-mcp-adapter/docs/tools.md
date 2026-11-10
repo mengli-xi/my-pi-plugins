@@ -1,283 +1,125 @@
-# Using MCP tools
+# 工具调用
 
-The `mcp` proxy tool, search, direct tools, approval prompts, and output limits.
+Gateway、search、direct/deferred tools、approval 与 output guard 的完整合同。
 
-## The `mcp` tool
+## `mcp` gateway
 
-| Mode | Example |
-|------|---------|
-| Status | `mcp({ })` |
-| List server | `mcp({ server: "name" })` |
-| Search | `mcp({ search: "screenshot navigate", limit: 12, offset: 0 })` |
-| Describe | `mcp({ describe: "tool_name" })` |
-| Instructions | `mcp({ instructions: "name" })` |
-| Call | `mcp({ tool: "...", args: { key: "value" } })` |
-| Connect | `mcp({ connect: "server-name" })` |
-| Stop a background task | `mcp({ cancelTask: "<server>/<taskId>" })`, while the `mcp` tool is available ([Task-augmented tool calls](servers.md#task-augmented-tool-calls)) |
-| UI messages | `mcp({ action: "ui-messages" })` |
-| Auth start | `mcp({ action: "auth-start", server: "name" })` |
-| Auth complete | `mcp({ action: "auth-complete", server: "name", args: { redirectUrl: "..." } })` |
-| Save a script as a tool | `mcp({ action: "save-script", args: { name, description, code, inputSchema } })` ([Saving a script as a tool](scripting.md#saving-a-script-as-a-tool)) |
+| 操作 | 例子 |
+|---|---|
+| 状态 | `mcp({})` |
+| Server tools | `mcp({server:"docs"})` |
+| Search | `mcp({search:"screenshot navigate",limit:12,offset:0})` |
+| Describe | `mcp({describe:"tool_name"})` |
+| Instructions | `mcp({instructions:"docs"})` |
+| Call | `mcp({tool:"tool_name",args:{key:"value"}})` |
+| Connect/刷新已连接 catalog | `mcp({connect:"docs"})` |
+| Cancel Task | `mcp({cancelTask:"<server>/<taskId>"})` |
+| UI messages | `mcp({action:"ui-messages"})` |
+| OAuth | `mcp({action:"auth-start",server:"docs"})`、`auth-complete` |
+| Save script | `mcp({action:"save-script",args:{name,description,code,inputSchema}})` |
 
-`args` can be a JSON object or a JSON string. Prefer the object form when your model handles it reliably; the string form remains supported for providers that need simpler schemas.
+`args` 优先 object，也兼容 JSON string。未知 action 返回错误并列 canonical valid actions，不能静默落入别的操作。Success 默认 compact self-rendered row：title、bounded input preview、首行结果及 Ctrl+O expand hint；模型仍收到完整 guarded 结果。可用 toolResultRendering boxed、collapsedResultLines 2/3；不保证消除 Pi 自己 separator 或 inline image。
 
-`mcp({ connect: "server-name" })` refreshes an already connected server, so new tools, resources, prompts, and instructions can load without restarting Pi.
+### Search、describe 与 schema
 
-MCP proxy and direct-tool results use compact self-rendered rows by default. Collapsed success output shows the call title, a bounded one-line input preview when arguments exist, and the first result line, with a `Ctrl+O to expand` hint when more text is hidden. The full result remains available when expanded and is still returned unchanged to the model. Set `settings.toolResultRendering` to `"boxed"` to restore the legacy boxed Pi row, or set `settings.collapsedResultLines` to `2` or `3` when you want more collapsed text.
+Word search 按 name/server/tool description/server description/searchKeywords 加权排名，默认 limit 12，`details.nextOffset` 翻页；`regex:true` 不排名只分页。Semantic search 另见[脚本与模型](scripting.md#语义搜索)。Search 主要查 MCP catalog，word/regex 也能找到 scriptTools；semantic 不排名 scriptTools。
 
-Search covers MCP tools only. Space-separated words are ranked by weighted matches across name, server, description, the server's configured `description`, and any configured `searchKeywords`, then returned one page at a time (`limit` defaults to 12). Use `details.nextOffset` for the next page. Regex search is still available with `regex: true`, but regex results are paginated without ranking.
+Tool name 宽松匹配 hyphen/underscore；describe/tool 查不到给 top suggestions。Server annotations 只在 describe 的 Hints/approval 展示，不在 search/direct description，且不是安全保证。
 
-Tool names are fuzzy-matched on hyphens and underscores — `context7_resolve_library_id` finds `context7_resolve-library-id`. When `describe` or `tool` cannot resolve a name, the result includes top suggestions so the agent can correct a typo or missing prefix in the same turn.
+`includeSchemas` 显示 compact TypeScript parameter shape；无法无损表达或有 constraints/field guidance 时给 `mcp({describe,server})`，返回原始 JSON Schema，保留 refs/definitions/integer/bounds/annotations，不展开或 fetch external refs。Describe 也受 output guard，完整超长 schema 保存到文件。
 
-When a server declares MCP tool annotations, `describe` adds a `Hints:` line such as `Hints: read-only, idempotent`, and the approval prompt says when a tool is marked destructive or read-only. They are the server's own hints, not guarantees, and never appear in search results or direct-tool descriptions.
+Server listing 在每个 tool 后列顶层参数，required 在前、optional 带 `?`；无 properties 显示 `()`。缺 schema 或顶层 `$ref/allOf/anyOf/oneOf/not/if/then/else/dependent requirements` 时不显示参数括号，避免漏报。
 
-With `includeSchemas` enabled, search renders parameter summaries, using compact TypeScript shapes where possible. When the summary leaves something out, because compact rendering is unsupported or the schema carries field guidance, constraints or other non-structural information, it links to `mcp({ describe: "tool_name", server: "name" })`. That description returns the original input JSON Schema, including referenced definitions, integer requirements, bounds and annotations. References are preserved, not expanded or fetched; an external reference still requires its external schema. Plain structural schemas keep compact shapes like `{ query: string; enabled?: boolean; }`.
+无 outputSchema 的 tool 返回 structured/JSON text 后可积累 observed output shape：仅字段名/类型，绝无 values，标记 observed 非合同；重复 wide object 用 named type。非 private catalog 可存 cache；description/input schema/config 改变即丢弃。正式 `outputSchema` 支持 draft-07/2020-12，未声明 draft 用 SDK 2020-12 default，正常 proxy/direct structuredContent 校验；Task-aware path 的限制见[Tasks](servers.md#tasks)。
 
-`describe` results use the existing output guard: oversized descriptions are bounded in context and the complete text, including the schema, is saved to the indicated file. The existing `settings.outputGuard` limits and opt-out apply; no extra setting or direct-tool exposure is required.
+Server instructions 连接时捕获并 cache，server listing 预览、instructions 操作全文返回，离线也可读。
 
-`mcp({ server: "name" })` lists each tool's top-level parameter names after its name, required ones first, such as `- search(query, limit?) - ...`. Types and nested fields stay in `describe`. A tool whose schema has no properties shows `()`. A tool with no schema, or one whose top level uses `$ref`, `allOf`, `anyOf`, `oneOf`, `not`, `if`/`then`/`else`, or dependent requirements, shows no parentheses, because those can add parameters or requirements the list would miss.
+HTTP 503 当 transient，不加 immediate retry；keep-alive 保留 cache，30 秒到 5 分钟 bounded backoff。失败连接可做单次 endpoint shape probe，提示 HTML/非 MCP 等，healthy 不 probe；不暴露 remote body。
 
-Most tools declare no output schema. After such a tool returns structured content or a JSON text result, `describe` also shows the output shape seen so far: field names and types only, never values, labeled as observed, not a contract. A wide object that appears more than once, such as a user under `user`, `assignee`, and `assignees`, is written once as a named type. Shapes are also saved in `mcp-cache.json`, so later sessions see a tool's fields before calling it, unless the server's tool list is private (sign-in-scoped). A shape is used only while the tool's description and input schema stay the same, and a saved one is dropped when they or the server's config change.
-
-For HTTP servers, Pi reports HTTP 503 as temporary unavailability and does not add another immediate retry loop. Keep-alive servers keep cached metadata available and retry after 30 seconds, backing off to 5 minutes. Other failed connects run a one-request shape probe that can turn opaque transport errors into setup hints such as `endpoint returned HTML (200) — this URL does not appear to speak MCP`. Healthy connections are not probed.
-
-Servers that provide usage guidance via the MCP `instructions` field surface it through discovery paths: `mcp({ server: "name" })` includes a preview (after the server's configured `description`, if any), and `mcp({ instructions: "name" })` returns the full text. Instructions are captured at connect time and cached alongside tool metadata, so they stay available without a live connection.
-
-## Search keywords
-
-Search uses literal matching so a tool whose name and description use different vocabulary than the query won't be found. Per-server `searchKeywords` adds extra vocabulary for matching tools:
+### Search keywords
 
 ```json
-{
-  "mcpServers": {
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "searchKeywords": {
-        "search_code": ["grep"],
-        "*": ["gh"]
-      }
-    }
-  }
-}
+{ "mcpServers": { "github": { "searchKeywords": { "search_code": ["grep"], "*": ["gh"] } } } }
 ```
 
-With this config, `mcp({ search: "grep" })` finds `github_search_code` even though neither its name nor description contains that word. Similarly, `mcp({ search: "gh" })` finds all tools provided by the github server.
+Keys 匹配 original/prefixed/glob，所有匹配叠加，权重类似 description，exact phrase 再 boost。只影响 Adapter ranked/regex search，离线可用；不影响 Pi searchTools/tool_search，不写 schema/describe/direct registration/cache。
 
-Keys match a tool's original name, prefixed name, or a glob (`*` applies to every tool on the server) and all matching entries combine. Keywords are weighted like description text, with an extra boost when the query exactly matches a configured phrase. They affect the adapter's ranked and regex search only, not Pi's `searchTools()` or `tool_search`: they never appear in tool schemas, `describe` output, direct-tool registration, or the metadata cache, and search with keywords works offline from cached metadata.
+## Direct tools
 
-## MCP output schemas
+默认 proxy-only 的含义是“不主动向模型声明全部 schema”；在当前 Pi 中，cached tools 仍可注册 deferred 给 tool_search/codemode 使用。
 
-Advertised tool `outputSchema` values support JSON Schema draft-07 and 2020-12. Unstamped schemas use the SDK's 2020-12 default. Returned `structuredContent` is validated against the advertised schema for both proxy and direct-tool calls.
-
-## Direct Tools
-
-By default, all MCP tools are accessed through the single `mcp` proxy tool. This keeps context small but means the LLM has to discover MCP tools via proxy search. If you want specific tools to show up directly in the agent's tool list — alongside `read`, `bash`, `edit`, etc. — add `directTools` to your config.
-
-Per-server:
+`directTools:true` 声明全 server，`["original_name"]` 声明选定工具，false/省略不主动声明。Server 覆盖 global；`"search"` 注册真实 schema 但 inactive，search/call 才逐步激活。75 个以上给 advisory，不阻止注册；可 warnOnLargeDirectTools false。不要把上游 token estimate 当固定实际成本。
 
 ```json
-{
-  "mcpServers": {
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@1.6.0"],
-      "directTools": true
-    },
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "directTools": ["search_repositories", "get_file_contents"]
-    },
-    "huge-server": {
-      "command": "npx",
-      "args": ["-y", "mega-mcp@latest"]
-    }
-  }
-}
+{ "mcpServers": { "github": { "url": "https://example.com/mcp", "directTools": "search", "includeTools": ["get_*"], "excludeTools": ["get_secret"] } } }
 ```
 
-| Value | Behavior |
-|-------|----------|
-| `true` | Register all tools from this server as individual Pi tools |
-| `["tool_a", "tool_b"]` | Register only these tools (use original MCP names) |
-| Omitted or `false` | Proxy only (default) |
+Include 支持 original/generated resource `read_<resource>`/prefixed/glob，exclude 最后应用，同时过滤 direct、proxy search/list/describe 和 panel。
 
-To set a global default for all servers:
+成功 search 激活匹配项，成功 proxy call 也激活 held tool；失败不激活。`addedToolNames` 报告新增。当前 Pi 用 deferred tools 与 server namespace，激活由 Pi 写入 session branch，resume/tree 可恢复；server annotations 可被 permission extension 读取。切 true 激活、切 search 重新 hold，不计 inactive 项进 75 advisory。
 
-```json
-{
-  "settings": {
-    "directTools": true
-  },
-  "mcpServers": {
-    "huge-server": {
-      "directTools": false
-    }
-  }
-}
-```
+Cache 有效时不需为了注册 tools 连接；首次 metadata 缺失默认会 startup discovery，当前 session 随 metadata hot-load。显式 connect 返回 addedToolNames；list_changed 刷新工具/resources。Pi 若支持 unregister 则移除 stale tools；否则隐藏/停用，不把不可用工具留下可执行。Prompt slash commands 无 unregister 能力时见 defer 规则。
 
-Per-server `directTools` overrides the global setting. The example above registers direct tools for every server except `huge-server`.
+Cache 不按年龄自动过期，仅 config identity 变化、server-declared `ttlMs` 或重新连接更新。共享 cache 以稳定文件版本复用 parsed state，读取失败不以空 cache 覆写，canonical 内容不变不重写。它不缓存 tool 执行结果。
 
-## Search-activated direct tools
+`deferWithMissingMetadata:true` 时，missing/expired/mismatched/non-cacheable entries 在首个 MCP operation 前不提供 tools/prompts/resources/search entries，gateway 保留；cached prompt commands 也等 live metadata，避免无法注销。Eager/keep-alive 和 cold MCP_DIRECT_TOOLS selection 仍立即启动，Executor 未缓存 catalog 另有例外。
 
-`directTools: true` puts every tool's definition in front of the model on every turn. Past a few dozen tools that costs context and, on smaller models, accuracy — the advisory at 75 exists for that reason. `directTools: "search"` is the middle path: the tools are registered as real direct tools with real schemas, but **inactive**, and `mcp({ search })` activates the matches additively.
+每个 runtime discovery 后保有自身 schema-bearing catalog；另一个 session 写共享 cache、TTL（含 0）过期、cache 删除、idle 断开不撤销当前 runtime catalog。Disk TTL 只控制 startup reuse，不延长持久 TTL。Resource discovery 失败保留同 config 旧 resource；成功 empty 移除。Current identity/disabled/filter/backoff 仍适用，authoritative empty tool list 移除工具；替换 runtime 需 fresh discovery 或 valid disk cache。
 
-```json
-{
-  "mcpServers": {
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "directTools": "search"
-    }
-  }
-}
-```
+`strictDirectToolArguments:true` 恢复 schema 中 object/array 的一层 JSON string，再验证完整输入。`directToolResultDetails:"bounded"` 保留 guarded raw fields，大字段摘要，完整结果 spill；默认 lean 只留 server/tool metadata。`freezeDirectTools:true` 初次 sync 后不再注册新 surface，但 proxy/search/cache 仍刷新。
 
-A successful `mcp({ search })` activates matching search-mode tools additively for the rest of the session and reports newly activated names in `addedToolNames`. A successful `mcp({ tool })` call for a held search-mode tool activates it the same way, so the next call uses its real schema; a failed call (lookup, approval, or tool error) activates nothing. Before Pi 0.99, a restart or resumed session starts with them inactive again. Selecting `directTools: true` activates held tools, while switching back to `"search"` holds them again. Search-mode tools do not count toward the 75-tool advisory.
+Panel direct toggles 当前 session 生效；setup 文件结构变化依 Pi 正常 reload。Subagent 可通过其公开工具选择 grammar 请求 wrapper/direct tools；不要 import subagent 插件。
 
-On Pi 0.99 and later, search-mode tools are Pi deferred tools, grouped per server in the `mcp__<server>` namespace with the server's `description` and instructions:
+## Codemode 与 tool_search
 
-- Pi's `tool_search` finds and activates them too, and Pi owns their activation: it is recorded on the session branch, so activated tools stay active after a resume or `/tree`.
-- They carry the server's tool annotations, which permission extensions read with `pi.getAllTools()`.
-- Codemode scripts can call them while inactive and get the MCP `CallToolResult` (`content`, `structuredContent`, `isError`); `isError` is also set when the adapter could not run the call.
-- Calls still go through the adapter: lazy connect, `approveTools`, and output limits.
-- Pi cannot unregister tools, so a tool whose server is removed or disabled, or that `includeTools`/`excludeTools` now filter out, is registered again as hidden.
+所有可经 gateway 到达的 cached tools（含 resources、未选入 directTools 名单项）也作为 Pi deferred tools。Direct/search-mode 已有名字不变，其他用 `mcp__<server>__<tool>`：非字母数字下划线归一化为 `_`，超 64 字符或冲突加 8 位 hash；归一化碰撞双方都加 hash，session 内已定名字不能重新指向另一 tool。Load-time 其他 extension 的占名无法全部预检；suffix 仍冲突则跳过并警告，gateway 报 tool_not_registered。旧 full name 仍可用于 Adapter include/exclude/approve/mcp references/call/describe/search，但 Pi 自己的 tool allowlist 要用 shortened registered name。Public resolveServerFromToolName 若 shortened name 可能属于多 server，返回无 server，不猜一个错误 owner。
 
-To expose only a subset of a noisy server, add `includeTools` on the server. Values can be exact original names, generated resource names such as `read_<resource>`, prefixed names, or simple glob patterns:
+Deferred 不加入 model tool list/codemode description/prompt snippet；tool_search 激活后才声明。Codemode 可以在 inactive 时调用，得到 `CallToolResult` content/structuredContent/isError，Adapter 不能执行也置 isError。
 
-```json
-{
-  "mcpServers": {
-    "dokploy": {
-      "url": "http://localhost:3845/mcp",
-      "directTools": true,
-      "includeTools": ["get_*", "dokploy_list_apps"]
-    }
-  }
-}
-```
+Proxy/wrapper 尽可能作为 registered real tool 的 nested Pi call，permission hooks 看得到真实名/annotations；以下仍留在 proxy：MCP_DIRECT_TOOLS=__none__、freeze 前没注册、registered tool 不可调用、schema 不可评估。Runtime event 调用没有 Pi hooks。全部仍过 Adapter approval。
 
-To hide specific tools while still using `directTools: true`, add `excludeTools` on the server. `excludeTools` is applied after `includeTools`:
+Pi 1.2+ 命名尚未注册 server 的 codemode call 会先连（最多等 10 秒）；全工具 search 只等已在进行的连接。List_changed 可立即注册新增项。`MCP_DIRECT_TOOLS=__none__` 不注册 deferred/direct/script/app tools；gateway 保留。Disabled/excluded/unapproved 项不注册；freeze 也管这个 surface。Pi 1.1+ `--tools` 未列 mcp__ 仍保留 deferred 可达；要完全排除用 `--exclude-tools 'mcp__*'`。
 
-```json
-{
-  "mcpServers": {
-    "figma": {
-      "url": "http://127.0.0.1:3845/mcp",
-      "directTools": true,
-      "excludeTools": ["read_figjam", "figma_get_code_connect_map"]
-    }
-  }
-}
-```
+ScriptTools 作为 `mcp__script__<name>` deferred，Executor app tools 作为 `mcp__<server>__<app>_<tool>`；后者不被 directTools 主动声明。不能从 codemode/script 再调用 scriptTool，必须直接调用。详见[脚本](scripting.md)、[Executor](prompts-and-ui.md#executor-app-tools)。
 
-`includeTools` and `excludeTools` filter direct tools, proxy search/list/describe, and the `/mcp-adapter` panel view.
+## Tool approval
 
-Each direct tool costs ~150-300 tokens in the system prompt (name + description + schema). Good for targeted sets of 5-20 tools. For servers with 75+ tools, stick with the proxy or pick specific tools with a `string[]`. If 75+ direct tools resolve, the adapter prints an advisory but still registers the tools you configured. Set `settings.warnOnLargeDirectTools` to `false` to suppress this advisory.
+`approveTools:true` 每次审批；glob[] 匹配 original/prefixed names；server 覆盖 global。`"destructive"` 只放行 server 标记 readOnlyHint true 或 destructiveHint false 的 tool，缺 hints 也拦；resource read 不受 destructive 值拦截。其他 string 视为全部审批。Exclude 是隐藏，approve 是可见但执行前拦。
 
-Direct tools register from the metadata cache in the Pi agent dir (`~/.pi/agent/mcp-cache.json` by default, or `$PI_CODING_AGENT_DIR/mcp-cache.json` when set), so no server connections are needed at startup. On the first session after adding `directTools` to a new server, the cache won't exist yet — tools fall back to proxy-only while the cache populates, then the extension hot-loads the refreshed direct tools into the current session. When `mcp({ connect: "<server>" })` is what discovers them, the connect result lists the new tools in `addedToolNames`, so Pi can load their definitions from that point in the transcript instead of rewriting the active tool list. Servers that advertise MCP list-change notifications refresh the current session when their tool or resource list changes. On Pi versions that expose `pi.unregisterTool()`, stale direct tools are removed from the registry during refresh; older Pi versions still deactivate them from the active tool set. To force a refresh: `/mcp-adapter reconnect <server>`.
+TUI 选项 Allow once、Allow for session、Allow server for this session、Deny。Tool session grant 和 iframe consent（含 deny）分别持久为 active session branch 的 non-LLM custom entries，resume/tree 恢复；仅存 server/tool 与 deterministic definition/argument hashes，不存 raw args/results/secrets。No UI 时 matching calls fail closed approval_required。Deny/abstain/once/approval_required 不产生 tool grant。
 
-Cached metadata does not expire with age. An entry stays valid until the server's config changes or a TTL the server declared (`ttlMs`) runs out, and it is refreshed whenever the server connects, so servers you rarely use stay searchable without being started.
+Allow server 是当前 server 全工具/全部 args 的 broad memory grant，含后发现工具；不持久化，reload/session replace/resume/tree/config replacement 清除。不能绕过 broker deny、exclude、host guard 或独立 iframe consent。需要窄授权用 Allow for session。
 
-For faster startup, set `settings.deferWithMissingMetadata` to `true`. Servers with missing or invalid metadata (expired, mismatched, or non-cacheable) then contribute no tools, prompts, resources, or search entries until the first MCP operation starts the runtime and loads live metadata; the `mcp` gateway stays available. Because Pi cannot unregister slash commands, cached prompt commands also wait for live metadata under this setting. `eager`/`keep-alive` servers and cold `MCP_DIRECT_TOOLS` selections still start immediately.
+`mcp-approval-v1` 是 Adapter 私有持久 state，不是跨插件 API。公开 status 是 `pi-mcp-adapter/status/v1`。
 
-After discovery, each runtime retains its own schema-bearing tool and resource catalogue. Another session overwriting the shared disk cache, a server-declared TTL running out (including `ttlMs: 0`), cache deletion, or an idle disconnect does not revoke that runtime's tools. Disk TTLs still govern reuse at startup; session catalogues are not persisted with extended TTLs. A failed resource discovery preserves that runtime's previously discovered resources for the same server configuration, whereas a successful empty resource list removes them. Current server identity, disabled state, tool filters and failure backoff still apply, and an authoritative empty discovery removes the tools. Replacing the runtime requires fresh discovery or valid disk metadata.
+### Legacy broker
 
-Models sometimes encode an object or array argument as a JSON string. Set `settings.strictDirectToolArguments` to `true` to recover one such layer for schema-declared object and array properties, then validate the complete input against the advertised schema before execution.
-
-Set `settings.directToolResultDetails` to `"bounded"` when an extension needs structured MCP result fields in Pi's direct-tool result details. The same output guard limits apply. Small leading structured fields stay available, while large fields receive bounded summaries and the complete guarded result follows the output guard's spill-file policy. The default `"lean"` mode keeps the existing server and tool metadata only.
-
-If prompt-cache stability matters more than direct-tool hot-loading, set `settings.freezeDirectTools` to `true`. The initial direct-tool sync still runs, but later metadata updates and explicit reconnects keep the registered tool surface unchanged while proxy/search/cache metadata refreshes normally.
-
-When you change direct-tool toggles in `/mcp-adapter`, the extension updates direct tool registration in the current session. Broader setup writes from `/mcp-adapter setup` still use Pi's normal reload flow because they can add or restructure MCP config files.
-
-**Subagent integration:** If you use the subagent extension, agents can request direct MCP tools in their frontmatter with `mcp:server-name` syntax. See the subagent README for details.
-
-## Codemode and tool_search
-
-On Pi 0.99 and later, every cached tool the model could reach through `mcp` is also a Pi deferred tool, so Pi's `codemode` scripts and `tool_search` can find and call it. That includes resource tools (`read_<resource>`) and the tools a `directTools: ["a", "b"]` list leaves out. Tools that already have a direct or search-mode registration keep it instead. Pi doesn't turn `codemode` on for the adapter's servers; [MCP scripting](scripting.md#scripting-mcp-calls-with-pis-codemode) shows how.
-
-- **Names.** They're registered as `mcp__<server>__<tool>`, like Pi's built-in MCP names its tools. Anything but letters, digits and `_` becomes `_`. A name over 64 characters, or one already used by another adapter tool or by a tool another extension registered while the session is running, gets an 8-character hash suffix. Tools whose names become the same, such as `a-b` and `a_b`, all get one, and within a session a name never moves to a different tool, even when the server changes its tool list. Names claimed while extensions load are not checked against other extensions' tools. A tool whose suffixed name is also taken is skipped with a warning, and `mcp({ tool })` then answers `tool_not_registered` for it. Existing direct and search-mode tool names don't change, so one server can have tools under both naming schemes.
-- **Nothing new is declared to the model.** Deferred tools aren't in the tool list or in codemode's description, and they carry no prompt snippet. A tool that `tool_search` activates is declared from then on, with no snippet line in the system prompt, the same as Pi's built-in MCP tools.
-- **Calls still go through the adapter**: lazy connect and `approveTools`. Codemode scripts get the whole MCP `CallToolResult` (`content`, `structuredContent`, `isError`), which the output guard leaves alone.
-- **Proxy calls run under the real tool name.** `mcp({ tool, args })` and `mcp__<server>({ tool, args })` run the call as a nested Pi tool call of the registered tool, so Pi's `tool_call` and `tool_result` hooks and permission extensions see the real name and its annotations. A matching `approveTools` rule still asks once. The call stays inside the proxy, as before, under `MCP_DIRECT_TOOLS=__none__`, when the tool has no registration because `freezeDirectTools` froze the surface first, when the registered tool isn't callable (for example a direct tool you deactivated), when the tool's input schema is one the adapter can't evaluate, and for calls from other extensions through the [runtime tool-call event](extension-api.md#runtime-tool-calls-from-other-extensions).
-- **Servers connected later.** On Pi 1.2 and later, a codemode script that names `mcp__<server>...` for a server whose tools aren't registered yet connects that server first, waiting up to 10 seconds. A call that reaches every tool, such as `tool_search`, waits only for connections already in progress. A server that lists new tools (`notifications/tools/list_changed`) registers them right away.
-- **Controls.** `MCP_DIRECT_TOOLS=__none__` registers none of these tools. It registers no [script tool](scripting.md#script-tools) either, but `mcp` still finds and runs the configured ones. `excludeTools` and `disabled: true` keep tools out, and so does a project server you haven't approved. `settings.freezeDirectTools` freezes this surface too.
-- **`--tools` on Pi 1.1 and later.** A `--tools` list without an `mcp__` entry still keeps MCP tools registered and reachable from codemode and `tool_search`. To keep a session free of MCP, use `--exclude-tools 'mcp__*'`.
-
-[Script tools](scripting.md#script-tools) share this surface. Each one is a Pi deferred tool named `mcp__script__<name>`, so `tool_search`, codemode's `searchTools()` and `mcp({ search })` find it next to the MCP tools, with nothing added to the model's tool list unless the entry sets `declare: true`. A codemode script can't call one, because a script tool runs its own script; the call returns an error that says to call the tool directly.
-
-[Executor app tools](prompts-and-ui.md#executor-app-tools) share it too. Each tool of an Executor app is a Pi deferred tool named `mcp__<server>__<app>_<tool>`, found by the same searches and never declared to the model, even with `directTools`.
-
-Registering thousands of tools costs startup time, because Pi rebuilds its tool registry on every registration after the session starts. With 100 servers of 50 tools each and a warm metadata cache, MCP is ready about 90 ms later than before. The first session without cached metadata takes about 2.6 seconds longer; with 20 servers of 30 tools it's about 60 ms.
-
-## Tool Approval
-
-Use `approveTools` when a tool should stay visible but not run without confirmation. This is useful for destructive or high-cost actions where hiding the tool would make planning harder, but running it silently is too risky.
-
-```json
-{
-  "settings": {
-    "approveTools": ["github_delete_*", "notion_update_*"]
-  },
-  "mcpServers": {
-    "github": { "approveTools": ["delete_*", "merge_pull_request"] },
-    "docs": { "approveTools": false }
-  }
-}
-```
-
-To be asked before any tool that may change or delete data, set `"approveTools": "destructive"` globally or per server. A tool then runs without a prompt only when its server marks it read-only (`readOnlyHint: true`) or non-destructive (`destructiveHint: false`); tools with no such hints, including those restored from an older metadata cache, are gated. Resource reads are never gated by this value. Any other string requires approval for every tool.
-
-When a matching tool is called from the proxy tool, a direct MCP tool, a resource call, or an MCP UI iframe, Pi asks: **Allow once**, **Allow for session**, **Allow server for this session**, or **Deny**. **Allow for session** tool grants and MCP UI iframe consent decisions (including denials) persist as non-LLM custom entries on the active Pi session branch and restore on resume or branch navigation. Entries store only server/tool names and deterministic definition/argument hashes; raw arguments, results, and secrets never persist. Tool grants and iframe consent remain separate gates. In headless sessions, matching calls fail closed with an `approval_required` result; denials, abstentions, **Allow once**, and approval-required paths do not create tool grant records. `excludeTools` still removes tools entirely; `approveTools` only gates visible tools at call time.
-
-**Allow server for this session** permits all tools and argument combinations on the selected server, including tools discovered later. It does not approve other servers. This broad grant stays in memory only: reload, session replacement, resume, and branch navigation clear it. A changed or replaced server configuration also invalidates it. It is never saved to session entries or configuration. Broker denials, tool exclusions, host security guards, and the separate MCP UI iframe consent gate still apply. Use **Allow for session** instead to approve only the displayed tool definition and arguments.
-
-`pi-mcp-adapter/status/v1` is the documented, versioned public channel for cross-extension status. By contrast, `mcp-approval-v1` entries are adapter-owned persistence state, not a supported cross-extension contract; consumers should use documented package exports and event APIs instead.
-
-Permission extensions can broker these decisions by listening on `pi-mcp-adapter:tool-approval-request` and claiming the request synchronously:
+保留兼容事件 **`pi-mcp-adapter:tool-approval-request`**，它是 legacy 名称，不因为缺版本 suffix 而改名。新协议须 versioned。
 
 ```ts
-import {
-  MCP_TOOL_APPROVAL_REQUEST_EVENT,
-  type McpToolApprovalRequest,
-} from "pi-mcp-adapter";
-
+import { MCP_TOOL_APPROVAL_REQUEST_EVENT, type McpToolApprovalRequest } from "pi-mcp-adapter";
 pi.events.on(MCP_TOOL_APPROVAL_REQUEST_EVENT, (request: McpToolApprovalRequest) => {
-  request.claim(async () => {
-    return "allow_once"; // "allow_for_session" | "deny" | "abstain" | { decision: "deny", reason }
-  });
+  request.claim(async () => "abstain");
 });
 ```
 
-The request includes `serverName`, `originalToolName`, `prefixedToolName`, `args`, `origin`, and optional `signal`. The first synchronous claim wins. Brokered approval runs for every resolved MCP call reaching the approval gate, including calls matching session grants restored from the active branch, regardless of `approveTools` configuration, across the proxy, direct, resource, and iframe origins and the `script` origin, which is a call from another extension through the [runtime tool-call event](extension-api.md#runtime-tool-calls-from-other-extensions). `allow_once` permits only the current call; `allow_for_session` updates the same session-scoped approval cache and persistence path as the built-in dialog; `deny` blocks the current MCP call even if cached, without revoking its grant. Only `abstain` or no claim consults the cache, then the configured approval/UI fallback above if no matching grant exists. With no broker listener, fallback behavior is unchanged.
+请求包含 serverName/originalToolName/prefixedToolName/args/origin/可选 signal。必须同步 claim，first claim wins。每个到 gate 的 resolved call 都先 broker，包括已有 branch grant、approveTools false、proxy/direct/resource/iframe，以及 runtime event 的 script origin。
 
-A handler can explain a denial by returning `{ decision: "deny", reason: "..." }` instead of `"deny"`. Return it only when `request.supportsDenyReason` is `true`; any other object is treated as a plain `"deny"`. The model receives the reason in the result of the same call, after a line saying the tool was blocked by the approval gate and not executed. The reason is shown as text: escape sequences and control characters are removed, and a reason over 8 KB is cut at a character boundary and marked as truncated. When you pick **Deny** in the adapter's own dialog, the reason is "The user denied it in the approval dialog."
+allow_once 当前调用；allow_for_session 按同一 cache/persistence 路径授权；deny 即使有 grant 也阻止本次，但不撤销旧 grant。**仅 no claim/abstain 才查 grant，再走 configured approval/UI fallback**。无 listener 不改变普通 fallback；host-managed 则 no claim/abstain 都拒绝，见[SDK](extension-api.md#host-managed)。
 
-On Pi 0.99 and later, a call through `mcp` or `mcp__<server>`, or from a `codemode` script, reaches Pi's `tool_call` and `tool_result` hooks under the registered tool name (see [Codemode and tool_search](#codemode-and-tool_search)). A call that stays inside the proxy is one call to `mcp` with its arguments, and a runtime tool-call event reaches no Pi hook, so permission extensions that want every MCP call should use the broker event above. `approveTools` applies to every MCP call, whether it comes from `mcp`, a direct tool, or a script. It matches the MCP calls inside a [script tool](scripting.md#script-tools), never the script tool itself; a permission extension sees both, the script tool as `mcp__script__<name>`. If another extension also asks before `mcp` runs, one action can show two prompts.
+只有 `supportsDenyReason:true` 才返回 `{decision:"deny",reason:"..."}`，否则对象按普通 deny。Reason 在本次结果中说明未执行，移除 escape/control，最多 8 KB、按字符边界截断并标记。内置 dialog deny 也有固定说明。
 
-## Output Guard
+Pi hooks 不能覆盖 runtime events 和留在 proxy 的内部真实 call，想管所有 MCP calls 用 broker。ScriptTool 内每个 MCP call 也按原名审批，approveTools 不匹配 scriptTool 外壳；permission extension 可匹配 mcp__script__name。若另一个 extension 另拦 mcp 外壳，可能出现两次 prompt。
 
-Oversized MCP tool/resource results are guarded by default so a single huge response can't blow up the model context window or the session file. Only results that go to the model are guarded: a tool or resource result that a codemode script or another extension's tool asked for through Pi's nested tool calls reaches it whole, whether it called `mcp`, `mcp__<server>` or the tool by its own name. That needs Pi 0.99 or later, without `MCP_DIRECT_TOOLS=__none__`. `mcp`'s describe output and calls through the [runtime tool-call event](extension-api.md#runtime-tool-calls-from-other-extensions) are still guarded. For results that go to the model:
+## Output guard
 
-- Inline text output is capped at **50 KiB / 2,000 lines** (matching Pi's built-in `bash` guard). Larger output is truncated to a head preview and the full text is saved to a temp file whose path is included in the result, so the agent can `read`/`grep` it.
-- **Image content blocks pass through unchanged** — only text output is guarded. Images are delivered to the provider as native image content.
-- Binary resource blobs up to **10 MiB** are decoded to private temp files and replaced with file references. Each session is limited to **100 MiB** and **10,000 files**. The files are removed at session teardown.
-- In proxy mode, `details.mcpResult` is kept raw when its JSON is **≤ 16 KiB**; larger results are replaced with a compact summary (block counts, sizes, key previews) and the raw JSON is saved to a temp file. Direct tools keep lean details unless `settings.directToolResultDetails` is set to `"bounded"`, which applies the same guarded `mcpResult` limit. A result that goes to a script has no `details.mcpResult`, since the script gets the whole result as its content.
+默认只 guard 到模型的结果。Pi nested tool call 给 codemode/其他工具的结果完整，即使经 mcp/wrapper/direct；需要 registered tools（不是 MCP_DIRECT_TOOLS=__none__）。Runtime event 和 describe 仍 guarded。
 
-Extensions consuming `details.mcpResult` must check for `omitted === true` on both the result and its `structuredContent` before treating either value as an original payload. For omitted object `structuredContent`, `preservedFields` is only a partial preview; `summary.keyCount` is the original cardinality, while `preservedCount` and `droppedCount` account for retention. Under tiny limits, the whole result may compact to an omission marker without spill metadata.
+- Text 最多 50 KiB/2000 lines；超出保留 head preview、完整 text 存 temp file，路径可 read/grep。
+- Image blocks 原样传 provider，不按 text 截断。
+- Binary resource ≤10 MiB 落 private temp file，替换 file reference；每 session ≤100 MiB/10000 files，teardown 删除这些 materialized files。
+- Proxy details.mcpResult JSON ≤16 KiB 保 raw，否则 block/size/key preview summary + raw JSON spill。Direct 默认 lean，bounded 才同样保 guarded raw；script 已收到完整 result 时没有 details.mcpResult。
 
-Tune the text and details limits with the object form:
+Consumer 必须检查 mcpResult 和 structuredContent 的 `omitted:true`，不能把 preview 当原 payload。Object preservedFields 只是部分，summary.keyCount 是原 cardinality，preservedCount/droppedCount 表示保留量。极小限制可能只剩 omission marker，无 spill metadata。
 
-```json
-{
-  "settings": {
-    "outputGuard": { "maxBytes": 51200, "maxLines": 2000, "detailsMaxBytes": 16384 }
-  }
-}
-```
-
-Set `"outputGuard": false` — or the env kill switch `MCP_OUTPUT_GUARD=0` — to disable text and details guarding. Binary resource materialization and its safety limits remain active. Output-guard spill files are created with mode `0600` under the system temp directory and are not cleaned up automatically; note that spilled MCP output may contain sensitive data.
+`outputGuard:{maxBytes:51200,maxLines:2000,detailsMaxBytes:16384}` 可调整；false 或 MCP_OUTPUT_GUARD=0 关闭 text/details guard，不关闭 binary safety。Text/raw spill mode 0600，在 system temp，**不自动清理**，可能含敏感数据；与 teardown 删除的 binary materialization 区别开。

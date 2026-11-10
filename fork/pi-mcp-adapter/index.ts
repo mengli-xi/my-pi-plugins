@@ -1,16 +1,17 @@
+import { createMcpMailbox, readLegacyMcpEntries } from "./mailbox.ts";
 import { registerProtocolBridge } from "./runtime-protocol.ts";
 export { registerMcpProtocol, MCP_PROTOCOL_EVENT, type McpProtocolDefinition, type McpProtocol, type McpProtocolSession, type McpProtocolStream, type McpProtocolWatch, type McpProtocolEnd } from "./runtime-protocol.ts";
 import { withFileMutationQueue, type AgentToolResult, type AgentToolUpdateCallback, type ExtensionAPI, type ExtensionContext, type ExtensionToolContext, type RegisteredMcpServer, type ToolInfo } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import type { McpExtensionState } from "./state.ts";
-import { isServerDisabled, type CachedTool, type DirectToolSpec, type McpAdapterOptions, type McpConfig, type PromptMetadata, type ServerEntry } from "./types.ts";
+import { isServerDisabled, supportsOAuth, type CachedTool, type DirectToolSpec, type McpAdapterOptions, type McpConfig, type PromptMetadata, type ServerEntry } from "./runtime-types.ts";
 import type { McpOAuthRuntime } from "./mcp-auth-flow.ts";
 import type { NestedCallHandOff } from "./proxy-modes.ts";
 import type { ExtractField } from "./extraction.ts";
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
-import { cloneMcpConfig, discoverConfiguredClaudePluginSkills, getLegacyMcpMigrationNotices, getPiGlobalConfigPath, getPiMcpAuthPath, getProjectConfigPath, getProjectPiConfigPath, isExclusiveConfigMode, loadMcpConfig, loadMcpConfigWithSources, resolveConfiguredClaudePluginMcp, setPiMcpConfigEnabled, translatePiMcpServer, writeProjectServerDisabledOverride, writeSharedServerEntry } from "./config.ts";
+import { cloneMcpConfig, discoverConfiguredClaudePluginSkills, getLegacyMcpMigrationNotices, getPiGlobalConfigPath, getProjectConfigPath, getProjectPiConfigPath, isExclusiveConfigMode, loadMcpConfig, loadMcpConfigWithSources, resolveConfiguredClaudePluginMcp, setPiMcpConfigEnabled, translatePiMcpServer, writeProjectServerDisabledOverride, writeSharedServerEntry } from "./config.ts";
 import { approveProjectScriptTool, approveProjectServer, describeBlockedScriptTool, excludeProjectServersAtLoadTime, hasProjectScriptToolDefinitions, hasProjectServerDefinitions, loadedScriptToolIssues } from "./project-server-trust.ts";
 import { isExtractionConfigured } from "./extraction-settings.ts";
 import { buildProxyDescription, getLargeDirectToolsAdvisory, getMissingConfiguredDirectToolServers, prepareDirectToolArguments, resolveDirectTools } from "./direct-tool-surface.ts";
@@ -32,12 +33,67 @@ import { cleanupMaterializedBinaryResources } from "./tool-registrar.ts";
 import { publishMcpStatusShutdown } from "./mcp-status.ts";
 import { syncNamespaceProxyTools } from "./namespace-tools.ts";
 import { restoreSessionApprovalState } from "./session-approvals.ts";
-import { pendingTasksFromBranch } from "./task-entries.ts";
+import { taskRecoveryFromSession } from "./task-entries.ts";
 import { createRetryableLoader } from "./lazy-loader.ts";
 import { toToolParameters } from "./tool-parameters.ts";
 import { readPanelOpenKeys } from "./panel-keys.ts";
 import { getAgentPath } from "./agent-dir.ts";
 import { showUpgradeNotice } from "./upgrade-notice.ts";
+
+const MCP_SUBCOMMAND_LABELS = {
+  reconnect: "reconnect — Reconnect servers", tools: "tools — List all tools",
+  prompts: "prompts — List all MCP prompts", tasks: "tasks — List and stop background MCP tasks", setup: "setup — Configure MCP servers",
+  semantic: "semantic setup — Choose which servers semantic search may use", edit: "edit — Edit .mcp.json or the global config",
+  logout: "logout — Clear server credentials", token: "token — Manage stored bearer tokens",
+  disable: "disable — Disable a server", enable: "enable — Enable a server",
+  status: "status — Show server status",
+} as const;
+const MCP_SUBCOMMANDS = Object.keys(MCP_SUBCOMMAND_LABELS) as Array<keyof typeof MCP_SUBCOMMAND_LABELS>;
+const MCP_TOKEN_ACTIONS = ["set", "remove", "status"] as const;
+const MCP_EDIT_TARGETS = ["project", "global"] as const;
+
+export function mcpAuthArgumentCompletions(prefix: string, config: Pick<McpConfig, "mcpServers">) {
+  const query = prefix.trimStart();
+  const matches = Object.entries(config.mcpServers)
+    .filter(([name, definition]) => name.startsWith(query) && !isServerDisabled(definition) && supportsOAuth(definition))
+    .map(([name]) => ({ value: name, label: name }));
+  return matches.length ? matches : null;
+}
+
+export function mcpArgumentCompletions(prefix: string, config: Pick<McpConfig, "mcpServers">, tasks: readonly { key: string; tool: string }[] = []) {
+  const normalized = prefix.trimStart();
+  const match = normalized.match(/^(\S+)\s+(.*)$/);
+  const candidates: string[] = [];
+  if (!match) candidates.push(...MCP_SUBCOMMANDS);
+  else {
+    const [, subcommand, rest = ""] = match;
+    if (subcommand === "semantic") candidates.push("semantic setup");
+    if (subcommand === "tasks") {
+      const stopMatch = rest.match(/^stop\s+(.*)$/);
+      if (!stopMatch) candidates.push("tasks stop ");
+      else candidates.push(...tasks.map(task => `tasks stop ${task.key}`));
+    }
+    if (subcommand === "edit") candidates.push(...MCP_EDIT_TARGETS.map(value => `edit ${value}`));
+    if (subcommand === "token") {
+      const actionMatch = rest.match(/^(\S+)\s+(.*)$/);
+      if (!actionMatch) candidates.push(...MCP_TOKEN_ACTIONS.map(value => `token ${value} `));
+      else if (MCP_TOKEN_ACTIONS.some(value => value === actionMatch[1])) {
+        candidates.push(...Object.entries(config.mcpServers)
+          .filter(([, definition]) => !isServerDisabled(definition) && definition.auth === "bearer" && definition.bearerTokenStore === true)
+          .map(([name]) => `token ${actionMatch[1]} ${name}`));
+      }
+    }
+    if (["reconnect", "logout", "disable", "enable"].includes(subcommand ?? "")) {
+      candidates.push(...Object.keys(config.mcpServers).map(name => `${subcommand} ${name}`));
+    }
+  }
+  const matches = candidates.filter(value => value.startsWith(normalized)).map(value => ({ value,
+    label: !match ? MCP_SUBCOMMAND_LABELS[value as keyof typeof MCP_SUBCOMMAND_LABELS]
+      : value === "semantic setup" ? "setup — Choose which servers semantic search may use"
+      : value.trim().split(/\s+/).at(-1) ?? value,
+  }));
+  return matches.length ? matches : null;
+}
 
 export type { McpAdapterOptions } from "./types.ts";
 export type { ServerEntry } from "./types.ts";
@@ -61,7 +117,7 @@ export {
   type McpToolApprovalHandlerResult,
   type McpToolApprovalOrigin,
   type McpToolApprovalRequest,
-} from "./types.ts";
+} from "./runtime-types.ts";
 
 const loadCoreRuntime = createRetryableLoader(() => import("./init.ts"));
 const loadOAuthRuntime = createRetryableLoader(() => import("./mcp-auth-flow.ts"));
@@ -116,11 +172,12 @@ function hasExecutorWithoutCatalog(config: McpConfig, cache: MetadataCache | nul
   });
 }
 
-/** A terminal session that handed off background tasks when it last stopped: its startup resumes them. */
+/** Held Task records also require initialization, never permission to adopt their lineage. */
 function hasTasksToResume(ctx: ExtensionContext): boolean {
   if (!ctx.hasUI || ctx.mode !== "tui") return false;
   try {
-    return pendingTasksFromBranch(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId()).length > 0;
+    const recovery = taskRecoveryFromSession(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId(), ctx.sessionManager.getEntries());
+    return recovery.pending.length > 0 || recovery.results.length > 0 || recovery.held.length > 0;
   } catch {
     // Initialization reads the session again and logs why it can't.
     return false;
@@ -270,6 +327,13 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
   if (!programmaticConfig) setPiMcpConfigEnabled(piSupportsMcp(pi));
   let state: McpExtensionState | null = null;
   let sessionCtx: ExtensionContext | null = null;
+  const mailbox = createMcpMailbox(pi, fence => {
+    if (!sessionCtx || sessionCtx.sessionManager.getSessionId() !== fence.session.id) return null;
+    if (state) return state;
+    // A recovered mail is itself a first use of the lazy runtime. Do not leave
+    // it held forever waiting for an unrelated MCP tool call.
+    return ensureSessionRuntime(sessionCtx);
+  });
   let initPromise: Promise<McpExtensionState> | null = null;
   let initStartedPromise: Promise<void> | null = null;
   let currentOwner: McpRuntimeOwner | null = null;
@@ -1471,6 +1535,7 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
             }
           : {}),
         oauthRuntime,
+        mailbox,
         excludeProjectServers,
         // Pi awaits session_start handlers in order. Returning before the approval
         // dialog settles lets /reload or a later extension replace the editor and
@@ -1739,19 +1804,11 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
         })
         .catch((error) => report(`MCP: could not turn off Pi's built-in MCP: ${formatTerminalError(error)}`, "warning"));
     }
-    // Before any connection, so an imported sign-in is used from the first connect.
-    if (ctx.hasUI && !programmaticConfig && piSupportsMcp(pi) && existsSync(getPiMcpAuthPath())) {
-      try {
-        const { offerPiSignInImports } = await import("./pi-signin-import.ts");
-        await offerPiSignInImports(ctx, excludeProjectServersAtLoadTime(loadMcpConfig(earlyConfigPath, ctx.cwd)), owner.signal);
-      } catch (error) {
-        console.error(`MCP: could not offer Pi sign-in import: ${formatTerminalError(error)}`);
-      }
-      if (generation !== lifecycleGeneration || !owner.isActive()) return;
-    }
     // Recorded only after previous-session cleanup, so a runtime tool call cannot
     // start initialization before session_start decides whether to defer it.
     sessionCtx = ctx;
+    // Old native actions are historical; never replay authentication or clicks.
+    readLegacyMcpEntries(ctx.sessionManager.getBranch());
     if (state) return;
 
     if (!initPromise) {
@@ -1846,7 +1903,7 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
     }
   });
 
-  pi.on("session_shutdown", async () => {
+  pi.on("session_shutdown", async (event) => {
     sessionCtx = null;
     ++lifecycleGeneration;
     const currentState = state;
@@ -1862,6 +1919,7 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
     // Hand background tasks off to the session record first: the owner's abort below would cancel them.
     // Always, even with none running, since a restore may still be resuming one.
     await currentState?.backgroundTasks?.handOffForShutdown();
+    if (event.reason === "quit" || event.reason === "reload") mailbox.close();
 
     // Abort before awaiting cleanup so delayed initialization cannot touch stale
     // Pi context after session shutdown.
@@ -2019,72 +2077,7 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
 
   const registerMcpCommand = (commandName: string) => pi.registerCommand(commandName, {
     description: "Show MCP server status",
-    getArgumentCompletions: (prefix: string) => {
-      const normalized = prefix.trimStart();
-      const argumentMatch = normalized.match(/^(\S+)\s+(.*)$/);
-      if (!argumentMatch) {
-        const subcommands = [
-          { value: "reconnect", label: "reconnect — Reconnect servers" },
-          { value: "tools", label: "tools — List all tools" },
-          { value: "prompts", label: "prompts — List all MCP prompts" },
-          { value: "tasks", label: "tasks — List and stop background MCP tasks" },
-          { value: "setup", label: "setup — Configure MCP servers" },
-          { value: "semantic", label: "semantic setup — Choose which servers semantic search may use" },
-          { value: "edit", label: "edit — Edit .mcp.json or the global config" },
-          { value: "logout", label: "logout — Clear server credentials" },
-          { value: "token", label: "token — Manage stored bearer tokens" },
-          { value: "disable", label: "disable — Disable a server" },
-          { value: "enable", label: "enable — Enable a server" },
-          { value: "status", label: "status — Show server status" },
-        ].filter(({ value }) => value.startsWith(normalized));
-        return subcommands.length > 0 ? subcommands : null;
-      }
-
-      const [, subcommand, argumentPrefix] = argumentMatch;
-      if (subcommand === "semantic") {
-        return "setup".startsWith((argumentPrefix ?? "").trimStart())
-          ? [{ value: "semantic setup", label: "setup — Choose which servers semantic search may use" }]
-          : null;
-      }
-      if (subcommand === "tasks") {
-        const taskArguments = (argumentPrefix ?? "").trimStart();
-        const stopMatch = taskArguments.match(/^stop\s+(.*)$/);
-        if (!stopMatch) {
-          return "stop".startsWith(taskArguments) ? [{ value: "tasks stop ", label: "stop — Stop a background MCP task" }] : null;
-        }
-        const keyPrefix = stopMatch[1] ?? "";
-        const tasks = (state?.backgroundTasks?.list() ?? [])
-          .filter(task => task.key.startsWith(keyPrefix))
-          .map(task => ({ value: `tasks stop ${task.key}`, label: `${task.key} (${task.tool})` }));
-        return tasks.length > 0 ? tasks : null;
-      }
-      if (
-        (subcommand !== "reconnect" && subcommand !== "logout" && subcommand !== "disable" && subcommand !== "enable" && subcommand !== "token")
-        || argumentPrefix === undefined
-      ) return null;
-
-      const completionConfig = state?.config ?? earlyConfig;
-      if (subcommand === "token") {
-        const tokenMatch = argumentPrefix.trimStart().match(/^(set|remove|status)\s+(.*)$/);
-        if (!tokenMatch) {
-          const actions = ["set", "remove", "status"]
-            .filter(action => action.startsWith(argumentPrefix.trimStart()))
-            .map(action => ({ value: `token ${action} `, label: `${action} — Bearer token ${action}` }));
-          return actions.length > 0 ? actions : null;
-        }
-        const action = tokenMatch[1] ?? "";
-        const serverPrefix = tokenMatch[2] ?? "";
-        const servers = Object.keys(completionConfig.mcpServers)
-          .filter(serverName => serverName.startsWith(serverPrefix.trimStart()))
-          .map(serverName => ({ value: `token ${action} ${serverName}`, label: serverName }));
-        return servers.length > 0 ? servers : null;
-      }
-
-      const servers = Object.keys(completionConfig.mcpServers)
-        .filter((serverName) => serverName.startsWith(argumentPrefix.trimStart()))
-        .map((serverName) => ({ value: `${subcommand} ${serverName}`, label: serverName }));
-      return servers.length > 0 ? servers : null;
-    },
+    getArgumentCompletions: (prefix: string) => mcpArgumentCompletions(prefix, state?.config ?? earlyConfig, state?.backgroundTasks?.list()),
     handler: async (args, ctx) => {
       let commandOwner = currentOwner;
       const commandReload = typeof ctx.reload === "function" ? ctx.reload.bind(ctx) : async () => {};
@@ -2117,7 +2110,7 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
         return;
       }
       const parts = args?.trim()?.split(/\s+/) ?? [];
-      const subcommand = parts[0] ?? "";
+      const subcommand = MCP_SUBCOMMANDS.find(value => value === parts[0]) ?? "";
       const targetServer = parts[1];
       const rest = parts.slice(1).join(" ");
 
@@ -2178,8 +2171,8 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
             commandCtx.ui?.notify("MCP edit is unavailable when config is supplied by createMcpAdapter().", "info");
             break;
           }
-          const target = parts[1] ?? "project";
-          if (target !== "project" && target !== "global") {
+          const target = MCP_EDIT_TARGETS.find(value => value === (parts[1] ?? MCP_EDIT_TARGETS[0]));
+          if (!target) {
             commandCtx.ui?.notify("Usage: /mcp-adapter edit [project|global]", "error");
             return;
           }
@@ -2202,9 +2195,9 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
           break;
         }
         case "token": {
-          const action = parts[1];
+          const action = MCP_TOKEN_ACTIONS.find(value => value === parts[1]);
           const serverName = parts.slice(2).join(" ");
-          if (action !== "set" && action !== "remove" && action !== "status") {
+          if (!action) {
             if (commandCtx.hasUI) commandCtx.ui?.notify("Usage: /mcp-adapter token set|remove|status <server>", "error");
             return;
           }
@@ -2283,7 +2276,8 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
   }
 
   pi.registerCommand("mcp-auth", {
-    description: "Authenticate with an MCP server (OAuth)",
+    description: "Authenticate with an MCP server (OAuth): /mcp-auth [server]",
+    getArgumentCompletions: (prefix: string) => mcpAuthArgumentCompletions(prefix, state?.config ?? earlyConfig),
     handler: async (args, ctx) => {
       let commandOwner = currentOwner;
       let commandCtx = createCommandContext(ctx as ExtensionContext, commandOwner);

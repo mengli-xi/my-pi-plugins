@@ -1,10 +1,10 @@
-# Prompts, elicitation, and MCP UI
+# Prompts、elicitation、sampling 与 Apps
 
-Features that go beyond tool calls: server prompt templates, servers asking the user for input, and interactive MCP UI windows.
+这些功能超出普通 tools/call；Apps 的异步投递另见[mailbox](mailbox.md)。
 
-## MCP Prompts
+## MCP prompts
 
-MCP servers can advertise prompt templates alongside tools and resources. The adapter registers cached prompt definitions as Pi slash commands under `/mcp__<server>__<prompt>`, and refreshes their metadata whenever a server connects. Arguments support positional and `key=value` forms with quoting; required arguments are validated before `prompts/get` is called.
+Server 宣告 prompts capability 后，cached definitions 注册为 `/mcp__<server>__<prompt>`，连接时刷新 metadata，不对无 capability server 探测。支持带 quoting 的 positional 和 key=value，required args 在 prompts/get 前验证并补全。
 
 ```text
 /mcp__agent_board__create_plan "harden retry policy"
@@ -12,97 +12,58 @@ MCP servers can advertise prompt templates alongside tools and resources. The ad
 /mcp-adapter prompts
 ```
 
-Prompt results are flattened into one user message, preserving `[user]` and `[assistant]` role markers for multi-message results. Servers without the `prompts` capability are not probed.
+Prompt 多条结果合并为一条 user message，保留 [user]/[assistant] role markers。显式 slash prompt 属于前台输入，不当后台 mailbox mail。Defer missing metadata 下 cached command 暂不注册，见[配置](configuration.md)。
 
-## MCP Elicitation
+## Elicitation
 
-When Pi exposes dialog-capable UI, the adapter advertises form elicitation support. Forms use Pi's stock `select()` and `input()` dialogs, validate the response, and provide a review/edit step before submission. Empty forms use one confirmation dialog. Explicit refusal maps to MCP `decline`; dismissing a dialog maps to `cancel`.
+有 dialog UI 时宣告 form mode，用 Pi select/input，校验后 review/edit 再提交；空 form 一个 confirmation。明确拒绝为 decline，dismiss 为 cancel。
 
-URL mode is advertised only in TUI mode. The adapter displays the requesting server, target host, and full URL, and always requires consent before opening the browser. It also handles URL-required tool errors (`-32042`) and completion notifications; after completing the browser interaction, retry the original tool call.
+URL mode 只在 TUI 宣告；展示 requesting server、target host、完整 URL，每次 consent 后才开 browser。支持 URL-required tool error -32042 和 completion notification；browser 完成后需重试原 call。
 
-Time spent answering a server's prompt does not count against its tool calls' `requestTimeoutMs` (or the SDK's 60-second default). The timeout pauses while a prompt from that server is open and resumes with the time that was left. Task-backed calls are unchanged: their timeout applies to each task request, not to the whole task.
+回答 server prompt 的时间不计 requestTimeoutMs/SDK 默认 60 秒：该 server dialog 开启时暂停 timeout，关闭后继续剩余时间。Tasks 每次 request 的 timeout 不受此总调用暂停规则改变。
 
-### Executor approvals
+## Sampling
 
-On its default URL, [Executor](https://executor.sh) pauses a program when an app tool needs your approval or input and hands the pause to the model, which could then approve it without asking you. The adapter answers these pauses itself: it shows Executor's form in Pi's dialogs, sends your answer with Executor's `resume`, and gives the model only the final result. The model never sees the request ID, and the adapter refuses a `resume` call from the model. In a session that can't show dialogs (headless, or `settings.elicitation: false`), the call fails with a message that it needs an interactive Pi session. Executor's `execute` and `call` get a 6-minute timeout, which covers its 5-minute program limit, unless the server entry sets `requestTimeoutMs`. Executor's browser mode, where you answer in the browser, is left alone.
+通过 Pi public ModelRegistry.complete 调模型，按 modelPreferences.hints 选择，再回退 current/default model。默认有 UI approval 才可用；samplingAutoApprove 显式启用可供 headless 使用。仅 text；context inclusion、tools、stop sequences、audio、image 都以明确错误拒绝。Server 的请求是外部输入，不因 sampling 获得额外工具权限。
 
-### Executor accounts
+## Executor approvals 与 accounts
 
-When a single Executor `call` fails because no account is linked to the app for you, Pi helps you connect one and runs the call again. The adapter gets Executor's own connection link and shows it with the same browser consent prompt as URL elicitation. The link is never shown to the model. Finish connecting in the browser, then choose Continue in Pi. Pi checks the connection once and retries the call once; if the connection is still pending, the model is told to try the call again. Only a single `call` where nothing has run yet is retried. A batch of calls, `execute`, a headless or non-TUI session, a declined prompt, or an app with more than one missing account all return Executor's own message unchanged. Opening the link is TUI-only, like URL mode above.
+只针对 Executor 默认 URL 的适配：默认 execute/call 暂停要求 app approval/input 时，Adapter 自己展示 form，用 resume 回传，只把最终结果给模型；不泄露 request ID，并拒绝模型直接 resume。无 dialog/headless/elicitation false 返回需要 interactive session，不让模型代用户批准。默认 execute/call timeout 至少 6 分钟，覆盖其 program 5 分钟限额；server 显式 requestTimeoutMs 优先。Browser 模式仍让用户在 browser 回答。
+
+单个 call 因 app 未绑定 account 且尚未执行时，Adapter 获取其 connection link，经 URL consent 展示给用户（不给模型），浏览器完成后 Continue，检查一次并仅重试 call 一次；仍 pending 提示再试。Batch/execute/headless/non-TUI/拒绝或多个 missing accounts 返回 Executor 原消息，不自动重试。
 
 ### Executor app tools
 
-Executor itself lists six tools (`search`, `describe`, `call`, `execute`, `resume` and `skills`). On Executor's default URL and Pi 0.99 or later, the tools of your Executor apps are Pi tools too. Each one is a Pi deferred tool named `mcp__<server>__<app>_<tool>`, so Executor's `tools.github.issues.list` is `mcp__executor__github_issues_list`. None of them is declared to the model, even with `directTools`, so they add nothing to the tool list or the system prompt. The model finds them with `mcp({ search })`, `tool_search` or codemode's `searchTools()`, and `mcp({ tool: "github.issues.list" })` calls one through the proxy. Executor's own admin API, `tools.executor.*`, isn't exposed as app tools.
+Executor 自有 search/describe/call/execute/resume/skills 六项。默认 URL 的 app tools 另注册为 Pi deferred `mcp__<server>__<app>_<tool>`，例如 tools.github.issues.list → mcp__executor__github_issues_list；即使 directTools 也不主动声明。Gateway/search/tool_search/codemode 可找到；gateway tool 可用 `github.issues.list`。不暴露 tools.executor.* admin API。
 
-A call to an app tool runs as one Executor `call` for that tool's path. Pi's approvals ask once, on the app tool's path, never on Executor's `call`, and the approval pauses and account linking above still apply. To gate app tools with `approveTools`, put the path without `tools.` on the Executor server entry, for example `"approveTools": ["github.issues.list", "github.*"]`; `tools.github.issues.list` doesn't match. The result is the app tool's own value: a string comes back as text, and an object or a list comes back as data a codemode script can use directly, which the model sees as JSON. A failure comes back as a tool error with Executor's message.
+调用相当于一个 Executor call；按 app path 审批一次，不再按 Executor call 审批。approveTools 规则用 `github.issues.list`/`github.*`，不加 `tools.`。原 pauses/account linking 仍适用；string 为 text，object/list 为 structured data（模型看到 JSON），error 保留 Executor message。
 
-Executor describes inputs with TypeScript types, not JSON Schema, so an app tool accepts any object and Executor checks the input. The tool's description holds its input type on one line. When Executor cut that type short, `mcp({ describe: "github.issues.list" })` asks Executor for the full signature once and keeps it with the cached catalog.
+Executor 以 TypeScript 表达 input，不是 JSON Schema，所以 wrapper 接受 object，由 Executor 验证；description 带一行 input type，截断时 describe 请求完整 signature 一次并 cache。
 
-The adapter keeps up to 1,000 app tools per Executor server: the first 1,000 in Executor's order, which is by app and then by tool name. `/mcp-adapter` shows the count under the server, such as `executor: 1000 of 1200 Executor app tools registered (cap)` when the catalog is larger, and a ⚠ line for each app Executor couldn't list, with Executor's reason. `mcp({ server })` lists Executor's own tools and one line for its app tools that points to `mcp({ search })`. The first session with no cached catalog registers the app tools once during startup, which can add a fraction of a second when thousands of other tools are loaded; later sessions register them from the cache.
+每 server 最多 1000 app tools，按 Executor app/tool 顺序截取；panel 展示注册/总数和无法列 app 的 warning/reason。Server listing 只列六项并指向 search。连接后后台 search catalog；lazy 缺 catalog startup 连一次，runtime 即使 deferWithMissingMetadata 也启动，不能声称首次绝不联网。未取得 catalog 的 Executor 每 session 再试。
 
-The adapter reads the catalog with Executor's `search` in the background after Executor connects; a `lazy` server whose cache has no catalog yet connects once at startup for it. Until the catalog is cached, each session starts the adapter's MCP runtime as soon as the session starts, even with `deferWithMissingMetadata`, where it would otherwise wait for the first MCP call. An Executor server that can't be reached is tried again at the start of every session until its catalog is cached. The catalog is saved in `mcp-cache.json` without your linked-account labels, and a tool list Executor marks private stays in the session. It's read again when a call names a path the catalog doesn't have or Executor no longer has (at most once a minute per server), on `mcp({ connect })`, `/mcp-adapter reconnect` and Executor's `tools/list_changed`, and on the first connect after it's an hour old. The old catalog keeps working while it's read. A `lazy` server isn't started just because its catalog is old; it's refreshed on the server's next real connect.
+Catalog 写 mcp-cache，不含 linked-account labels；private tools 只留 session。缺 path 或失效 path 时（每 server 最多每分钟一次）、connect/reconnect/tools-list_changed，以及 catalog 超一小时后的首次真实 connect 刷新；刷新时旧 catalog 可用，不只因变老就启动 lazy server。
 
-`excludeTools` removes app tools by path, for example `["github.*"]`. `MCP_DIRECT_TOOLS=__none__` registers no app tools and doesn't read the catalog, but the proxy still reaches the app tools of a catalog that's already cached. With `freezeDirectTools`, the catalog still refreshes and the proxy reaches new app tools, but no new Pi tools are registered until `/reload`. The [host-managed embedding](extension-api.md#host-managed-embedding) entry point doesn't reach app tools or any of the Executor handling on this page. Only a local Executor has been tested; hosted Executor uses the same protocol but hasn't been verified.
+Exclude 以 app path glob 隐藏。MCP_DIRECT_TOOLS=__none__ 不注册/不发现 catalog，但可经 proxy 使用已缓存项；freeze 后继续 cache/proxy 刷新、不注册新工具直至 reload。Host-managed 不含 Executor 特殊处理；不能把本地/test fixture 覆盖当 hosted Executor 实测。
 
-## MCP UI Integration
+## MCP Apps/UI
 
-MCP servers can ship interactive UIs via the [MCP UI](https://github.com/MCP-UI-Org/mcp-ui) standard. When you call a tool that has a UI resource, the adapter opens it in a native macOS window via [Glimpse](https://github.com/hazat/glimpse) if available, otherwise falls back to the browser.
+Tool metadata `_meta.ui.resourceUri` 指向 UI resource，Adapter 取 HTML 放 iframe；UI 可调用 tools 和给 agent 发消息。支持 stdio 与 HTTP。
 
-**How it works:**
+Mac 有 Glimpse 则 native WKWebView，否则 browser。`MCP_UI_VIEWER`：browser 强制浏览器；glimpse 要求 native；orca 尝试 Orca，不可用 fallback browser；none/off/disabled 隐藏窗口但 session 仍开、tool inline result 仍回、通知提供可手动打开 URL。第三方 viewer 不是本包运行时硬依赖。
 
-1. Agent calls a tool like `launch_dashboard`
-2. The tool's metadata includes `_meta.ui.resourceUri` pointing to a UI resource
-3. pi-mcp-adapter fetches the UI HTML and opens it in an iframe
-4. The UI can call MCP tools and send messages back to the agent
+Server `openUi:false` 不同于隐藏 viewer：不宣告 Apps capability、不创建 UI session/window，server 可直接 inline 执行而不依赖 App form；signin/URL elicitation 不受影响。切换该项重新读取 tool list，因为 server 可能返回不同 tools。
 
-**Native rendering:** On macOS, if [Glimpse](https://github.com/hazat/glimpse) is installed (`pi install npm:glimpseui`), UIs open in a native WKWebView window instead of a browser tab. Set `MCP_UI_VIEWER=browser` to force the browser, `MCP_UI_VIEWER=glimpse` to require native rendering, `MCP_UI_VIEWER=orca` to open in the [Orca](https://github.com/orca) built-in browser (falls back to the system browser if Orca is unavailable), or `MCP_UI_VIEWER=none` (also accepts `off` / `disabled`) to suppress the window entirely — the tool still runs and its inline result is returned to the agent, but no browser or native window opens. This is useful for headless setups, CI, or users who want the tool output delivered inline as text only. When suppressed, a one-line info notification shows the UI URL so it can still be opened manually if needed.
+同 tool 的 UI 仍开时再次调用将新结果推入现有窗口，保留 view；不同 tool 替换 session。窗口 Cmd/Ctrl+Enter 或 Done 完成关闭，Esc/Cancel 取消关闭。
 
-To turn off UIs for one server only, set `"openUi": false` on its entry. The adapter stops telling that server it supports MCP Apps, so a tool that would hand off to an MCP App form, such as a write tool waiting for you to confirm, runs and returns its result inline instead. No window opens and no UI session starts. Other servers keep opening UIs. This differs from `MCP_UI_VIEWER=none`, which applies to every server and only hides the window: servers still see a UI-capable host and the UI session still starts, so you can open its URL yourself. Changing `openUi` to or from `false` makes the adapter fetch that server's tool list again, because a server may offer different tools to a host without UI.
+### UI 消息与 ACK
 
-**Bidirectional communication:** The UI talks back. When it sends a prompt or intent, the message is stored and `triggerTurn()` wakes the agent. The agent retrieves messages via `mcp({ action: "ui-messages" })` and responds, enabling conversational UIs where the app and agent collaborate in real-time.
+UI 可以送 prompt、intent（name+params）、notify、message，未知 type 作为 intent 转发。`mcp({action:"ui-messages"})` 可读取积累的 UI messages，包含 type/sessionId/serverName/toolName/timestamp，prompt 带 prompt，intent 带 intent/params。
 
-**Session reuse:** When the agent calls the same tool again while its UI is already open, the adapter pushes the new result to the existing window instead of replacing it. This enables live updates — the agent can refine a chart, add data, or respond to user input without losing the current view. Different tools still replace the session as before.
+Prompt/intent/context 等需要 agent 消费的 action 不直接 native triggerTurn，统一经[durable mailbox](mailbox.md)。Trusted host 在 HTTP 前冻结 ID 与完整 text/image payload；重试保持 ID/bytes，成功 ACK 只代表 durable acceptance，不是模型已读。Raw postMessage 使用 ui-message-ack；失败保持 intent 并显示 Retry，不 timer 重发。关闭 UI 不撤销已接受 mail，替换 session 不把旧 action 改投新 branch。
 
-**Message types from UI:**
+### UI 安全
 
-| Type | Purpose |
-|------|---------|
-| `prompt` | User message that triggers an agent response |
-| `intent` | Structured action with name + params |
-| `notify` | Fire-and-forget notification |
-| `message` | Generic message payload |
-| (custom) | Any other type forwarded as intent |
+Iframe tool consent（never/once-per-server/always）与 tool approval 是两个 gate，不能互相替代；mailbox 投影前还会检查 revoked consent。`_meta.ui.visibility`：app-only 不进模型 tool list，model-only 不能由 iframe 调。Provider HTML 不改写，HTTP response enforcing CSP 使用 `_meta.ui.csp` 和兼容 `_meta["openai/widgetCSP"]`。
 
-**Retrieving UI messages:**
-
-```
-mcp({ action: "ui-messages" })
-```
-
-Returns accumulated messages from UI sessions. Each message includes `type`, `sessionId`, `serverName`, `toolName`, and `timestamp`. Prompt messages include `prompt`, intent messages include `intent` and `params`.
-
-**Browser controls:**
-
-- **Cmd/Ctrl+Enter** — Complete and close
-- **Escape** — Cancel and close
-- **Done/Cancel buttons** — Same as keyboard shortcuts
-
-**Technical notes:**
-
-- Tool consent gates whether UIs can call MCP tools (never/once-per-server/always)
-- `_meta.ui.visibility` controls audience: tools marked app-only stay out of the model tool list, and tools marked model-only cannot be called from the UI iframe.
-- Works with both stdio and HTTP MCP servers
-- Uses a local 408KB AppBridge bundle (MCP SDK + Zod) for browser↔server communication
-- Enforces CSP from standard `_meta.ui.csp` and OpenAI-compatible `_meta["openai/widgetCSP"]` metadata in the response header while preserving provider HTML.
-
-## Local Example: Interactive Visualizer
-
-A minimal MCP UI example at `examples/interactive-visualizer` demonstrating charts, bidirectional messaging, and streaming. From that directory:
-
-```bash
-npm install
-npm run build
-npm run install-local
-```
-
-Restart pi, then ask the agent to show a chart — it calls `show_chart` and opens the UI in Glimpse (macOS) or the browser. Use `npm run uninstall-local` to remove the MCP entry.
+Browser↔server 使用随包本地 AppBridge asset，不在首次打开时从 CDN 拉 bridge。UI 内容与 tool results 都视为外部数据。Server roots 默认披露 cwd，见[Server 字段](servers.md#全部字段)。

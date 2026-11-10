@@ -5,7 +5,7 @@ import {
   type McpServerStatusSnapshot,
   type McpStatusEventBus,
   type McpStatusSnapshot,
-} from "./types.ts";
+} from "./runtime-types.ts";
 import { getFailureAgeSeconds, isServerInActiveFailureBackoff } from "./failure-backoff.ts";
 import { describeProjectServerBlock } from "./project-server-trust.ts";
 import { ownTools } from "./tool-metadata.ts";
@@ -110,4 +110,4 @@ export function publishMcpStatusShutdown(events: McpStatusEventBus | undefined):
 }
 
 export type { McpServerStatusSnapshot, McpStatusSnapshot } from "./types.ts";
-export { MCP_STATUS_EVENT, MCP_STATUS_SNAPSHOT_VERSION } from "./types.ts";
+export { MCP_STATUS_EVENT, MCP_STATUS_SNAPSHOT_VERSION } from "./runtime-types.ts";

@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { createFileReader, describeFileError, readTextFile } from "./file-version-cache.ts";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentPath } from "./agent-dir.ts";
 import type { LoadedMcpConfig } from "./config.ts";
-import { isServerDisabled, type McpConfig, type ProjectServerBlock, type ProjectServerBlockReason, type ScriptToolDefinition, type ServerDefinition } from "./types.ts";
+import { isServerDisabled } from "./runtime-types.ts";
+import type { McpConfig, ProjectServerBlock, ProjectServerBlockReason, ScriptToolDefinition, ServerDefinition } from "./types.ts";
 
 const APPROVALS_VERSION = 1;
 const APPROVALS_FILE = "mcp-project-approvals.json";
@@ -142,13 +144,16 @@ function projectApprovalScope(cwd: string): string {
 function linkedWorktreeRepoScope(dotGit: string): string | undefined {
   try {
     if (!lstatSync(dotGit).isFile()) return undefined;
-    const pointer = /^gitdir: (.+)$/m.exec(readFileSync(dotGit, "utf8"))?.[1]?.trim();
+    const pointer = /^gitdir: (.+)$/m.exec(readTextFile(dotGit).value ?? "")?.[1]?.trim();
     if (!pointer) return undefined;
     const adminDir = realpathSync.native(resolve(dirname(dotGit), pointer));
-    const backLink = readFileSync(join(adminDir, "gitdir"), "utf8").trim();
+    const backLink = (readTextFile(join(adminDir, "gitdir")).value ?? "").trim();
+    if (!backLink) return undefined;
     if (realpathSync.native(resolve(adminDir, backLink)) !== realpathSync.native(dotGit)) return undefined;
     const commonDir = dirname(dirname(adminDir));
-    const bare = /^\s*bare\s*=\s*(true|yes|on|1)\s*$/im.test(readFileSync(join(commonDir, "config"), "utf8"));
+    const gitConfig = readTextFile(join(commonDir, "config")).value;
+    if (gitConfig === undefined) return undefined;
+    const bare = /^\s*bare\s*=\s*(true|yes|on|1)\s*$/im.test(gitConfig);
     return basename(commonDir) === ".git" && !bare ? dirname(commonDir) : `git-dir:${commonDir}`;
   } catch {
     return undefined;
@@ -159,26 +164,32 @@ function approvalPath(): string {
   return getAgentPath(APPROVALS_FILE);
 }
 
+const readApprovalFile = createFileReader((text): ApprovalStore => {
+  const parsed = JSON.parse(text) as Partial<ApprovalStore> | null;
+  if (!parsed || parsed.version !== APPROVALS_VERSION || !Array.isArray(parsed.approvals)) throw new Error("invalid approval format");
+  const approvals = parsed.approvals.filter((entry): entry is ApprovalRecord =>
+    !!entry && typeof entry.projectRoot === "string" && typeof entry.serverName === "string"
+    && typeof entry.definitionHash === "string" && typeof entry.approvedAt === "string"
+    && (entry.kind === undefined || entry.kind === "scriptTool"));
+  if (approvals.length !== parsed.approvals.length) throw new Error("invalid approval record");
+  return { version: APPROVALS_VERSION, approvals };
+});
+
 function loadApprovals(): ApprovalStore {
-  const path = approvalPath();
-  if (!existsSync(path)) return { version: APPROVALS_VERSION, approvals: [] };
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<ApprovalStore>;
-    if (parsed.version !== APPROVALS_VERSION || !Array.isArray(parsed.approvals)) throw new Error("invalid format");
-    const approvals = parsed.approvals.filter((entry): entry is ApprovalRecord =>
-      !!entry && typeof entry.projectRoot === "string" && typeof entry.serverName === "string"
-      && typeof entry.definitionHash === "string" && typeof entry.approvedAt === "string");
-    return { version: APPROVALS_VERSION, approvals };
+    return structuredClone(readApprovalFile(approvalPath()).value ?? { version: APPROVALS_VERSION, approvals: [] });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    console.warn(`MCP: ignoring invalid project-server approval store ${path}: ${detail}`);
+    console.warn(`MCP: project-server approvals unavailable: ${describeFileError(error)}`);
     return { version: APPROVALS_VERSION, approvals: [] };
   }
 }
 
 function saveApproval(record: ApprovalRecord): void {
   const path = approvalPath();
-  const store = loadApprovals();
+  // Unlike the trust check, a failed read must abort mutation, not overwrite approvals.
+  const store = structuredClone(readApprovalFile(path).value ?? { version: APPROVALS_VERSION, approvals: [] });
+  if (store.approvals.some(entry => entry.projectRoot === record.projectRoot && entry.serverName === record.serverName
+    && entry.kind === record.kind && entry.definitionHash === record.definitionHash)) return;
   store.approvals = store.approvals.filter(entry =>
     entry.projectRoot !== record.projectRoot || entry.serverName !== record.serverName || entry.kind !== record.kind);
   store.approvals.push(record);

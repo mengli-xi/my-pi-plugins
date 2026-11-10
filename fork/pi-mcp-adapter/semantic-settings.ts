@@ -1,5 +1,5 @@
 import type { McpExtensionState } from "./state.ts";
-import { isServerDisabled } from "./types.ts";
+import { isServerDisabled } from "./runtime-types.ts";
 
 export interface ResolvedSemanticSearchSettings {
   enabled: boolean;

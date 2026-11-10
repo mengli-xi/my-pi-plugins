@@ -1,5 +1,6 @@
 // metadata-cache.ts - Persistent MCP metadata cache
-import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
+import { writeFileSync, renameSync, mkdirSync } from "node:fs";
+import { canonicalJson, createFileReader, describeFileError } from "./file-version-cache.ts";
 import { dirname } from "node:path";
 import { getAgentPath } from "./agent-dir.ts";
 import { createHash } from "node:crypto";
@@ -21,7 +22,7 @@ import type {
   ToolMetadata,
   PromptMetadata,
 } from "./types.ts";
-import { createToolSelectorCandidateIndex, EXECUTOR_APP_TOOL_CAP, formatPromptCommandName, formatToolName, getToolNameCandidates, isServerDisabled, isToolAllowed, resolveToolPrefix, resolveUniqueNameOwnership, type ToolPrefix, type ToolSelectorCandidateIndex } from "./types.ts";
+import { createToolSelectorCandidateIndex, EXECUTOR_APP_TOOL_CAP, formatPromptCommandName, formatToolName, getToolNameCandidates, isServerDisabled, isToolAllowed, resolveToolPrefix, resolveUniqueNameOwnership, type ToolPrefix, type ToolSelectorCandidateIndex } from "./runtime-types.ts";
 import { resourceNameToToolName } from "./resource-tools.ts";
 import {
   extractToolAnnotations,
@@ -43,16 +44,19 @@ export function getMetadataCachePath(): string {
   return getAgentPath("mcp-cache.json");
 }
 
+const readMetadataFile = createFileReader((text) => {
+  const raw = JSON.parse(text) as MetadataCache;
+  if (!raw || raw.version !== CACHE_VERSION || !raw.servers || typeof raw.servers !== "object" || Array.isArray(raw.servers)) {
+    throw new Error("invalid metadata cache format");
+  }
+  return raw;
+});
+
 export function loadMetadataCache(): MetadataCache | null {
-  const cachePath = getMetadataCachePath();
-  if (!existsSync(cachePath)) return null;
   try {
-    const raw = JSON.parse(readFileSync(cachePath, "utf-8"));
-    if (!raw || typeof raw !== "object") return null;
-    if (raw.version !== CACHE_VERSION) return null;
-    if (!raw.servers || typeof raw.servers !== "object") return null;
-    return raw as MetadataCache;
-  } catch {
+    return structuredClone(readMetadataFile(getMetadataCachePath()).value ?? null);
+  } catch (error) {
+    console.warn(`MCP metadata cache unavailable: ${describeFileError(error)}`);
     return null;
   }
 }
@@ -117,24 +121,13 @@ function withoutSessionOnlyCatalog(entry: ServerCacheEntry): ServerCacheEntry {
 /** Reads the cache file, applies one update, and writes the result; an update returning undefined skips the write. */
 function updateMetadataCacheFile(update: (servers: MetadataCache["servers"]) => MetadataCache["servers"] | undefined): void {
   const cachePath = getMetadataCachePath();
-  const dir = dirname(cachePath);
-  mkdirSync(dir, { recursive: true });
-
-  let servers: MetadataCache["servers"] = {};
-  try {
-    if (existsSync(cachePath)) {
-      const existing = JSON.parse(readFileSync(cachePath, "utf-8")) as MetadataCache;
-      if (existing && existing.version === CACHE_VERSION && existing.servers) {
-        servers = { ...existing.servers };
-      }
-    }
-  } catch {
-    // Ignore parse errors and proceed with empty cache
-  }
-
+  // A read failure is not an empty cache: keep the original bytes for recovery.
+  const existing = readMetadataFile(cachePath).value;
+  const servers = structuredClone(existing?.servers ?? {});
   const next = update(servers);
-  if (!next) return;
+  if (!next || (existing && canonicalJson(existing.servers) === canonicalJson(next))) return;
 
+  mkdirSync(dirname(cachePath), { recursive: true });
   const tmpPath = `${cachePath}.${process.pid}.tmp`;
   writeFileSync(tmpPath, JSON.stringify({ version: CACHE_VERSION, servers: next }), "utf-8");
   renameSync(tmpPath, cachePath);

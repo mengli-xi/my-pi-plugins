@@ -1,3 +1,4 @@
+export { supportsOAuth } from "./runtime-types.ts";
 /**
  * MCP Auth Flow
  * 
@@ -43,7 +44,7 @@ import {
   type OAuthAuthority,
   type StoredTokens,
 } from "./mcp-auth.ts"
-import { isServerDisabled, type ServerEntry } from "./types.ts"
+import { isServerDisabled, type ServerEntry } from "./runtime-types.ts"
 import { formatTerminalError, interpolateEnvVars } from "./utils.ts"
 import { createOAuthFetch, oauthHeaderResolver, resolveOAuthHeaders } from "./mcp-auth-fetch.ts"
 import { isBuiltInAgentPlugin } from "./agent-plugin-provenance.ts"

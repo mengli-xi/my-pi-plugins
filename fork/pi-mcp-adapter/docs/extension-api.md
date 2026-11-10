@@ -1,250 +1,150 @@
-# Extension API, plugins, and SDK
+# 扩展 API、plugins 与 SDK
 
-For extension authors, plugin authors, and apps that embed Pi: loading servers from plugins and packages, registering or calling servers at runtime, SDK configuration, host-managed embedding, and status events.
-
-For protocol capabilities beyond tool calls, trusted extensions can [register protocol methods and stream handlers](protocol-extensions.md). The adapter mediates their requests, routes correlated notifications, and manages connection lifetime without exposing its SDK client or transport.
+本包可以独立加载，跨插件只走公开能力/event，不 import 别的插件或解析其私有存储。需要额外 MCP protocol 时见[protocol extensions](protocol-extensions.md)。
 
 ## Agent Plugins
 
-The adapter can load MCP servers from [Agent Plugins](https://agent-plugins.org/) packages when you list plugin directories in `settings.agentPluginPaths`:
-
 ```json
-{
-  "settings": {
-    "agentPluginPaths": ["./plugins/acme-tools"]
-  },
-  "mcpServers": {}
-}
+{ "settings": { "agentPluginPaths": ["./plugins/acme-tools"] } }
 ```
 
-Each directory must contain a valid Agent Plugins 1.0 `plugin.json`. If it also has a root `mcp.json`, the adapter loads its `mcpServers` entries and prefixes them as `<plugin>__<server>`. The loader uses the Agent Plugins transport declared by each server `type` and skips invalid entries without blocking other servers. For stdio plugin servers, `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` are expanded only in `args`, `env`, and `cwd`; the adapter sets both variables for the child process and stores plugin data under the Pi agent directory.
+显式目录必须有合法 Agent Plugins 1.0 plugin.json；root mcp.json 的 mcpServers 按 `<plugin>__<server>` 前缀加载，使用声明 type，坏 entry 不阻塞其他 server。Stdio 在 args/env/cwd 展开 PLUGIN_ROOT/PLUGIN_DATA，并设置 child env；data 放 Pi agent directory。
 
-`inheritEnv` is an adapter-specific field, not an Agent Plugins or OpenCode schema field. Do not add it to a plugin's strict `mcp.json`; to opt a plugin stdio server out of host-environment inheritance, set `inheritEnv: false` in an `mcp-adapter.json` override using the translated `<plugin>__<server>` name:
-
-```json
-{
-  "mcpServers": {
-    "acme_tools__local": { "inheritEnv": false }
-  }
-}
-```
-
-Agent Plugins is a portable package format. Native adapter config remains `.mcp.json`, `~/.config/mcp/mcp.json`, and `mcp-adapter.json` overrides.
-
-## Local Claude plugin bundles
-
-The adapter can opt into MCP servers and Pi skills from explicitly configured local [Claude plugin](https://docs.anthropic.com/en/docs/claude-code/plugins) directories:
+`inheritEnv` 是 Adapter-specific，不可塞进 strict Agent Plugins/OpenCode schema，需在 Adapter override 用翻译后名字设置：
 
 ```json
-{
-  "claudePlugins": [
-    { "path": "./plugins/acme-tools", "mcp": true, "skills": true }
-  ],
-  "mcpServers": {}
-}
+{ "mcpServers": { "acme_tools__local": { "inheritEnv": false } } }
 ```
 
-Each entry needs a non-empty `path` and must enable `mcp`, `skills`, or both. The root-level field can be set in any normal adapter config source; normal config-source precedence applies, and a higher-precedence `claudePlugins` array replaces a lower one. Relative paths in file-based config resolve from the active project cwd. For `createMcpAdapter({ config })`, relative plugin paths are normalized against `process.cwd()` when the factory is created; this explicit API-boundary snapshot keeps early registration and session startup on the same local bundle even when the host's context cwd differs. `mcp: true` reads only the plugin's root `.mcp.json`; `skills: true` discovers `skills/**/SKILL.md` inside the plugin and passes those files through Pi's normal resource discovery, including startup and `/reload`. A `.claude-plugin/plugin.json` manifest is optional, matching Claude's plugin format, but when present it must be valid JSON with a kebab-case `name` and valid standard field types. Manifest path overrides are intentionally not followed.
+## Local Claude plugins
 
-Claude plugin MCP server names are used as written. The first explicitly listed plugin wins same-name conflicts between plugin bundles, while every normal Pi MCP config source overrides these plugin defaults. `${CLAUDE_PLUGIN_ROOT}` is expanded in plugin MCP server fields, and stdio servers receive it in their environment. Skills use Pi's existing skill parsing and conflict handling.
+```json
+{ "claudePlugins": [{ "path": "./plugins/acme-tools", "mcp": true, "skills": true }] }
+```
 
-This is an explicit local trust boundary: the adapter does not discover, download, install, or update plugins; execute plugin hooks; or fetch skills from MCP instructions. It resolves plugin components inside each configured directory and rejects component symlinks that escape it. Config and skills are read during discovery, but MCP commands are still lazy and run only when normal adapter lifecycle/tool use connects that server. Enable `mcp` only for plugin directories whose commands and configuration you trust.
+每项 path 非空且至少启用 mcp/skills。任意普通 config 来源可设，较高优先级 array 整体替换。File config relative path 按 active project cwd；程序化 config 在 factory 创建时按 process.cwd() normalize，一次快照使早期注册/session 启动不随 host context cwd 漂移。
+
+Mcp 只读 root `.mcp.json`；skills 发现 skills/**/SKILL.md 并交 Pi public resource discovery（含 startup/reload）。可选 `.claude-plugin/plugin.json` 若有须 valid JSON/kebab-case name/标准字段类型；不跟随 manifest path overrides。
+
+Server name 原样，plugin 间冲突第一显式项胜，普通 Pi MCP config 高于 plugin defaults。CLAUDE_PLUGIN_ROOT 展开 server fields 并传 stdio env；skills 冲突/解析由 Pi 处理。
+
+只信任显式 local directory，不自动发现/download/install/update plugin，不跑 hooks，不从 MCP instructions 拉 skills；组件逃逸目录的 symlink 拒绝。发现时读 config/skills，命令仍按 lazy/trust/lifecycle 运行。
 
 ## Pi package manifests
 
-A Pi package can ship MCP servers for the installed adapter without requiring a separate MCP config file. Declare a package-relative config in its `package.json`:
-
 ```json
-{
-  "pi": {
-    "mcp": "./mcp.json"
-  }
-}
+{ "pi": { "mcp": "./mcp.json" } }
 ```
 
-`pi.mcp` can also be an array of package-relative paths. Each file uses the normal `mcpServers` object shape, but package manifests load only server entries: package `settings` and `imports` are ignored. Server names are prefixed with the sanitized package name, such as `acme_tools__docs`, and user/global/project MCP config has higher precedence. The adapter loads only Pi packages listed in Pi settings; it does not scan `node_modules`.
+pi.mcp 也接受 package-relative paths array；只取 mcpServers，不取 settings/imports，名字加 sanitized package prefix（如 acme_tools__docs）。只加载 Pi settings 列出的 packages，不扫描 node_modules；普通 global/project config 优先。Project settings 带来的 package servers 仍需 project trust/approval。
 
-## Runtime registration from other extensions
+## Runtime registration
 
-On Pi 0.99 and later, an extension can add a server with Pi's own API, and the adapter connects it:
+Pi 公开 `pi.registerMcpServer(name,definition)`/unregister 可被 Adapter 接管。配置采用 Pi MCP grammar，按[配置](configuration.md#文件与目录发现)转换；不能执行的 entry 报告，不猜支持。Load-time registration 随 session 接入，之后实时应用；same config 复用连接，different config 替换，unregister 断开。
 
-```ts
-export default function plugin(pi) {
-  pi.registerMcpServer("acme__docs", { url: "https://mcp.example.com/mcp" });
-}
-```
+Runtime server 不主动 direct，cached tools 仍可 deferred；只解释 exposure hidden/enabled false 为 disabled，direct/deferred exposure 忽略并报告。Configured 同名胜出，早先 Adapter event registration 也胜出。
 
-The config uses the format of Pi's `mcp.json` and is translated the same way as that file (see [configuration](configuration.md#file-layout)); a server the adapter can't run, such as an SSE server, is not connected and is reported. Registrations made while extensions load connect with the session; registering or unregistering later applies right away. Registering a name again with a different config replaces the server (the same config keeps the existing connection, as in Pi's built-in MCP), and `pi.unregisterMcpServer(name)` disconnects it.
-
-These servers get no direct tools, like the adapter's own runtime registrations below; on Pi 0.99 and later their cached tools are Pi deferred tools like every other server's. Of Pi's exposure settings only `"exposure": "hidden"` and `"enabled": false` apply, both as `disabled: true`; `direct` and `deferred` exposure are ignored and reported. A config entry with the same name wins, and so does an earlier registration through the adapter's event below; the other registration is reported as overridden.
-
-The adapter's own registration event still works on every supported Pi version, for example for a plugin host that discovers plugins after load:
+Adapter 的 versioned event：
 
 ```ts
-const MCP_RUNTIME_REGISTER_EVENT = "pi-mcp-adapter:runtime-register:v1";
-type RuntimeRegistrationRequest = {
-  version: 1;
-  name: string;
-  definition: { url: string };
-  result?:
-    | { ok: true; registration: { dispose(): Promise<void> } }
-    | { ok: false; error: Error };
+const request = {
+  version: 1,
+  name: "acme__docs",
+  definition: { url: "https://mcp.example.com/mcp" },
+  result: undefined,
 };
-
-export default function pluginHost(pi) {
-  let registration: { dispose(): Promise<void> } | undefined;
-
-  pi.on("session_start", () => {
-    if (registration) return;
-    const request: RuntimeRegistrationRequest = {
-      version: 1,
-      name: "acme__docs",
-      definition: { url: "https://mcp.example.com/mcp" },
-    };
-    pi.events.emit(MCP_RUNTIME_REGISTER_EVENT, request);
-    if (!request.result) throw new Error("pi-mcp-adapter is not installed");
-    if (!request.result.ok) throw request.result.error;
-    registration = request.result.registration;
-  });
-
-  pi.on("session_shutdown", async () => {
-    const current = registration;
-    registration = undefined;
-    await current?.dispose();
-  });
-}
+pi.events.emit("pi-mcp-adapter:runtime-register:v1", request);
+// result: {ok:true,registration:{dispose():Promise<void>}} | {ok:false,error:Error}
 ```
 
-Cross-extension registration uses Pi's shared event bus and does not require a runtime import from `pi-mcp-adapter`. Emit during `session_start` or later so the adapter listener is installed. The adapter writes `request.result` synchronously; the first adapter listener to respond wins.
+`session_start` 或以后 emit，listener 已安装；result 同步设置，first response wins。无 result 表示能力缺失，消费者必须降级/报不可用，不能假设总安装 Adapter。无需 import runtime plugin。注册 session-scoped，不写 config，duplicate fail closed；正常 lazy/OAuth/approval/shutdown，不主动 direct，下一 sync 可见。换定义先 dispose 再 register；shutdown dispose 释放。
 
-Runtime registrations are session scoped and never written to config files. Duplicate server names fail closed against configured servers and other registrations. Registered servers use the normal lazy connection, OAuth, approval, and shutdown behavior, but they get no direct tools, and their tools become visible at the next tool sync. On Pi 0.99 and later, their cached tools are Pi deferred tools like every other server's (see [codemode and tool_search](tools.md#codemode-and-tool_search)). To change a definition, dispose the registration and register again.
-
-## Runtime tool calls from other extensions
-
-An extension can call a configured MCP tool from its own code, without a model turn:
+## Runtime tool call
 
 ```ts
-const MCP_RUNTIME_TOOL_CALL_EVENT = "pi-mcp-adapter:runtime-tool-call:v1";
-type RuntimeToolCallRequest = {
-  version: 1;
-  tool: string;
-  args?: Record<string, unknown>;
-  server?: string;
-  result?: Promise<
-    | { ok: true; result: { content: unknown[]; details?: unknown } }
-    | { ok: false; error: Error }
-  >;
-};
-
-const request: RuntimeToolCallRequest = { version: 1, tool: "search", args: { query: "mcp" } };
-pi.events.emit(MCP_RUNTIME_TOOL_CALL_EVENT, request);
-if (!request.result) throw new Error("pi-mcp-adapter is not installed");
-const outcome = await request.result;
-if (!outcome.ok) throw outcome.error;
+const request = { version: 1, tool: "search", args: { query: "mcp" }, server: "docs", result: undefined };
+pi.events.emit("pi-mcp-adapter:runtime-tool-call:v1", request);
+// result?: Promise<{ok:true,result:{content:unknown[],details?:unknown}} | {ok:false,error:Error}>
 ```
 
-`tool` and `server` resolve the same way as `mcp({ tool, server })`, and approval settings and disabled servers apply as they do for that call. The adapter sets `request.result` to a promise during `emit()`; await it. A tool error or denied approval resolves with `ok: false`. Emit during `session_start` or later; calls fail after the session shuts down.
+Emit 内同步给 result promise，然后 await；无 result 是能力不可用。Session_start 后才可用，shutdown 后失败。Tool/server 解析如 gateway，disabled/approval 同规则；tool error/deny 返回 ok false。Event call 不经 Pi tool hooks，但仍过 legacy approval broker（origin script）与 output guard。
 
-A call through this event is guarded by the [output guard](tools.md#output-guard) like a model's call. A tool of yours that calls an MCP tool through Pi's `ctx.executeTool()` instead gets the whole result, without the guard, so limit what your tool returns to the model.
+需要 full raw result 的自有 tool 可通过 Pi public ctx.executeTool nested call，按自己的输出负责限制；这不授权绕开 Adapter gates。
 
-## SDK configuration
+## SDK 配置
 
-Use `createMcpAdapter` when an SDK or server integration already owns its MCP configuration:
+Public entries：package root、`/types`、`/oauth`、`/host-managed`、`/config`、`/metadata-cache`。本地构建生成 per-file JS 与 declarations，SDK/Pi 从 compiled exports 加载，不要求 standalone consumer 直接执行源码 `.ts`。不要 deep-import private implementation。
 
 ```ts
 import { createMcpAdapter } from "pi-mcp-adapter";
-
-const extension = createMcpAdapter({
-  config: {
-    mcpServers: {
-      docs: {
-        url: "https://mcp.example.com/mcp",
-        lifecycle: "eager",
-      },
-    },
-  },
-});
-
-// Register `extension` with the host SDK.
+const extension = createMcpAdapter({ config: { mcpServers: { docs: { url: "https://mcp.example.com/mcp", lifecycle: "eager" } } } });
 ```
 
-The package ships TypeScript source for Pi's source-loader and SDK integrations. Use a TypeScript-capable loader/toolchain (for example `node --import tsx`) when importing the package from a standalone Node process; raw Node ESM does not execute the `.ts` entry directly.
+Supplied config 是完整隔离快照，不 merge files/imports/global/project/--mcp-config、不修改原对象；每 factory/session clone。显式 claudePlugins 是快照指明的 local file 读取例外，relative path 在 factory 创建时 normalize。
 
-A supplied `config` is a complete, isolated snapshot. It is not merged with files, imports, global config, project config, or `--mcp-config`, and it is never mutated. Explicit `claudePlugins` entries are the sole exception to file isolation: their configured local directories are read because they are part of that supplied snapshot. Relative programmatic plugin paths are normalized against `process.cwd()` when `createMcpAdapter` creates the factory, so the early model-facing surface, load-time initialization, and later session runtime all use the same bundle. Each adapter factory and session receives its own clone, so separate integrations can use different servers and settings safely. In this mode, server status, reconnect, explicit `/mcp-auth <server>`, proxy calls, and direct tools continue to work; setup and no-argument auth/status panels report the limitation instead of discovering or writing ambient config.
+Status/reconnect/explicit auth/proxy/direct 仍可用；setup/无参数 auth/status panel 不猜 ambient config，说明限制。内建 `/mcp` 留给 Pi，Adapter 只 `/mcp-adapter`。`configPath` 而无 config 时仍按正常 merge，path 高于 argv；default export 正常 file mode。
 
-On Pi 0.99 and later, a supplied `config` leaves Pi's built-in MCP extension in place, because the adapter doesn't read Pi's `mcp.json` files in this mode: `/mcp` stays Pi's, and the adapter's panel is `/mcp-adapter`.
+Credentials 按 configured name + URL binding，不按 oauthDir 隔离；oauthDir/MCP_OAUTH_DIR 仅 legacy plaintext import。State/PKCE flow-local，parallel flows 不共享 transient secrets。
 
-With `configPath` and no `config`, the adapter keeps normal file merge behavior, and that path takes precedence over argv and `--mcp-config`. The default export keeps the normal file-based behavior. OAuth credentials are stored in the operating system credential store and keyed by the configured server name; URL binding prevents credentials from being accepted for a different server URL. `settings.oauthDir` and `MCP_OAUTH_DIR` are used only as legacy plaintext import locations for older `tokens.json` files, not as credential namespaces. CSRF state and PKCE verifiers are flow-local, so concurrent authorization flows do not share transient secrets.
-
-Cooperating Pi extensions can use `pi-mcp-adapter/oauth` to reuse URL-bound OAuth tokens without deep-importing private files:
+### Public OAuth helpers
 
 ```ts
 import { getMcpOAuthTokensForUrl, updateMcpOAuthTokensForUrl } from "pi-mcp-adapter/oauth";
-
 const tokens = await getMcpOAuthTokensForUrl("jira", "https://jira.example.com/mcp");
 await updateMcpOAuthTokensForUrl("jira", "https://jira.example.com/mcp", { accessToken: "..." });
 ```
 
-The public subpath exposes only token read/update helpers plus a status helper. The async read path uses the adapter's refresh logic before it returns tokens. For a service-protected endpoint or a pre-registered OAuth client, pass the explicit refresh configuration as `getMcpOAuthTokensForUrl(name, url, { definition: { headers, oauth } })`. This optional configuration is never loaded from ambient config or stored with the tokens; headers are bound to the supplied MCP URL's origin. The helpers keep secure-store storage, URL binding, refresh persistence, chunk handling, legacy import, and fail-closed credential-store errors. They do not expose client registration secrets, PKCE verifiers, or OAuth state.
+Subpath 仅 token read/update 与 status，不暴露 client registration secrets/state/verifier。Async token read 可 refresh 后返回；service headers/pre-registered refresh 需要显式 `{definition:{headers,oauth}}`，不从 ambient config 偷读、不与 token 一起存，headers 只限 MCP origin。保持 secure-store/chunk/legacy import/URL/fail-closed 边界。
 
-## Host-managed embedding
+Status helper 与 mailbox credential guard 是只读 live-store 检查，不等同可 refresh 的 token read helper；不能为了 status 触发 OAuth/import/compact 或修改凭据。Adapter 不提供 native sign-in import。
 
-Use `pi-mcp-adapter/host-managed` when an application embeds Pi and owns the MCP connection itself: it builds the transports, holds the credentials, records each call before it runs, and decides when the adapter starts and stops. For an ordinary integration that only supplies MCP configuration, use `createMcpAdapter` instead.
+## Host-managed
+
+`pi-mcp-adapter/host-managed` 面向自己持有 transports/credentials、记录每次 dispatch 并决定 start/stop 的嵌入应用；只想提供 config 用 createMcpAdapter。
 
 ```ts
-import { createAgentSession, DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { createHostManagedMcpAdapter } from "pi-mcp-adapter/host-managed";
-
 const adapter = createHostManagedMcpAdapter({
-  servers: {
-    github: {
-      createTransport: () => new StreamableHTTPClientTransport(new URL(url), { fetch: guardedFetch }),
-      tools: ["search_issues", "get_issue"], // omit to expose every listed tool
-    },
-  },
+  servers: { github: { createTransport: () => makeTransport(), tools: ["search_issues", "get_issue"] } },
   async onToolCall(call) {
     await journal.record(call.toolCallId, call.server, call.tool, call.arguments);
     return await call.dispatch();
   },
 });
-
-await adapter.ready(); // connects, lists tools, and freezes the catalog
-const loader = new DefaultResourceLoader({ extensionFactories: [adapter.extensionFactory] });
-await loader.reload();
-const { session } = await createAgentSession({ resourceLoader: loader });
-await adapter.close(); // after the session settles
+await adapter.ready();
+// 把 adapter.extensionFactory 注册到 Pi 的 public resource loader。
+// session settle 后 await adapter.close()。
 ```
 
-Nothing connects until `ready()`, which calls each `createTransport` once. It rejects and closes the adapter if a server fails to start, a requested tool is missing, or two tools map to the same Pi name (`<server>_<tool>`). `extensionFactory` registers only the selected tools and throws before `ready()` resolves or after `close()`. `close()` refuses new calls, aborts in-flight ones, and closes every transport within five seconds. A dropped connection is never reopened.
+Ready 前不连，每个 factory 只调一次；任意 server start 失败、selected tool 缺失或 `<server>_<tool>` Pi name 冲突时 ready reject 并关闭。Tools 省略选全 catalog，ready 后冻结。ExtensionFactory 在 ready 未完成或 close 后抛错。Close 拒绝新 calls、abort in-flight，最多 5 秒关闭 transports，不重连 dropped connection。
 
-Every call goes through the approval broker (`pi-mcp-adapter:tool-approval-request` on `pi.events`, origin `direct`). Only `allow_once` or `allow_for_session` lets it run. A denial, an `abstain`, or no handler at all refuses the call before `onToolCall` sees it. `onToolCall` receives the frozen arguments and input schema, the Pi tool-call id, an opaque `connectionId`, and a `dispatch()` that sends `tools/call` at most once. The result it returns goes through the normal output guard, whether raw or changed (for example after importing images). An `isError: true` result reaches the model as a tool error. `dispatch()` rejects with `HostManagedMcpError`. The raw error is kept only as its `cause`, and the model sees fixed text.
+每次 call 先 legacy broker（origin direct），只有 allow_once/allow_for_session 执行；deny/abstain/no listener 一律 not_sent，onToolCall 不会看到。收到 frozen arguments/input schema/toolCallId/opaque connectionId，dispatch single-use，最多发一次 tools/call。Returned raw 或 transformed result 都 output-guard，isError 按 tool error。
 
-| `delivery` | Meaning |
+HostManagedMcpError 原始错误只在 cause，模型固定安全文本：
+
+| delivery | 含义 |
 |---|---|
-| `not_sent` | The request never left the adapter; the tool did not run. |
-| `may_have_run` | The request was sent and the outcome is unknown (timeout, cancellation, lost connection, HTTP error). The agent is told not to retry automatically. |
-| `server_error` | The server answered with a JSON-RPC error (`protocolCode`). |
-| `invalid_result` | The server answered, but the result failed validation, including the tool's `outputSchema`. The tool may have run. |
+| not_sent | 未发，tool 未执行 |
+| may_have_run | 已发但结果未知：timeout/cancel/lost connection/HTTP error；模型不得自动 retry |
+| server_error | JSON-RPC error，带 protocolCode |
+| invalid_result | 已返回但验证失败（含 outputSchema），可能已执行 |
 
-On `notifications/tools/list_changed` the adapter lists the server's tools again. A selected tool that changed or disappeared is retired for the life of the adapter; if the re-list fails, every selected tool on that server is retired. Calls wait for a running re-list and are refused as `not_sent` both before `onToolCall` and inside `dispatch()`. The model is told to start a new session.
+Tools list_changed 重新 list：selected tool 改变/消失永久 retire；re-list 失败 retire 该 server 全部 selected tools。Call 等 re-list，并在 onToolCall 前和 dispatch 内双检，not_sent，提示新 session。
 
-After `dispatch()` resolves, `call.linkedResource(uri)` prepares a read of a `resource_link` from that result. The read needs its own broker approval (origin `resource`, args `{ uri }`) and uses the same connection. It returns a `readId` and a single-use `dispatch()`, so you can record the read before it happens. A URI that is not linked throws, and a read is refused as `not_sent` once the parent call has settled. When the approval gate denies a read, the `HostManagedMcpError` also has `denied: true` and, if the approver gave one, a `denyReason` (control characters removed, at most 8 KB), so `onToolCall` can pass the reason on in its result; an `abstain` or a lost broker leaves both unset.
+Dispatch 成功后 `call.linkedResource(uri)` 只允许该 result 的 resource_link，独立 broker（origin resource,args {uri}）、同 connection；返回 readId/single-use dispatch，可先 journal。非 linked URI throw，parent settled 后 not_sent。Deny 时错误带 denied true 与清理后的 denyReason（若有），abstain/lost broker 不带。
 
-Supplied transports must not carry an OAuth `authProvider` or any retry or replay behavior. The adapter sends each `tools/call` at most once at its own layer. It turns off the SDK's multi-round-trip auto-fulfilment, passes the tool definition so the SDK cannot resend on a header mismatch, and never recovers a session or reconnects. This mode does not read config files, use OAuth or the credential store, register commands, UI, or the `mcp` proxy tool, expose resource tools or prompts, or answer sampling or elicitation requests.
+Supplied transport 不得有 authProvider 或 retry/replay。Adapter 关闭 SDK multi-round-trip autofulfilment，传 tool definition 避免 header mismatch resend，不做 recovery/reconnect。此模式不读 config/OAuth/store，不注册 commands/UI/gateway/resource tools/prompts，不答 sampling/elicitation，不含 Executor handling。
 
-## Runtime status snapshots
+## Status snapshots
 
-Extensions can subscribe to the adapter's versioned shared event-bus channel instead of parsing `/mcp-adapter` or `mcp({})` output:
+`MCP_STATUS_EVENT` 的值为 **`pi-mcp-adapter/status/v1`**，从 public package export 获得；消费者订阅 shared event bus，无 listener 时不能依赖 status。
 
-```ts
-import { MCP_STATUS_EVENT, type McpStatusSnapshot } from "pi-mcp-adapter";
+Read-only copied snapshot：totalTools/totalResources/connectedCount/disabledCount；每 server name/status/toolCount/directToolCount/disabled，已知时 resourceCount，active failure 才有 failedAgoSeconds。Status 可为 connected/cached/failed/needs-auth/not-connected/disabled。
 
-pi.events.on(MCP_STATUS_EVENT, (snapshot) => {
-  const status = snapshot as McpStatusSnapshot;
-  // status.servers contains connected, cached, failed, needs-auth,
-  // not-connected, or disabled entries.
-});
-```
+读取 status 不连 lazy server、不 auth、不泄露 SDK client/transport/credentials/definitions。初始化 authoritative metadata 与 active direct registry reconcile 后才 emit 首份；metadata/status 更新 emit，shutdown emit empty。Connected snapshot 因此在模型 surface sync 之后，包括 authoritative empty catalog 清旧工具。
 
-The snapshot is read-only machine-readable data with copied per-server entries. It includes `totalTools`, `totalResources`, `connectedCount`, and `disabledCount`; each server includes `name`, `status`, `toolCount`, `directToolCount` (the number of tools currently registered directly with Pi, including direct resource tools), and `disabled`, with `resourceCount` when known and `failedAgoSeconds` only for an active failure. Reading status never connects a lazy server, starts authentication, or exposes SDK clients, transports, credentials, or server definitions. An initial snapshot is emitted after initialization, updates are emitted for status and metadata changes, and an empty snapshot is emitted when the session shuts down. Initialization withholds that first snapshot until authoritative metadata has been reconciled into Pi's active direct-tool registry. A `connected` snapshot therefore follows model-facing tool-surface synchronization, including removal of stale cached tools when the authoritative catalog is empty.
+## 协作与验证边界
+
+新 event 都 versioned：runtime-register:v1、runtime-tool-call:v1、protocol:v1、status/v1；tool-approval-request 仅保留 legacy 兼容，不可据此给新协议沿用无版本命名。Approval abstain 与 host-managed 差异见[工具](tools.md#legacy-broker)。
+
+Apps/OAuth/Task 用 shared Inject **library**，不是 plugin dependency。包内不加载 CC/其他插件；真实 CC/Inject/SDK 组合、缺失可选方与加载顺序测试放根 integration。Export availability 的隔离 import 不得读取真实 credentials 或连接 server，也不等于完整 SDK 联测。

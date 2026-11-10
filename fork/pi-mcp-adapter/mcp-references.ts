@@ -15,7 +15,7 @@ import {
   type ServerEntry,
   type ToolPrefix,
   type ToolSelectorCandidateIndex,
-} from "./types.ts";
+} from "./runtime-types.ts";
 
 export interface ParsedMcpReference {
   raw: string;

@@ -1,5 +1,5 @@
 import { SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
-import { isServerDisabled, type ServerDefinition } from "./types.ts";
+import { isServerDisabled, type ServerDefinition } from "./runtime-types.ts";
 import {
   isTransientHttpConnectError,
   isUnauthorizedHttpError,

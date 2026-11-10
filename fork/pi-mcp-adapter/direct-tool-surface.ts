@@ -1,6 +1,6 @@
 import { Check, Errors } from "typebox/value";
 import type { DirectToolSpec, McpConfig, ServerCacheEntry, ServerEntry, ToolPrefix, ToolSelectorCandidateIndex } from "./types.ts";
-import { createToolSelectorCandidateIndex, EXECUTOR_APP_TOOL_CAP, formatToolName, getToolNameCandidates, isServerDisabled, isToolAllowed, resolveToolPrefix, resolveUniqueNameOwnership } from "./types.ts";
+import { createToolSelectorCandidateIndex, EXECUTOR_APP_TOOL_CAP, formatToolName, getToolNameCandidates, isServerDisabled, isToolAllowed, resolveToolPrefix, resolveUniqueNameOwnership } from "./runtime-types.ts";
 import type { MetadataCache } from "./metadata-cache.ts";
 import { isExecutorOwnTool, isServerCacheValid, isUsableCachedAppTool, parseDirectToolSelectors } from "./metadata-cache.ts";
 export { getMissingConfiguredDirectToolServers } from "./metadata-cache.ts";

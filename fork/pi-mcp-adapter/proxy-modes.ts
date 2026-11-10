@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
+import type { McpMailSender } from "./mailbox.ts";
 import type { AgentToolResult, ToolInfo } from "@earendil-works/pi-coding-agent";
 import { UrlElicitationRequiredError, type Client, type JsonSchemaType, type JsonSchemaValidator, type Progress, type RequestOptions } from "@modelcontextprotocol/client";
 import { createRequire } from "node:module";
 import type { McpExtensionState } from "./state.ts";
 import type { ToolMetadata } from "./types.ts";
-import { getServerPrefix, getToolNameCandidates, isServerDisabled, joinToolName, MAX_TOOL_NAME_LENGTH, parseUiPromptHandoff, resolveToolPrefix, type ServerEntry, type ToolPrefix } from "./types.ts";
+import { getServerPrefix, getToolNameCandidates, isServerDisabled, joinToolName, MAX_TOOL_NAME_LENGTH, parseUiPromptHandoff, resolveToolPrefix, type ServerEntry, type ToolPrefix } from "./runtime-types.ts";
 import { lazyConnect, markKeepAliveAfterConnect, notifyToolMetadataUpdated, updateServerMetadata, updateMetadataCache, getFailureAgeSeconds, updateStatusBar, clearFailure, recordFailure, repageExecutorCatalog, cacheExecutorSignature } from "./init.ts";
 import { throwIfAborted } from "./abort.ts";
 import { combineAbortSignals, isAbortError } from "./runtime-owner.ts";
@@ -13,7 +15,7 @@ import { getObservedOutput, observedOutputRecorder, renderOutputShape } from "./
 import { reconstructPromptMetadata } from "./metadata-cache.ts";
 import { resolveMcpResultContent, transformMcpResourceContents } from "./tool-registrar.ts";
 import { guardMcpOutput, guardMcpText, guardedMcpDetails, resolveMcpOutputGuardOptions } from "./mcp-output-guard.ts";
-import { maybeStartUiSession, summarizeUiSessionResult, type UiSessionRuntime } from "./ui-session.ts";
+import type { UiSessionRuntime } from "./ui-session.ts";
 import { formatAuthRequiredMessage, formatMcpStatus, normalizeToolArguments, resolveServerUrl, supportsOAuth, truncateAtWord, withToolCallIdMeta } from "./utils.ts";
 import { authenticate, completeAuthFromInput, getAuthStatus, startAuth } from "./mcp-auth-flow.ts";
 import { SessionRecoveryAuthRequiredError, withSessionRecovery } from "./session-recovery.ts";
@@ -26,7 +28,7 @@ import { describeExecutorAppTool, isExecutorCatalogConnection, isExecutorCatalog
 import { paginate, rankSuggestions, rankToolMatches, resolveSearchKeywords, scoreToolMatch, type RankedToolMatch } from "./search-ranking.ts";
 import { approvalBlockedResult, ensureToolCallApproved, isToolCallApprovalRequired, type ToolCallApprovalResult } from "./tool-approval.ts";
 import { describeFailure, isServerInActiveFailureBackoff } from "./failure-backoff.ts";
-import { classifierRegistryOf, semanticSearch, type SemanticClassifierRegistry, type SemanticSearchBackend } from "./semantic-search.ts";
+import type { SemanticClassifierRegistry, SemanticSearchBackend } from "./semantic-search.ts";
 import { getInputRequiredNeedsUiDetails } from "./errors.ts";
 import { createJsonSchemaValidator } from "./json-schema-validator.ts";
 import { describeProjectServerBlock, disabledServerReason } from "./project-server-trust.ts";
@@ -35,6 +37,10 @@ import { extractionServers } from "./extraction-settings.ts";
 
 // index.ts reaches extraction through this lazily loaded module, so startup does not load it.
 export { applyExtraction, parseExtractFields } from "./extraction.ts";
+
+import { createRetryableLoader } from "./lazy-loader.ts";
+const loadSemanticSearch = createRetryableLoader(() => import("./semantic-search.ts"));
+const loadUiSession = createRetryableLoader(() => import("./ui-session.ts"));
 
 type ProxyToolResult = AgentToolResult<Record<string, unknown>>;
 /**
@@ -256,9 +262,10 @@ function disabledResult(state: McpExtensionState, mode: string, serverName: stri
   };
 }
 
-function emitAuthStatus(state: McpExtensionState, serverName: string, status: "authenticated" | "failed", message: string): void {
+async function emitAuthStatus(state: McpExtensionState, serverName: string, status: "authenticated" | "failed", message: string, sendMail: McpMailSender | undefined, attemptId: string): Promise<void> {
   state.ui?.notify(message, status === "authenticated" ? "info" : "error");
-  state.sendMessage?.(
+  if (!sendMail) throw new Error("MCP mailbox is unavailable; OAuth notification was not accepted");
+  await sendMail(
     {
       customType: "mcp-oauth-status",
       content: [{ type: "text", text: message }],
@@ -269,7 +276,7 @@ function emitAuthStatus(state: McpExtensionState, serverName: string, status: "a
         ...(status === "authenticated" ? { nextAction: { connect: serverName } } : {}),
       },
     },
-    { triggerTurn: true },
+    `oauth:${serverName}:${attemptId}:${status}`,
   );
 }
 
@@ -286,6 +293,8 @@ function ensureBackgroundAuthWatcher(
   }
   if (watchers.has(serverName)) return;
 
+  const sendMail = state.captureMail?.();
+  const attemptId = randomUUID();
   const authOptions = {
     authStorageOptions: state.authStorageOptions,
     runtime: state.oauthRuntime,
@@ -298,11 +307,12 @@ function ensureBackgroundAuthWatcher(
     throwIfAborted(state.owner.signal);
     clearFailure(state, serverName, "auth-background-complete");
     updateStatusBar(state);
-    emitAuthStatus(
+    await emitAuthStatus(
       state,
       serverName,
       "authenticated",
       `OAuth authentication completed for MCP server "${serverName}". Connect it now to load and verify its tools.`,
+      sendMail, attemptId,
     );
   });
   watchers.set(serverName, watcher);
@@ -310,17 +320,23 @@ function ensureBackgroundAuthWatcher(
   void watcher.catch(async (error) => {
     if (isAbortError(error, state.owner.signal)) return;
     try {
-      if (await getAuthStatus(serverName, authOptions) === "authenticated") return;
+      if (await getAuthStatus(serverName, authOptions) === "authenticated") {
+        state.ui?.notify(`MCP OAuth succeeded, but its notification was not accepted: ${String(error)}`, "error");
+        return;
+      }
     } catch (statusError) {
       if (isAbortError(statusError, state.owner.signal)) return;
     }
     if (state.owner.signal.aborted) return;
-    emitAuthStatus(
+    await emitAuthStatus(
       state,
       serverName,
       "failed",
       `OAuth authentication failed for MCP server "${serverName}". Start authorization again or inspect trusted logs.`,
+      sendMail, attemptId,
     );
+  }).catch(error => {
+    state.ui?.notify(`MCP OAuth notification was not accepted: ${String(error)}`, "error");
   }).finally(() => {
     if (watchers?.get(serverName) === watcher) watchers.delete(serverName);
   });
@@ -1090,7 +1106,11 @@ export function findTools(state: McpExtensionState, input: ToolSearchInput): Too
     return failure("Semantic search cannot be combined with regex search.", { error: "invalid_search_mode", query });
   }
   if (searchMode === "semantic") {
-    return semanticSearch(state, query, server, input.signal, input.classifier).then(result => result.ok
+    return loadSemanticSearch().then(({ semanticSearch }) => {
+      throwIfAborted(input.signal);
+      throwIfAborted(state.owner?.signal);
+      return semanticSearch(state, query, server, input.signal, input.classifier);
+    }).then(result => result.ok
       ? { matches: result.matches, backend: result.backend }
       : failure(`Semantic search failed: ${result.error.message}`, { error: result.error.code, message: result.error.message, query }));
   }
@@ -1172,7 +1192,14 @@ export function executeSearch(
   const render = (outcome: ToolSearchOutcome): ProxyToolResult => "error" in outcome
     ? outcome.error
     : renderSearchResults(state, query, server, includeSchemas !== false, limit, offset, outcome.matches, outcome.backend);
-  const outcome = findTools(state, { query, regex, server, searchMode, signal, classifier: classifierRegistryOf(modelRegistry) });
+  if (searchMode === "semantic") {
+    return loadSemanticSearch().then(({ classifierRegistryOf }) => {
+      throwIfAborted(signal);
+      throwIfAborted(state.owner?.signal);
+      return findTools(state, { query, regex, server, searchMode, signal, classifier: classifierRegistryOf(modelRegistry) });
+    }).then(render);
+  }
+  const outcome = findTools(state, { query, regex, server, searchMode, signal });
   return outcome instanceof Promise ? outcome.then(render) : render(outcome);
 }
 
@@ -1655,7 +1682,7 @@ export async function executeCall(
     };
   }
 
-  const callIdentity = toolMeta.resourceUri
+  const callIdentity: Record<string, string> & { server: string } = toolMeta.resourceUri
     ? { server: serverName, resourceUri: toolMeta.resourceUri, canonicalTool: toolMeta.name }
     : { server: serverName, tool: toolMeta.originalName, canonicalTool: toolMeta.name };
 
@@ -1798,6 +1825,7 @@ export async function executeCall(
   }
 
   let uiSession: UiSessionRuntime | null = null;
+  let uiSessionModule: typeof import("./ui-session.ts") | undefined;
   // openUi: false runs the tool as if it declared no UI.
   const uiResourceUri = state.config.mcpServers[serverName]?.openUi === false ? undefined : toolMeta.uiResourceUri;
   const requestOptions = withUiProgressBridge(
@@ -1890,8 +1918,12 @@ export async function executeCall(
       };
     }
 
+    if (uiResourceUri) {
+      uiSessionModule = await loadUiSession();
+      throwIfAborted(ownedSignal);
+    }
     uiSession = uiResourceUri
-      ? await maybeStartUiSession(state, {
+      ? await uiSessionModule!.maybeStartUiSession(state, {
           serverName,
           toolName: toolMeta.originalName,
           toolArgs: normalizedArgs,
@@ -1932,6 +1964,7 @@ export async function executeCall(
       && !internalDelivery && !uiResourceUri && toolMeta.executorPath === undefined
       ? state.backgroundTasks
       : undefined;
+    const taskDelivery = backgroundTasks?.capture();
     let startedTask: StartedTask | undefined;
     const callResult = await withSessionRecovery<ClientCallToolResult>(
       {
@@ -1962,6 +1995,7 @@ export async function executeCall(
         tool: toolMeta.originalName,
         taskId,
         execution,
+        delivery: taskDelivery!,
         render: async (result) => {
           if (!result.isError) recordOutput(result);
           return renderResult(result, {});
@@ -1994,7 +2028,7 @@ export async function executeCall(
     }
 
     if (uiResourceUri && !result.isError) {
-      const { message, uiOpen, uiViewer, uiUrl } = summarizeUiSessionResult(uiSession);
+      const { message, uiOpen, uiViewer, uiUrl } = uiSessionModule!.summarizeUiSessionResult(uiSession);
       return await renderResult(result, { mode: "call", ...callIdentity, uiOpen, uiViewer, uiUrl }, `\n\n${message}`);
     }
 

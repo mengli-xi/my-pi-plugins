@@ -20,14 +20,7 @@ type KeyringModule = { Entry: KeyringEntryConstructor };
 type KeyringRequire = ((id: string) => unknown) & { resolve(id: string): string };
 
 const require = createRequire(import.meta.url);
-const TEST_STORE_ENV = "PI_MCP_ADAPTER_TEST_AUTH_STORE";
-const memoryEntries = new Map<string, string>();
-let memoryReadCount = 0;
 let KeyringEntryClass: KeyringEntryConstructor | undefined;
-
-function key(service: string, account: string): string {
-  return `${service}\0${account}`;
-}
 
 function nativeStore(service: string): SecureKeyringStore {
   const entry = (account: string): KeyringEntry => {
@@ -105,24 +98,6 @@ function recoverKeyring(operation: "read" | "write" | "remove", service: string,
 }
 
 export function createSecureKeyringStore(service: string): SecureKeyringStore {
-  const mode = process.env[TEST_STORE_ENV];
-  if (mode === "memory" || mode === "sizelimited") {
-    return {
-      read(account) { memoryReadCount++; return memoryEntries.get(key(service, account)); },
-      write(account, payload) {
-        if (mode === "sizelimited" && payload.length > 1280) throw new Error("secure credential value exceeds platform limit");
-        memoryEntries.set(key(service, account), payload);
-      },
-      remove(account) { memoryEntries.delete(key(service, account)); },
-    };
-  }
-  if (mode === "unavailable") {
-    return {
-      read() { memoryReadCount++; throw new Error("simulated secure credential store unavailable"); },
-      write() { throw new Error("simulated secure credential store unavailable"); },
-      remove() { throw new Error("simulated secure credential store unavailable"); },
-    };
-  }
   return nativeStore(service);
 }
 
@@ -162,9 +137,3 @@ function getKeyringNativeBindingSuffixes(platform: NodeJS.Platform, arch: NodeJS
   }
   return platform === "freebsd" && arch === "x64" ? ["freebsd-x64"] : [];
 }
-
-export function resetTestSecureKeyring(): void { memoryEntries.clear(); memoryReadCount = 0; }
-export function getTestSecureKeyringReadCount(): number { return memoryReadCount; }
-export function getTestSecureKeyringEntries(): [string, string][] { return [...memoryEntries.entries()]; }
-export function setTestSecureKeyringEntry(service: string, account: string, payload: string): void { memoryEntries.set(key(service, account), payload); }
-export function removeTestSecureKeyringEntry(service: string, account: string): void { memoryEntries.delete(key(service, account)); }

@@ -10,7 +10,7 @@ import {
 import { ContentBlockSchema } from "@modelcontextprotocol/core";
 import type { ConsentManager } from "./consent-manager.ts";
 import { ServerError, wrapError } from "./errors.ts";
-import { extractToolAnnotations, formatAuthRequiredMessage, normalizeToolArguments } from "./utils.ts";
+import { extractToolAnnotations, formatAuthRequiredMessage, normalizeToolArguments, stableStringify } from "./utils.ts";
 import { buildHostHtmlTemplate, buildSandboxResourceCsp } from "./host-html-template.ts";
 import {
   buildSandboxProxyCsp,
@@ -114,6 +114,28 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServerH
   let sandboxProxyUrl: string | null = null;
   let closeTimer: NodeJS.Timeout | null = null;
   let listenersClosed = false;
+  const actionWindows = new Map<string, { next: number; actions: Map<string, { signature: string; accepted: boolean; pending: Promise<void> | null }> }>();
+  const acceptAction = async (route: string, params: Record<string, unknown>, work: () => Promise<void>) => {
+    const id = params.deliveryId;
+    const match = typeof id === "string" ? /^ui:([A-Za-z0-9-]{1,128}):([1-9][0-9]*)$/.exec(id) : null;
+    const sequence = Number(match?.[2]);
+    if (!match || !Number.isSafeInteger(sequence)) throw new Error("Invalid UI deliveryId; action was not accepted");
+    let window = actionWindows.get(match[1]!);
+    if (!window) { window = { next: 1, actions: new Map() }; actionWindows.set(match[1]!, window); }
+    const signature = stableStringify({ route, params });
+    let action = window.actions.get(id as string);
+    if (action && action.signature !== signature) throw new Error("UI deliveryId payload conflict; action was not accepted");
+    if (action?.accepted) return { deliveryId: id };
+    if (action?.pending) { await action.pending; return { deliveryId: id }; }
+    if (sequence !== window.next) throw new Error("UI action sequence is out of order; retry the preceding action first");
+    if (!action) { action = { signature, accepted: false, pending: null }; window.actions.set(id as string, action); }
+    const entry = action;
+    const run = work();
+    entry.pending = run;
+    try { await run; entry.accepted = true; window.next++; }
+    finally { entry.pending = null; }
+    return { deliveryId: id };
+  };
 
   // Track messages from UI for retrieval
   const sessionMessages: UiSessionMessages = {
@@ -154,6 +176,7 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServerH
   };
 
   const recordUiMessage = async (msgParams: UiMessageParams): Promise<void> => {
+    await options.onMessage?.(msgParams);
     const promptText = extractUiPromptText(msgParams);
 
     // Track messages by type (order: prompt → intent → notify)
@@ -178,7 +201,6 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServerH
       }
     }
 
-    await options.onMessage?.(msgParams);
   };
 
   const touchHeartbeat = () => {
@@ -571,27 +593,30 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServerH
       }
 
       if (url.pathname === "/proxy/ui/generated-tool-call-intent") {
-        const tool = typeof params.tool === "string" ? params.tool : undefined;
-        if (tool && isAppOnlyTool(tool)) {
-          log.debug("Ignored generated app-only tool call intent", { tool });
-        } else {
-          await recordUiMessage({
-            type: "intent",
-            intent: "call_tool",
-            params: {
-              ...(tool !== undefined ? { tool } : {}),
-              ...(params.arguments !== undefined ? { arguments: params.arguments } : {}),
-              ...(params.isError !== undefined ? { isError: params.isError } : {}),
-            },
-          });
-        }
-        sendJson(res, 200, { ok: true, result: {} });
+        const result = await acceptAction(url.pathname, params, async () => {
+          const tool = typeof params.tool === "string" ? params.tool : undefined;
+          if (tool && isAppOnlyTool(tool)) {
+            log.debug("Ignored generated app-only tool call intent", { tool });
+          } else {
+            await recordUiMessage({
+              deliveryId: params.deliveryId as string,
+              type: "intent",
+              intent: "call_tool",
+              params: {
+                ...(tool !== undefined ? { tool } : {}),
+                ...(params.arguments !== undefined ? { arguments: params.arguments } : {}),
+                ...(params.isError !== undefined ? { isError: params.isError } : {}),
+              },
+            });
+          }
+        });
+        sendJson(res, 200, { ok: true, result });
         return;
       }
 
       if (url.pathname === "/proxy/ui/message") {
-        await recordUiMessage(params as UiMessageParams);
-        sendJson(res, 200, { ok: true, result: {} });
+        const result = await acceptAction(url.pathname, params, () => recordUiMessage(params as UiMessageParams));
+        sendJson(res, 200, { ok: true, result });
         return;
       }
 
@@ -606,19 +631,22 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServerH
           return;
         }
         const ctxParams: UiModelContextParams = {
+          ...(typeof params.deliveryId === "string" ? { deliveryId: params.deliveryId } : {}),
           ...(content !== undefined ? { content: content as NonNullable<UiModelContextParams["content"]> } : {}),
           ...(structuredContent !== undefined ? { structuredContent: structuredContent as Record<string, unknown> } : {}),
         };
-        const update = createUiModelContextUpdate(ctxParams);
-        if (update) {
-          sessionMessages.contexts.push(update);
-          while (sessionMessages.contexts.length > MAX_CONTEXT_UPDATES) {
-            sessionMessages.contexts.shift();
+        const result = await acceptAction(url.pathname, params, async () => {
+          await options.onContextUpdate?.(ctxParams);
+          const update = createUiModelContextUpdate(ctxParams);
+          if (update) {
+            sessionMessages.contexts.push(update);
+            while (sessionMessages.contexts.length > MAX_CONTEXT_UPDATES) {
+              sessionMessages.contexts.shift();
+            }
           }
-        }
-        log.debug("UI context update", { hasContent: !!ctxParams.content, hasUpdate: !!update });
-        await options.onContextUpdate?.(ctxParams);
-        sendJson(res, 200, { ok: true, result: {} });
+          log.debug("UI context update", { hasContent: !!ctxParams.content, hasUpdate: !!update });
+        });
+        sendJson(res, 200, { ok: true, result });
         return;
       }
 
@@ -684,7 +712,9 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServerH
         return;
       }
       const wrapped = wrapError(error, { server: options.serverName, tool: options.toolName });
-      const status = /approval required|denied/i.test(wrapped.message) ? 403 : 500;
+      const status = /Invalid UI deliveryId/i.test(wrapped.message) ? 400
+        : /UI deliveryId payload conflict|UI action sequence is out of order/i.test(wrapped.message) ? 409
+        : /approval required|denied/i.test(wrapped.message) ? 403 : 500;
       if (status === 500) {
         log.error("Request handler error", error instanceof Error ? error : undefined);
       }

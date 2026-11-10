@@ -1,4 +1,5 @@
 import type { UiHostContext, UiResourceContent, UiResourceCsp } from "./types.ts";
+import { createUiActionQueue } from "./ui-action-bridge.ts";
 
 // Use locally bundled AppBridge to avoid CDN Zod bundling issues
 const DEFAULT_APP_BRIDGE_MODULE_URL = "/app-bridge.bundle.js";
@@ -122,6 +123,7 @@ export function buildHostHtmlTemplate(input: HostHtmlTemplateInput): string {
     <div class="panel">
       <h2>UI Error</h2>
       <p id="error-message"></p>
+      <button id="retry-action-btn" hidden>Retry action</button>
     </div>
   </div>
   <div class="overlay" id="completion-overlay">
@@ -155,6 +157,7 @@ export function buildHostHtmlTemplate(input: HostHtmlTemplateInput): string {
     const errorOverlay = document.getElementById("error-overlay");
     const completionOverlay = document.getElementById("completion-overlay");
     const errorMessage = document.getElementById("error-message");
+    const retryActionBtn = document.getElementById("retry-action-btn");
     const sandboxProxyOrigin = new URL(SANDBOX_PROXY_URL).origin;
 
     document.getElementById("server-name").textContent = SERVER_NAME;
@@ -205,6 +208,22 @@ export function buildHostHtmlTemplate(input: HostHtmlTemplateInput): string {
       }
       return body.result ?? {};
     };
+
+    let failedActionId = null;
+    const actions = (${createUiActionQueue.toString()})(crypto.randomUUID(), post,
+      (id, error) => {
+        failedActionId = id;
+        retryActionBtn.hidden = false;
+        showError("Action " + id + " was not accepted: " + String(error) + ". Retry preserves this action's identity.");
+      },
+      (id) => {
+        if (failedActionId !== id) return;
+        failedActionId = null;
+        retryActionBtn.hidden = true;
+        errorOverlay.classList.remove("visible");
+        setStatus("Action accepted");
+      });
+    retryActionBtn.addEventListener("click", () => actions.retry(failedActionId));
 
     let consentGranted = !REQUIRE_TOOL_CONSENT;
     const initialStreamContext = HOST_CONTEXT?.[STREAM_CONTEXT_KEY];
@@ -260,7 +279,7 @@ export function buildHostHtmlTemplate(input: HostHtmlTemplateInput): string {
       }
       const result = await post("/proxy/tools/call", params);
       // Notify agent about the tool call
-      await post("/proxy/ui/generated-tool-call-intent", {
+      await actions.submit("/proxy/ui/generated-tool-call-intent", {
         tool: params.name,
         arguments: params.arguments,
         isError: result.isError
@@ -268,8 +287,8 @@ export function buildHostHtmlTemplate(input: HostHtmlTemplateInput): string {
       return result;
     };
 
-    bridge.onmessage = async (params) => post("/proxy/ui/message", params);
-    bridge.onupdatemodelcontext = async (params) => post("/proxy/ui/context", params);
+    bridge.onmessage = async (params) => actions.submit("/proxy/ui/message", params);
+    bridge.onupdatemodelcontext = async (params) => actions.submit("/proxy/ui/context", params);
     
     // Also listen for raw postMessage events with custom types (notify, prompt, intent, etc.)
     // These bypass the AppBridge protocol but are used by some MCP UI implementations
@@ -284,21 +303,29 @@ export function buildHostHtmlTemplate(input: HostHtmlTemplateInput): string {
       // Handle raw UI action messages
       const msgType = data.type;
       if (typeof msgType !== "string") return;
+      if (msgType === "ui-message-retry") {
+        if (!actions.retry(data.deliveryId)) showError("No failed action matches this retry ID.");
+        return;
+      }
+      const reply = (deliveryId, ok, error) => iframe.contentWindow.postMessage({
+        type: "ui-message-ack", deliveryId, accepted: ok, ...(error ? { error: "Action was not accepted: " + error } : {})
+      }, sandboxProxyOrigin);
       
       if (msgType === "notify" || msgType === "prompt" || msgType === "intent" || msgType === "message") {
         // Standard MCP-UI types - preserve their semantics
         // Support both { type, payload: {...} } and { type, field: value } formats
         const { type: _, payload, ...directFields } = data;
-        await post("/proxy/ui/message", { type: msgType, ...directFields, ...(payload || {}) }).catch(() => {});
+        // Error reporting/ACK and retained retry intent belong to actions.
+        await actions.submit("/proxy/ui/message", { type: msgType, ...directFields, ...(payload || {}) }, reply).catch(() => {});
       } else if (!msgType.startsWith("ui-lifecycle-") && !msgType.startsWith("ui-message-")) {
         // Any other custom type - forward as intent with type as intent name
         // (Skip internal lifecycle/ack messages)
         const payload = data.payload || {};
-        await post("/proxy/ui/message", {
+        await actions.submit("/proxy/ui/message", {
           type: "intent",
           intent: msgType,
           params: payload,
-        }).catch(() => {});
+        }, reply).catch(() => {});
       }
     });
     bridge.ondownloadfile = async (params) => post("/proxy/ui/download-file", params);
@@ -308,7 +335,7 @@ export function buildHostHtmlTemplate(input: HostHtmlTemplateInput): string {
       if (!result.isError) {
         window.open(params.url, "_blank", "noopener,noreferrer");
         // Notify agent about the link open
-        await post("/proxy/ui/message", {
+        await actions.submit("/proxy/ui/message", {
           type: "intent",
           intent: "open_link",
           params: { url: params.url }

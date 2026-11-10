@@ -23,7 +23,7 @@
 import { ProtocolError, SdkHttpError, UnauthorizedError } from "@modelcontextprotocol/client";
 import { logger } from "./logger.ts";
 import { throwIfAborted } from "./abort.ts";
-import { isServerDisabled, type McpConfig } from "./types.ts";
+import { isServerDisabled, type McpConfig } from "./runtime-types.ts";
 import { supportsOAuth } from "./utils.ts";
 import { invalidateAuthEntryCache } from "./mcp-auth.ts";
 import type { McpServerManager, ServerConnection } from "./server-manager.ts";

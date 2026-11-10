@@ -1,6 +1,6 @@
 import type { McpExtensionState } from "./state.ts";
 import type { ServerEntry, ToolMetadata, ToolPrefix } from "./types.ts";
-import { getServerPrefix, getToolNameCandidates, isServerDisabled, matchesToolPattern, resolveToolPrefix } from "./types.ts";
+import { getServerPrefix, getToolNameCandidates, isServerDisabled, matchesToolPattern, resolveToolPrefix } from "./runtime-types.ts";
 import { isServerInActiveFailureBackoff } from "./failure-backoff.ts";
 
 /**

@@ -18,7 +18,6 @@ function isNoSuchProcessError(error: unknown): boolean {
 }
 
 function runPosixPs(args: string[]): { status: number | null; signal: NodeJS.Signals | null; stdout: string } {
-  if (process.env.PI_MCP_ADAPTER_TEST_FAIL_PS === "1") return { status: 1, signal: null, stdout: "" };
   const result = spawnSync("ps", args, { encoding: "utf8", maxBuffer: PS_MAX_BUFFER_BYTES });
   return { status: result.status, signal: result.signal, stdout: result.stdout };
 }

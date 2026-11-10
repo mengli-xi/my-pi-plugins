@@ -3,7 +3,7 @@ import { throwIfAborted } from "./abort.ts";
 import { canonicalPath } from "./executor-accounts.ts";
 import { hasExecutorModelTools, isExecutorConnection } from "./executor-pauses.ts";
 import type { ServerConnection } from "./server-manager.ts";
-import { EXECUTOR_APP_TOOL_CAP, type CachedExecutorAppTool, type ServerCacheEntry } from "./types.ts";
+import { EXECUTOR_APP_TOOL_CAP, type CachedExecutorAppTool, type ServerCacheEntry } from "./runtime-types.ts";
 
 // Paging stops at the cap, which also bounds the number of `search` calls.
 export { EXECUTOR_APP_TOOL_CAP };

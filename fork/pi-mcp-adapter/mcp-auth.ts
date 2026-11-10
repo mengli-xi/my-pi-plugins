@@ -21,22 +21,18 @@ import { resolveConfiguredOAuthDir } from './config.ts';
 
 const require = createRequire(import.meta.url);
 const AUTH_SECRET_SERVICE = 'pi-mcp-adapter.oauth';
-const TEST_AUTH_STORE_ENV = 'PI_MCP_ADAPTER_TEST_AUTH_STORE';
 /**
  * Windows Credential Manager caps one value at CRED_MAX_CREDENTIAL_BLOB_SIZE
  * (2560 bytes) and stores it as UTF-16, so the real ceiling is
- * AUTH_SECRET_VALUE_LIMIT characters. Chunks must stay below that, and so must
+ * 1280 characters. Chunks must stay below that, and so must
  * the threshold that decides whether to chunk at all, or oversized records still
  * fail to persist on Windows.
  */
 const AUTH_SECRET_CHUNK_SIZE = 1000;
-/** Largest single value the strictest supported credential store accepts. */
-const AUTH_SECRET_VALUE_LIMIT = 1280;
 const KEYRING_RECOVERY_DISABLED_ENV = 'PI_MCP_ADAPTER_DISABLE_KEYRING_RECOVERY';
 const KEYRING_RECOVERY_KEYCTL_ENV = 'PI_MCP_ADAPTER_KEYRING_RECOVERY_KEYCTL';
 const KEYRING_RECOVERY_NODE_ENV = 'PI_MCP_ADAPTER_KEYRING_RECOVERY_NODE';
 const KEYRING_RECOVERY_HELPER_ENV = 'PI_MCP_ADAPTER_KEYRING_RECOVERY_HELPER';
-const TEST_LINUX_KEYRING_RECOVERY_ENV = 'PI_MCP_ADAPTER_TEST_LINUX_KEYRING_RECOVERY';
 const AUTH_CACHE_DISABLED_ENV = 'PI_MCP_ADAPTER_DISABLE_AUTH_CACHE';
 const KEYRING_RECOVERY_TIMEOUT_MS = 10_000;
 const AUTH_CHUNK_MANIFEST_KEY = '__piMcpAdapterOAuthChunked';
@@ -211,9 +207,6 @@ interface AuthEntryChunkManifest {
 
 let KeyringEntryClass: KeyringEntryConstructor | undefined;
 const keyringEntries = new Map<string, KeyringEntry>();
-const memoryAuthEntries = new Map<string, string>();
-
-let testAuthSecretStoreReadCount = 0;
 const authEntryCache = new Map<string, AuthEntry | undefined>();
 
 function isAuthEntryCacheEnabled(): boolean {
@@ -223,19 +216,6 @@ function isAuthEntryCacheEnabled(): boolean {
 function cloneAuthEntry(entry: AuthEntry | undefined): AuthEntry | undefined {
   return entry === undefined ? undefined : structuredClone(entry);
 }
-
-const memoryAuthSecretStore: AuthSecretStore = {
-  read(account) {
-    testAuthSecretStoreReadCount++;
-    return memoryAuthEntries.get(account);
-  },
-  write(account, payload) {
-    memoryAuthEntries.set(account, payload);
-  },
-  remove(account) {
-    memoryAuthEntries.delete(account);
-  },
-};
 
 const keyringAuthSecretStore: AuthSecretStore = {
   read(account) {
@@ -266,91 +246,8 @@ const keyringAuthSecretStore: AuthSecretStore = {
   },
 };
 
-/** Mimics the Windows Credential Manager per-value ceiling for tests. */
-const sizeLimitedAuthSecretStore: AuthSecretStore = {
-  read(account) {
-    testAuthSecretStoreReadCount++;
-    return memoryAuthEntries.get(account);
-  },
-  write(account, payload) {
-    if (payload.length > AUTH_SECRET_VALUE_LIMIT) {
-      throw new Error(`Value of 'password encoded as UTF-16' is longer than the platform limit of ${AUTH_SECRET_VALUE_LIMIT * 2} chars`);
-    }
-    memoryAuthEntries.set(account, payload);
-  },
-  remove(account) {
-    memoryAuthEntries.delete(account);
-  },
-};
-
-const writeFailingAuthSecretStore: AuthSecretStore = {
-  ...memoryAuthSecretStore,
-  write() {
-    throw new Error('simulated secure credential store write failure');
-  },
-};
-
-const unavailableAuthSecretStore: AuthSecretStore = {
-  read() {
-    testAuthSecretStoreReadCount++;
-    throw new Error('simulated secure credential store unavailable');
-  },
-  write() {
-    throw new Error('simulated secure credential store unavailable');
-  },
-  remove() {
-    throw new Error('simulated secure credential store unavailable');
-  },
-};
-
-function createKeyRevokedTestError(): Error {
-  return new Error("Couldn't access platform storage: KeyRevoked", { cause: new Error('KeyRevoked') });
-}
-
-const keyRevokedAuthSecretStore: AuthSecretStore = {
-  read() {
-    testAuthSecretStoreReadCount++;
-    throw createKeyRevokedTestError();
-  },
-  write() {
-    throw createKeyRevokedTestError();
-  },
-  remove() {
-    throw createKeyRevokedTestError();
-  },
-};
-
-export function resetTestAuthSecretStore(): void {
-  memoryAuthEntries.clear();
-  authEntryCache.clear();
-  keyringEntries.clear();
-  testAuthSecretStoreReadCount = 0;
-}
-
-/** Install a fake native Entry for OAuth storage tests without opening a real keyring. */
-export function setTestKeyringEntryClass(entryClass: KeyringEntryConstructor | undefined): void {
-  keyringEntries.clear();
-  KeyringEntryClass = entryClass;
-}
-
 export function resetAuthEntryCache(): void {
   authEntryCache.clear();
-}
-
-export function getTestAuthSecretStoreReadCount(): number {
-  return testAuthSecretStoreReadCount;
-}
-
-export function getTestAuthSecretStoreEntries(): [string, string][] {
-  return [...memoryAuthEntries.entries()];
-}
-
-export function removeTestAuthSecretStoreEntry(account: string): void {
-  memoryAuthEntries.delete(account);
-}
-
-export function setTestAuthSecretStoreEntry(account: string, payload: string): void {
-  memoryAuthEntries.set(account, payload);
 }
 
 function decodeCanonicalBase64(value: unknown, expectedBytes?: number): Buffer {
@@ -467,11 +364,6 @@ function createEncryptedFileAuthSecretStore(): AuthSecretStore {
 
 function getAuthSecretStore(options: AuthStorageOptions = {}): AuthSecretStore {
   if (options.credentialStore === 'encrypted-file') return createEncryptedFileAuthSecretStore();
-  if (process.env[TEST_AUTH_STORE_ENV] === 'memory') return memoryAuthSecretStore;
-  if (process.env[TEST_AUTH_STORE_ENV] === 'sizelimited') return sizeLimitedAuthSecretStore;
-  if (process.env[TEST_AUTH_STORE_ENV] === 'writefailing') return writeFailingAuthSecretStore;
-  if (process.env[TEST_AUTH_STORE_ENV] === 'unavailable') return unavailableAuthSecretStore;
-  if (process.env[TEST_AUTH_STORE_ENV] === 'keyrevoked') return keyRevokedAuthSecretStore;
   return keyringAuthSecretStore;
 }
 
@@ -556,7 +448,7 @@ type KeyringRecoveryResponse =
 
 function isLinuxKeyringRecoveryEnabled(): boolean {
   if (process.env[KEYRING_RECOVERY_DISABLED_ENV] === '1') return false;
-  return process.platform === 'linux' || process.env[TEST_LINUX_KEYRING_RECOVERY_ENV] === '1';
+  return process.platform === 'linux';
 }
 
 function shouldAttemptLinuxKeyringRecovery(error: unknown): boolean {
@@ -618,10 +510,6 @@ const linuxKeyringRecoveryAuthSecretStore: AuthSecretStore = {
     runLinuxKeyringRecoveryOperation('remove', account);
   },
 };
-
-export function loadTestKeyringEntryClass(keyringRequire: KeyringRequire, platform: NodeJS.Platform, arch: NodeJS.Architecture): KeyringEntryConstructor {
-  return loadKeyringEntryClass(keyringRequire, platform, arch);
-}
 
 export function getAuthStorageOptions(oauthDir: unknown, cwd = process.cwd(), oauthCredentialStore?: unknown): AuthStorageOptions {
   if (oauthCredentialStore !== undefined && oauthCredentialStore !== 'encrypted-file') {
@@ -817,7 +705,7 @@ function tryRemoveChunkPayloads(store: AuthSecretStore, account: string, manifes
 
 function shouldChunkAuthPayload(store: AuthSecretStore, payload: string): boolean {
   return store.kind !== 'encrypted-file' && payload.length > AUTH_SECRET_CHUNK_SIZE
-    && (process.platform === 'win32' || process.env[TEST_AUTH_STORE_ENV] === 'sizelimited');
+    && process.platform === 'win32';
 }
 
 function getAuthEntryChunkDigest(payload: string): string {
@@ -993,7 +881,7 @@ function readAuthEntryFromStore(
     const entry = manifest
       ? readChunkedAuthEntry(store, serverName, account, manifest)
       : parseAuthEntryPayload(serverName, payload, authSecretStoreLabel(store));
-    if (store.kind !== 'encrypted-file') removeLegacyAuthEntry(serverName, options);
+    if (store.kind !== 'encrypted-file' && behavior.migrateLegacy !== false) removeLegacyAuthEntry(serverName, options);
     if (manifest && behavior.migrateLegacy !== false && !shouldChunkAuthPayload(store, JSON.stringify(entry))) {
       writeSecureAuthEntryToStore(store, serverName, entry);
     }
@@ -1014,8 +902,8 @@ function readAuthEntry(
   options?: AuthStorageOptions,
   behavior: { migrateLegacy?: boolean } = {},
 ): AuthEntry | undefined {
-  // Status-only reads deliberately bypass the cache because they do not
-  // migrate legacy entries.
+  // Status-only reads bypass the cache and never migrate legacy entries.
+  // They also report revoked keyrings as unavailable instead of starting recovery.
   const cacheable = behavior.migrateLegacy !== false && isAuthEntryCacheEnabled();
   const cacheKey = authEntryCacheKey(serverName, options);
   if (cacheable && authEntryCache.has(cacheKey)) {
@@ -1026,7 +914,7 @@ function readAuthEntry(
   try {
     entry = readAuthEntryFromStore(getAuthSecretStore(options), serverName, options, behavior);
   } catch (error) {
-    if (options?.credentialStore === 'encrypted-file' || !shouldAttemptLinuxKeyringRecovery(error)) throw error;
+    if (behavior.migrateLegacy === false || options?.credentialStore === 'encrypted-file' || !shouldAttemptLinuxKeyringRecovery(error)) throw error;
     entry = readAuthEntryFromStore(linuxKeyringRecoveryAuthSecretStore, serverName, options, behavior);
   }
 

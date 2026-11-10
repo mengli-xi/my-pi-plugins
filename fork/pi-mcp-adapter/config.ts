@@ -1,5 +1,6 @@
 // config.ts - Config loading with import support
-import { chmodSync, existsSync, lstatSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, realpathSync, rmSync, statSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { canonicalJson, createFileReader, describeFileError, FileReadError, readTextFile } from "./file-version-cache.ts";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parse as parseToml } from "smol-toml";
@@ -12,7 +13,8 @@ import { loadPackageMcpConfigs } from "./package-mcp-loader.ts";
 import { validateExtractionSettings } from "./extraction-settings.ts";
 import { validateSemanticSearchSettings } from "./semantic-settings.ts";
 import { parseScriptTools } from "./script-tools.ts";
-import { formatServerNamespace, isServerDisabled, type ClaudePluginConfig, type HostConfigDiscovery, type McpConfig, type OAuthConfig, type ServerEntry, type McpSettings, type ImportKind, type ScriptToolDefinition, type ServerProvenance } from "./types.ts";
+import { formatServerNamespace, isServerDisabled } from "./runtime-types.ts";
+import type { ClaudePluginConfig, HostConfigDiscovery, McpConfig, OAuthConfig, ServerEntry, McpSettings, ImportKind, ScriptToolDefinition, ServerProvenance } from "./types.ts";
 import { interpolateEnvVars, parseJsonWithComments, providerAuthUrlError, stripUtf8Bom, toStringRecord } from "./utils.ts";
 
 const GENERIC_GLOBAL_CONFIG_PATH = join(homedir(), ".config", "mcp", "mcp.json");
@@ -110,16 +112,9 @@ export const KNOWN_SERVER_PRESETS: readonly KnownServerPreset[] = [
 
 const IMPORT_PATHS: Record<ImportKind, string[]> = {
   cursor: [join(homedir(), ".cursor", "mcp.json")],
-  "claude-code": [
-    join(homedir(), ".claude", "mcp.json"),
-    join(homedir(), ".claude.json"),
-    join(homedir(), ".claude", "claude_desktop_config.json"),
-  ],
+  "claude-code": [],
   "claude-desktop": [join(homedir(), "Library", "Application Support", "Claude", "claude_desktop_config.json")],
-  codex: [
-    join(homedir(), ".codex", "config.toml"),
-    join(homedir(), ".codex", "config.json"),
-  ],
+  codex: [],
   opencode: [
     join(homedir(), ".config", "opencode", "opencode.json"),
     "./opencode.json",
@@ -222,11 +217,6 @@ export function getPiMcpGlobalConfigPath(): string {
   return getAgentPath(PI_MCP_CONFIG_NAME);
 }
 
-/** @internal Pi's built-in MCP stores OAuth sign-ins here, keyed by `String(new URL(serverUrl))`. */
-export function getPiMcpAuthPath(): string {
-  return getAgentPath("mcp-auth.json");
-}
-
 export function getGenericGlobalConfigPath(): string {
   return GENERIC_GLOBAL_CONFIG_PATH;
 }
@@ -259,7 +249,7 @@ export function isPiMcpConfigEnabled(): boolean {
 function legacyMcpConfigHasContent(filePath: string): boolean {
   if (!existsSync(filePath)) return false;
   try {
-    const raw = parseJsonWithComments(readFileSync(filePath, "utf-8"));
+    const raw = readImportedFile(filePath).value;
     if (!isRecord(raw)) return false;
     const hasServers = (value: unknown) => isRecord(value) && Object.keys(value).length > 0;
     return hasServers(raw.mcpServers)
@@ -1181,8 +1171,38 @@ function expandImports(config: McpConfig, cwd = process.cwd()): LoadedHostConfig
   };
 }
 
+function selectedConfigDir(variable: string, fallback: string): string | undefined {
+  const override = process.env[variable];
+  if (override === undefined) return fallback;
+  if (!override.trim()) {
+    console.warn(`${variable} is empty; skipping config discovery for this agent`);
+    return undefined;
+  }
+  return resolve(override === "~" ? homedir() : override.startsWith("~/") ? join(homedir(), override.slice(2)) : override);
+}
+
+const IMPORT_RESOLVERS: Partial<Record<ImportKind, () => string[]>> = {
+  // Claude Code documents .claude.json under CLAUDE_CONFIG_DIR when set, and
+  // ~/.claude.json otherwise: https://code.claude.com/docs/en/claude-directory.
+  // Only user MCP config is in scope, not credentials or project state. Missing,
+  // malformed or unreadable selected files never select another account.
+  "claude-code": () => {
+    const dir = selectedConfigDir("CLAUDE_CONFIG_DIR", join(homedir(), ".claude"));
+    if (!dir) return [];
+    return [process.env.CLAUDE_CONFIG_DIR === undefined ? join(homedir(), ".claude.json") : join(dir, ".claude.json")];
+  },
+  // Codex documents CODEX_HOME/config.toml (default ~/.codex), not config.json:
+  // https://developers.openai.com/codex/config-advanced/#config-and-state-locations.
+  // Only this user import is in scope; no profile/project/auth inference. Missing
+  // or invalid overrides fail closed inside the selected directory.
+  codex: () => {
+    const dir = selectedConfigDir("CODEX_HOME", join(homedir(), ".codex"));
+    return dir ? [join(dir, "config.toml")] : [];
+  },
+};
+
 function resolveImportCandidates(importKind: ImportKind, cwd: string): ImportedServerSource[] {
-  return (IMPORT_PATHS[importKind] ?? []).map((candidate) => {
+  return (IMPORT_RESOLVERS[importKind]?.() ?? IMPORT_PATHS[importKind] ?? []).map((candidate) => {
     const scope = candidate.startsWith(".") ? "project" : "user";
     if (importKind === "opencode" && candidate === "./opencode.json") {
       const start = resolve(cwd);
@@ -1210,9 +1230,11 @@ function resolveImportCandidates(importKind: ImportKind, cwd: string): ImportedS
   });
 }
 
+const readImportedFile = createFileReader((text, path) => path.endsWith(".toml")
+  ? parseToml(stripUtf8Bom(text)) : parseJsonWithComments(text));
+
 function readImportedConfig(path: string): unknown {
-  const raw = readFileSync(path, "utf-8");
-  return path.endsWith(".toml") ? parseToml(stripUtf8Bom(raw)) : parseJsonWithComments(raw);
+  return structuredClone(readImportedFile(path).value);
 }
 
 function loadImportedConfig(
@@ -1235,8 +1257,6 @@ function loadImportedConfig(
 
     for (const source of resolveImportCandidates(importKind, cwd)) {
       const { path } = source;
-      if (!existsSync(path)) continue;
-
       try {
         const value = readImportedConfig(path);
         if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -1276,7 +1296,7 @@ function loadImportedConfig(
           highestPrecedenceSource = source;
         }
       } catch (error) {
-        console.warn(warningPrefix, error);
+        console.warn(warningPrefix, describeFileError(error));
       }
     }
 
@@ -1296,10 +1316,9 @@ function loadImportedConfig(
 
   for (const source of resolveImportCandidates(importKind, cwd)) {
     const { path } = source;
-    if (!existsSync(path)) continue;
-
     try {
       const value = readImportedConfig(path);
+      if (value === undefined) continue;
       return {
         path,
         value,
@@ -1307,7 +1326,8 @@ function loadImportedConfig(
         serverSources: new Map(Object.keys(extractServers(value, importKind)).map(name => [name, source])),
       };
     } catch (error) {
-      console.warn(warningPrefix, error);
+      console.warn(warningPrefix, describeFileError(error));
+      return null;
     }
   }
 
@@ -1318,15 +1338,16 @@ function resolveImportPath(importKind: ImportKind, cwd = process.cwd()): string 
   return loadImportedConfig(importKind, cwd, `Failed to discover imported MCP config from ${importKind}:`)?.path ?? null;
 }
 
-function readValidatedConfig(path: string, label: string): ValidatedConfig | null {
-  if (!existsSync(path)) return null;
+const readValidatedFile = createFileReader((text, path) => {
+  if (stripJsonComments(text, { trailingCommas: true }).trim() === "") return null;
+  return validateConfig(parseJsonWithComments(text), path);
+});
 
+function readValidatedConfig(path: string, label: string): ValidatedConfig | null {
   try {
-    const text = readFileSync(path, "utf-8");
-    if (stripJsonComments(text, { trailingCommas: true }).trim() === "") return null;
-    return validateConfig(parseJsonWithComments(text), path);
+    return structuredClone(readValidatedFile(path).value ?? null);
   } catch (error) {
-    console.warn(`Failed to load ${label}:`, error);
+    console.warn(`Failed to load ${label}: ${describeFileError(error)}`);
     return null;
   }
 }
@@ -1351,18 +1372,17 @@ const PI_MCP_EXPOSURES = ["codemode", "codemode-deferred", "deferred", "direct",
 
 /** Pi's top-level `autoEnableCodemode` has no adapter equivalent and is ignored. */
 function readPiMcpConfig(path: string): PiMcpConfigFile | null {
-  if (!existsSync(path)) return null;
   let raw: Record<string, unknown>;
   try {
-    const text = readFileSync(path, "utf-8");
-    if (stripJsonComments(text, { trailingCommas: true }).trim() === "") return null;
-    const parsed = parseJsonWithComments(text);
+    const text = readTextFile(path).value;
+    if (text === undefined || stripJsonComments(text, { trailingCommas: true }).trim() === "") return null;
+    const parsed = readImportedFile(path).value;
     if (!isRecord(parsed) || (parsed.mcpServers !== undefined && !isRecord(parsed.mcpServers))) {
       throw new Error('expected an object with an "mcpServers" object');
     }
     raw = parsed;
   } catch (error) {
-    console.warn(`Failed to load Pi MCP config from ${path}:`, error);
+    console.warn(`Failed to load Pi MCP config from ${path}: ${describeFileError(error)}`);
     return null;
   }
   const file: PiMcpConfigFile = {
@@ -1894,21 +1914,20 @@ function configWriteTexts(filePath: string, nextRaw: Record<string, unknown>): P
   return { existed, beforeText, afterText };
 }
 
-function readRawConfigObject(filePath: string): Record<string, unknown> {
-  if (!lstatSync(filePath, { throwIfNoEntry: false })) return {};
+const readRawConfigFile = createFileReader((text) => {
+  if (text.trim() === "") return {};
+  const raw = parseJsonWithComments(text);
+  if (!isRecord(raw)) throw new Error("top-level value must be an object");
+  return raw;
+});
 
-  try {
-    const text = readFileSync(filePath, "utf-8");
-    if (text.trim() === "") return {};
-    const raw = parseJsonWithComments(text);
-    if (!isRecord(raw)) throw new Error("top-level value must be an object");
-    return raw;
-  } catch (error) {
-    throw new Error(`Failed to read MCP config at ${filePath}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
-  }
+function readRawConfigObject(filePath: string): Record<string, unknown> {
+  return structuredClone(readRawConfigFile(filePath).value ?? {});
 }
 
 function writeConfigText(writePath: string, text: string): void {
+  const current = readRawConfigFile(writePath);
+  if (current.exists && canonicalJson(current.value) === canonicalJson(parseJsonWithComments(text))) return;
   const originalPath = writePath;
   let mode: number | undefined;
   try {
@@ -1937,7 +1956,11 @@ function writeRawConfigObject(filePath: string, raw: Record<string, unknown>): v
 }
 
 export function writeSharedConfigText(filePath: string, text: string): void {
-  if (!isRecord(parseJsonWithComments(text))) throw new Error("top-level value must be an object");
+  try {
+    if (!isRecord(parseJsonWithComments(text))) throw new Error("top-level value must be an object");
+  } catch {
+    throw new FileReadError(filePath, "malformed");
+  }
   writeConfigText(filePath, text);
 }
 
@@ -2075,7 +2098,7 @@ function findProjectRoot(cwd = process.cwd()): string | null {
       existsSync(join(current, ".git"))
       || existsSync(join(current, "package.json"))
       || existsSync(join(current, PROJECT_CONFIG_NAME))
-      || existsSync(join(current, ".pi"))
+      || existsSync(join(current, getConfigDirName()))
     ) {
       return current;
     }

@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { randomUUID } from "node:crypto";
 import type { McpExtensionState } from "./state.ts";
-import { formatToolName, isServerDisabled, resolveToolPrefix, type McpAdapterOptions, type PromptMetadata, type ServerEntry, type ToolMetadata, type ToolSelectorCandidateIndex } from "./types.ts";
+import { formatToolName, isServerDisabled, resolveToolPrefix, type McpAdapterOptions, type PromptMetadata, type ServerEntry, type ToolMetadata, type ToolSelectorCandidateIndex } from "./runtime-types.ts";
 import { cloneMcpConfig, loadMcpConfig, resolveConfiguredClaudePluginMcp } from "./config.ts";
 import { applyProjectServerTrustToConfig, describeBlockedScriptTool, describeProjectServerBlock, excludeProjectServersAtLoadTime, loadedScriptToolIssues, type ProjectTrustResult } from "./project-server-trust.ts";
 import { ConsentManager } from "./consent-manager.ts";
@@ -50,7 +51,7 @@ import {
 } from "./session-approvals.ts";
 import { seedObservedOutputs } from "./output-shape.ts";
 import { BackgroundTaskRegistry, type HandedOffTask, type RenderedTaskResult } from "./task-jobs.ts";
-import { MCP_TASK_CUSTOM_TYPE, pendingTaskEntry, pendingTasksFromBranch } from "./task-entries.ts";
+import { MCP_TASK_CUSTOM_TYPE, acceptedTaskResultEntry, frozenTaskResultEntry, pendingTaskEntry, taskCheckpointEntry, taskRecoveryFromSession } from "./task-entries.ts";
 import { resolveMcpResultContent } from "./tool-registrar.ts";
 import { guardMcpOutput, guardMcpText, guardedMcpDetails, resolveMcpOutputGuardOptions } from "./mcp-output-guard.ts";
 import { EXECUTOR_CATALOG_TTL_MS, fetchExecutorCatalog, isExecutorCatalogConnection, isExecutorCatalogEntry } from "./executor-catalog.ts";
@@ -113,6 +114,7 @@ export function isTuiMode(ctx: Pick<ExtensionContext, "hasUI" | "mode">): boolea
 
 type McpInitializationOptions = McpAdapterOptions & {
   oauthRuntime?: McpOAuthRuntime;
+  mailbox?: ReturnType<typeof import("./mailbox.ts").createMcpMailbox>;
   statusEvents?: McpExtensionState["statusEvents"];
   onProjectTrustResolved?: () => void;
   /** Load-time runs have no Pi context, so project trust is unknown; session_start decides later. */
@@ -257,42 +259,76 @@ export async function initializeMcp(
       owner.throwIfInactive();
     },
     ...(ui !== undefined ? { ui } : {}),
-    sendMessage: (message, options) => {
-      const deliver = () => {
-        if (!owner.isActive()) return;
-        pi.sendMessage(message, options);
-      };
-      if (!options?.triggerTurn) {
-        deliver();
-        return;
-      }
-      void lifecycle.ensureConverged(owner.signal).then(deliver, error => {
-        if (!owner.isActive() || isAbortError(error, owner.signal)) return;
-        const detail = error instanceof Error ? error.message : String(error);
-        logger.debug(`MCP: pre-turn keep-alive convergence failed: ${sanitizeTerminalText(detail)}`);
-        deliver();
-      });
-    },
+    ...(options.mailbox ? { captureMail: (captureOptions) => options.mailbox!.capture(ctx, () => owner.isActive(), captureOptions) } : {}),
     ...(options.statusEvents !== undefined ? { statusEvents: options.statusEvents } : {}),
   };
   if (sessionManager) restoreSessionApprovalState(state, sessionBranch);
   // Elsewhere (print, json, and rpc, which is how subagents run) nobody waits for a later turn.
   let restorePendingTasks: (() => Promise<void>) | undefined;
-  if (hasUI && mode === "tui") {
-    const persistHandedOff = sessionId !== undefined && appendEntry
-      ? (task: HandedOffTask) => appendEntry(MCP_TASK_CUSTOM_TYPE, pendingTaskEntry(sessionId, task))
-      : undefined;
-    const backgroundTasks = new BackgroundTaskRegistry(manager, state.sendMessage!, owner.signal, () => {
+  if (hasUI && mode === "tui" && state.captureMail && sessionId !== undefined && sessionManager && appendEntry) {
+    const taskSessionId = sessionId;
+    const taskSessionManager = sessionManager;
+    const appendTaskEntry = (data: unknown) => {
+      owner.throwIfInactive();
+      if (taskSessionManager.getSessionId() !== taskSessionId) throw new Error("MCP task belongs to another session");
+      appendEntry(MCP_TASK_CUSTOM_TYPE, data);
+    };
+    const persistHandedOff = (task: HandedOffTask) => appendTaskEntry(pendingTaskEntry(taskSessionId, task));
+    const backgroundTasks = new BackgroundTaskRegistry(manager, (origin) => {
+      owner.throwIfInactive();
+      if (taskSessionManager.getSessionId() !== taskSessionId) throw new Error("MCP task belongs to another session");
+      const anchorEntryId = origin ? origin.anchorEntryId : taskSessionManager.getLeafId();
+      if (origin && origin.scope !== "branch" && taskSessionManager.getLeafId() !== anchorEntryId) {
+        throw new Error("MCP task is held for its exact original leaf; shared ancestry does not authorize recovery");
+      }
+      return {
+        deliveryId: origin?.deliveryId ?? `task:${taskSessionId}:${randomUUID()}`,
+        anchorEntryId,
+        send: state.captureMail!({ anchorEntryId, ...(origin ? { recovered: true } : {}) }),
+      };
+    }, owner.signal, () => {
       if (owner.isActive()) updateStatusBar(state);
-    }, persistHandedOff);
+    }, persistHandedOff,
+    result => appendTaskEntry(frozenTaskResultEntry(taskSessionId, result)),
+    result => appendTaskEntry(acceptedTaskResultEntry(taskSessionId, result)),
+    checkpoint => {
+      const data = taskCheckpointEntry(taskSessionId, checkpoint);
+      const leaf = taskSessionManager.getLeafEntry();
+      if (leaf?.type === "custom" && leaf.customType === MCP_TASK_CUSTOM_TYPE && JSON.stringify(leaf.data) === JSON.stringify(data)) return;
+      appendTaskEntry(data);
+    });
     state.backgroundTasks = backgroundTasks;
     manager.setConnectionReplacedListener?.((serverName, fresh) => backgroundTasks.handOver(serverName, {
       taskSession: fresh.taskSession,
       requestTimeoutMs: manager.getRequestOptions(serverName)?.timeout,
       closed: () => fresh.status === "closed",
     }));
-    const pendingTasks = persistHandedOff && sessionId !== undefined ? pendingTasksFromBranch(sessionBranch, sessionId) : [];
-    if (pendingTasks.length > 0) restorePendingTasks = () => restoreBackgroundTasks(state, backgroundTasks, pendingTasks);
+    const restoring = new Set<string>();
+    let heldNotice = "";
+    const recover = async () => {
+      if (!owner.isActive() || taskSessionManager.getSessionId() !== taskSessionId) return;
+      const recovery = taskRecoveryFromSession(taskSessionManager.getBranch(), taskSessionId, taskSessionManager.getEntries());
+      const notice = recovery.held.length > 0 ? `MCP: ${recovery.held.length} task result/reference(s) held for their original branch; return to the captured leaf to recover them.` : "";
+      if (notice && notice !== heldNotice) ui?.notify(notice, "warning");
+      heldNotice = notice;
+      for (const task of recovery.pending) {
+        const id = task.deliveryId ?? task.key;
+        if (restoring.has(id) || backgroundTasks.list().some(running => running.key === task.key)) continue;
+        restoring.add(id);
+        // A navigation callback must not wait for the remote task to finish.
+        void restoreBackgroundTasks(state, backgroundTasks, [task]).catch(error => {
+          logger.warn(`MCP task ${task.key} could not be restored: ${error instanceof Error ? error.message : String(error)}`);
+        }).finally(() => restoring.delete(id));
+      }
+      await Promise.all(recovery.results.map(result => backgroundTasks.restoreResult(result).catch(error => {
+        logger.warn(`MCP task ${result.key} result was not accepted: ${error instanceof Error ? error.message : String(error)}`);
+      })));
+    };
+    restorePendingTasks = recover;
+    const releaseRecovery = pi.on("session_tree", () => {
+      void recover().catch(error => logger.warn(`MCP task recovery could not inspect this branch: ${error instanceof Error ? error.message : String(error)}`));
+    });
+    if (typeof releaseRecovery === "function") owner.addCleanup(releaseRecovery);
   }
   if (ownsOAuthRuntime) owner.addCleanup(() => shutdownOAuth(oauthRuntime));
   manager.setMetadataListChangedListener?.((serverName, reason) => {
@@ -654,24 +690,28 @@ export async function restoreBackgroundTasks(
     return { content: guarded.content, details: { ...(result.isError ? { error: "tool_error" } : {}), ...guardedMcpDetails(guarded) } };
   };
   await Promise.all(tasks.map(async (task) => {
-    const definition = state.config.mcpServers[task.server];
-    const configured = definition !== undefined && !isServerDisabled(definition);
-    const connected = configured && await lazyConnect(state, task.server).catch(() => false);
-    const connection = connected ? state.manager.getConnection(task.server) : undefined;
-    if (connection) state.manager.incrementInFlight(task.server);
     await registry.restore(
       {
         server: task.server,
         tool: task.tool,
         reference: task.reference,
+        ...(task.deliveryId !== undefined ? { deliveryId: task.deliveryId, anchorEntryId: task.anchorEntryId ?? null,
+          ...(task.scope !== undefined ? { scope: task.scope } : {}) } : {}),
         render: renderFor(task.server),
         guard,
       },
-      {
-        taskSession: connection?.taskSession,
-        requestTimeoutMs: state.manager.getRequestOptions(task.server)?.timeout,
-        closed: () => connection?.status === "closed",
-        unavailable: !configured ? "not-configured" : connection === undefined ? "unreachable" : undefined,
+      async () => {
+        const definition = state.config.mcpServers[task.server];
+        const configured = definition !== undefined && !isServerDisabled(definition);
+        const connected = configured && await lazyConnect(state, task.server).catch(() => false);
+        const connection = connected ? state.manager.getConnection(task.server) : undefined;
+        if (connection) state.manager.incrementInFlight(task.server);
+        return {
+          taskSession: connection?.taskSession,
+          requestTimeoutMs: state.manager.getRequestOptions(task.server)?.timeout,
+          closed: () => connection?.status === "closed",
+          unavailable: !configured ? "not-configured" as const : connection === undefined ? "unreachable" as const : undefined,
+        };
       },
     );
   }));

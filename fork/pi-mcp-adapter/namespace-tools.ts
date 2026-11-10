@@ -2,7 +2,7 @@ import type { AgentToolResult, ExtensionAPI, ToolInfo } from "@earendil-works/pi
 import type { NestedCallHandOff } from "./proxy-modes.ts";
 import { Type } from "typebox";
 import type { McpExtensionState } from "./state.ts";
-import { isServerDisabled, type McpConfig } from "./types.ts";
+import { isServerDisabled, type McpConfig } from "./runtime-types.ts";
 import { isServerCacheValid, type MetadataCache } from "./metadata-cache.ts";
 import { createMcpProxyToolCallRenderer, createMcpToolResultRenderer, resolveMcpToolRenderOptions, type McpToolRenderOptions, type RenderTheme, type McpToolRenderContext } from "./tool-result-renderer.ts";
 export { namespaceProxyName } from "./mcp-references.ts";

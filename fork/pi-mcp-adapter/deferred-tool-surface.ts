@@ -1,5 +1,5 @@
 import type { DirectToolSpec, McpConfig } from "./types.ts";
-import { formatServerNamespace, hashedToolName, isServerDisabled, MAX_TOOL_NAME_LENGTH, resolveToolPrefix } from "./types.ts";
+import { formatServerNamespace, hashedToolName, isServerDisabled, MAX_TOOL_NAME_LENGTH, resolveToolPrefix } from "./runtime-types.ts";
 import type { MetadataCache } from "./metadata-cache.ts";
 import { executorAppToolMetadata, isServerCacheValid } from "./metadata-cache.ts";
 import { createServerSelectorIndexResolver, resolveServerToolSpecs } from "./direct-tool-surface.ts";

@@ -3,7 +3,7 @@ import type { ConsentManager } from "./consent-manager.ts";
 import type { McpLifecycleManager } from "./lifecycle.ts";
 import type { McpServerManager } from "./server-manager.ts";
 import type { AuthStorageOptions } from "./mcp-auth.ts";
-import type { ContentBlock, ServerDefinition, ToolMetadata, PromptMetadata, ServerCacheEntry, McpConfig, UiSessionMessages, UiStreamSummary, McpStatusEventBus, UiServerHandle, ProjectServerBlock, ScriptToolDefinition } from "./types.ts";
+import type { ServerDefinition, ToolMetadata, PromptMetadata, ServerCacheEntry, McpConfig, UiSessionMessages, UiStreamSummary, McpStatusEventBus, UiServerHandle, ProjectServerBlock, ScriptToolDefinition } from "./runtime-types.ts";
 import type { BackgroundTaskRegistry } from "./task-jobs.ts";
 import type { UiResourceHandler } from "./ui-resource-handler.ts";
 import type { McpRuntimeOwner } from "./runtime-owner.ts";
@@ -19,16 +19,6 @@ export interface CompletedUiSession {
   messages: UiSessionMessages;
   stream?: UiStreamSummary;
 }
-
-export type SendMessageFn = (
-  message: {
-    customType: string;
-    content: ContentBlock[];
-    display: boolean;
-    details?: unknown;
-  },
-  options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" }
-) => void;
 
 export interface McpExtensionState {
   owner: McpRuntimeOwner;
@@ -97,9 +87,9 @@ export interface McpExtensionState {
   completedUiSessions: CompletedUiSession[];
   openBrowser: (url: string) => Promise<void>;
   ui?: ExtensionContext["ui"];
-  sendMessage?: SendMessageFn;
   /** Tool calls running as server-side tasks after their call returned. Set only in the interactive terminal. */
   backgroundTasks?: BackgroundTaskRegistry;
+  captureMail?: (options?: { anchorEntryId?: string | null; recovered?: true }) => import("./mailbox.ts").McpMailSender;
   onToolMetadataUpdated?: (serverName: string, reason: string) => void | Promise<void>;
   statusEvents?: McpStatusEventBus;
 }

@@ -1,3 +1,4 @@
+import { createRetryableLoader } from "./lazy-loader.ts";
 import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UrlElicitationRequiredError, type Client } from "@modelcontextprotocol/client";
 import type { McpExtensionState } from "./state.ts";
@@ -9,8 +10,8 @@ import { throwIfAborted } from "./abort.ts";
 import { formatSchema } from "./tool-metadata.ts";
 import { resolveMcpResultContent, transformMcpResourceContents } from "./tool-registrar.ts";
 import { guardMcpOutput, guardMcpText, guardedMcpDetails, resolveMcpOutputGuardOptions } from "./mcp-output-guard.ts";
-import { maybeStartUiSession, summarizeUiSessionResult, type UiSessionRuntime } from "./ui-session.ts";
-import { isServerDisabled } from "./types.ts";
+import type { UiSessionRuntime } from "./ui-session.ts";
+import { isServerDisabled } from "./runtime-types.ts";
 import { authenticate } from "./mcp-auth-flow.ts";
 import { formatAuthRequiredMessage, normalizeToolArguments, resolveServerUrl, supportsOAuth, withToolCallIdMeta } from "./utils.ts";
 import { SessionRecoveryAuthRequiredError, withSessionRecovery } from "./session-recovery.ts";
@@ -22,6 +23,8 @@ import { executorCallParams, executorUnknownToolMatches, executorUnknownToolText
 import { observedOutputRecorder } from "./output-shape.ts";
 import { approvalBlockedResult, ensureToolCallApproved, type ToolCallApprovalResult } from "./tool-approval.ts";
 import { getInputRequiredNeedsUiDetails } from "./errors.ts";
+
+const loadUiSession = createRetryableLoader(() => import("./ui-session.ts"));
 
 type ClientCallToolResult = Awaited<ReturnType<Client["callTool"]>>;
 type ClientReadResourceResult = Awaited<ReturnType<Client["readResource"]>>;
@@ -222,6 +225,7 @@ export function createDirectToolExecutor(
       : state.toolMetadata.get(spec.serverName)?.find(tool => !tool.resourceUri && tool.originalName === spec.originalName)?.annotations;
 
     let uiSession: UiSessionRuntime | null = null;
+    let uiSessionModule: typeof import("./ui-session.ts") | undefined;
     const requestOptions = state.manager.getRequestOptions?.(spec.serverName, ownedSignal) ?? (ownedSignal ? { signal: ownedSignal } : undefined);
 
     // A script gets the server's whole result; Pi limits what the script returns to the model.
@@ -305,8 +309,12 @@ export function createDirectToolExecutor(
 
       // openUi: false runs the tool as if it declared no UI.
       const hasUi = !!spec.uiResourceUri && state.config.mcpServers[spec.serverName]?.openUi !== false;
+      if (hasUi) {
+        uiSessionModule = await loadUiSession();
+        throwIfAborted(ownedSignal);
+      }
       uiSession = hasUi
-        ? await maybeStartUiSession(state, {
+        ? await uiSessionModule!.maybeStartUiSession(state, {
             serverName: spec.serverName,
             toolName: spec.originalName,
             toolArgs: normalizedParams,
@@ -335,6 +343,7 @@ export function createDirectToolExecutor(
       const backgroundTasks = state.calledByModel?.(toolCallId) === true && !hasUi && spec.executorPath === undefined
         ? state.backgroundTasks
         : undefined;
+      const taskDelivery = backgroundTasks?.capture();
       let startedTask: StartedTask | undefined;
       const callResult = await withSessionRecovery<ClientCallToolResult>(
         {
@@ -365,6 +374,7 @@ export function createDirectToolExecutor(
           tool: spec.originalName,
           taskId,
           execution,
+          delivery: taskDelivery!,
           render: async (result) => {
             if (!result.isError) recordOutput(result);
             const guarded = await guardResult(result);
@@ -398,7 +408,7 @@ export function createDirectToolExecutor(
       }
 
       if (hasUi) {
-        const uiSummary = summarizeUiSessionResult(uiSession);
+        const uiSummary = uiSessionModule!.summarizeUiSessionResult(uiSession);
         const guarded = await guardResult(result, `\n\n${uiSummary.message}`);
         return {
           content: guarded.content,

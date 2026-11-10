@@ -1,7 +1,7 @@
 import { getToolUiResourceUri } from "./ui-app-bridge-helpers.ts";
 import type { McpExtensionState } from "./state.ts";
 import type { ToolMetadata, McpTool, McpResource, ServerCacheEntry, ServerEntry, ToolPrefix } from "./types.ts";
-import { createToolSelectorCandidateIndex, EXECUTOR_APP_TOOL_CAP, formatToolName, getToolNameCandidates, isToolAllowed, resolveToolPrefix, resolveUniqueNameOwnership } from "./types.ts";
+import { createToolSelectorCandidateIndex, EXECUTOR_APP_TOOL_CAP, formatToolName, getToolNameCandidates, isToolAllowed, resolveToolPrefix, resolveUniqueNameOwnership } from "./runtime-types.ts";
 import { resourceNameToToolName } from "./resource-tools.ts";
 import { extractToolAnnotations, extractToolUiStreamMode } from "./utils.ts";
 import { extractUiToolVisibility, isUiToolVisibleToModel } from "./ui-tool-visibility.ts";

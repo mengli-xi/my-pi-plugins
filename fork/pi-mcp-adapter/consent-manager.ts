@@ -27,6 +27,10 @@ export class ConsentManager {
     return this.mode !== "always";
   }
 
+  isDenied(serverName: string): boolean {
+    return this.deniedServers.has(serverName);
+  }
+
   registerDecision(serverName: string, approved: boolean): void {
     this.applyDecision(serverName, approved);
     try {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createSecureKeyringStore, getTestSecureKeyringEntries, getTestSecureKeyringReadCount, removeTestSecureKeyringEntry, resetTestSecureKeyring, setTestSecureKeyringEntry } from "./secure-keyring.ts";
+import { createSecureKeyringStore } from "./secure-keyring.ts";
 
 type BearerSecretStore = {
   read(account: string): string | undefined;
@@ -227,24 +227,4 @@ export function inspectBearerTokenForUrl(serverName: string, serverUrl: string):
     if (!(error instanceof BearerCredentialStoreError)) throw error;
     return { status: "unavailable", message: "Bearer token secure credential store unavailable. Configure or unlock the OS credential store and retry." };
   }
-}
-
-export function resetTestBearerTokenStore(): void {
-  resetTestSecureKeyring();
-}
-
-export function getTestBearerTokenStoreEntries(): [string, string][] {
-  return getTestSecureKeyringEntries().filter(([key]) => key.startsWith(`${BEARER_SECRET_SERVICE}\0`)).map(([key, value]) => [key.slice(BEARER_SECRET_SERVICE.length + 1), value]);
-}
-
-export function removeTestBearerTokenStoreEntry(account: string): void {
-  removeTestSecureKeyringEntry(BEARER_SECRET_SERVICE, account);
-}
-
-export function setTestBearerTokenStoreEntry(account: string, payload: string): void {
-  setTestSecureKeyringEntry(BEARER_SECRET_SERVICE, account, payload);
-}
-
-export function getTestBearerTokenStoreReadCount(): number {
-  return getTestSecureKeyringReadCount();
 }

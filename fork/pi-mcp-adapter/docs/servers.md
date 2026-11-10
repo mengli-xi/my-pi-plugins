@@ -1,193 +1,127 @@
-# Server options
+# Server 合同
 
-Every field a server entry accepts, transport and protocol details, shared processes, and installing a server from a URL. Authentication fields are covered in more depth in [Authentication](auth.md).
+`mcpServers.<name>` 定义连接。完整认证规则见[认证](auth.md)，global 默认值见[配置](configuration.md)。
 
-## Fields
-
-In the configuration examples below, `30000` is illustrative only. If `requestTimeoutMs` is omitted or set to `<= 0`, the MCP SDK default timeout is used.
+## 全部字段
 
 ```json
-{
-  "mcpServers": {
-    "my-server": {
-      "command": "npx",
-      "args": ["-y", "some-mcp-server"],
-      "lifecycle": "lazy",
-      "idleTimeout": 10,
-      "requestTimeoutMs": 30000
-    }
-  }
-}
+{ "mcpServers": { "docs": { "command": "npx", "args": ["-y", "some-mcp-server"], "lifecycle": "lazy", "idleTimeout": 10 } } }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `command` | Executable for stdio transport; mutually exclusive with `url` and `socket` |
-| `args` | Command arguments |
-| `socket` | Explicit `rmcp-mux` Unix-domain socket path; supports `${VAR}`, `$env:VAR`, and `~` expansion and is mutually exclusive with `command` and `url` |
-| `env` | Environment variables; supports `${VAR}` and `$env:VAR` interpolation. A value beginning with `!` runs a command when the stdio server connects; use `!!` for a literal leading `!`. |
-| `inheritEnv` | Stdio only; defaults to `true` and preserves full host-environment inheritance. Set to `false` to exclude arbitrary host variables from the MCP child and SDK negotiation sibling while retaining SDK platform defaults and explicit `env` overlays. This is not an empty environment or an OS sandbox. |
-| `cwd` | Working directory; supports `${VAR}`, `$env:VAR`, and `~` expansion |
-| `url` | HTTP endpoint (StreamableHTTP with SSE fallback); supports raw `${VAR}` and `$env:VAR` interpolation, and missing URL variables fail before any request is sent |
-| `headers` | HTTP headers; supports `${VAR}` and `$env:VAR` interpolation. A value beginning with `!` runs a command when the HTTP server connects or OAuth authenticates; use `!!` for a literal leading `!`. |
-| `requestHeadersCommand` | Trusted executable run for every HTTP request. It receives a versioned JSON envelope containing `method`, `url`, and the exact `bodyBase64` on stdin, and must return a JSON object of headers on stdout. `command`, `args`, and `env` support environment interpolation. Use for caller-bound request signatures; failures stop the request. |
-| `caFile` | HTTPS HTTP servers only: local PEM CA certificate/bundle, e.g. `"caFile": "~/certs/local-ca.pem"`. Replaces (does not add to) default roots for the resolved MCP origin. Supports environment interpolation and `~`; relative paths use the process working directory. Unreadable/invalid files fail closed; hostname and certificate-expiry verification remain enabled. |
-| `auth` | `"bearer"`, `"oauth"`, or `{ "provider": "<name>" }` to send the token of a provider you signed in to with Pi's `/login` (user-global config only; see [Pi provider tokens](auth.md#pi-provider-tokens)) |
-| `oauth.grantType` | `"authorization_code"` (default) or `"client_credentials"` for non-interactive machine auth |
-| `oauth.clientId` | Pre-registered OAuth client ID. Takes precedence over `oauth.clientMetadataUrl` when both are set. |
-| `oauth.clientSecret` | OAuth client secret for confidential clients; a value beginning with `!` runs a command when OAuth authenticates, while `!!` escapes a literal leading `!`. Combining it with `oauth.clientMetadataUrl` requires an explicit `oauth.clientId`. |
-| `oauth.clientMetadataUrl` | Advanced opt-in for an operator-supplied public HTTPS Client ID Metadata Document (CIMD) URL with a non-root path. Used as the `client_id` when the authorization server advertises CIMD support; otherwise the adapter falls back to Dynamic Client Registration. The adapter does not provide or host a default document. |
-| `oauth.scope` | Requested OAuth scopes |
-| `oauth.redirectUri` | Redirect URI for browser OAuth. Dynamic clients normally omit it and use an OS-assigned port on the default `http://127.0.0.1:<port>/callback`. Local `http://` loopback URIs accept an explicit port or `{port}` for an OS-assigned port (for example, `http://localhost:{port}/callback` for a server registered only for `localhost`). Pre-registered `https://` callbacks use manual completion by pasting the full callback URL. |
-| `oauth.clientName` | Client display name advertised during Dynamic Client Registration fallback |
-| `oauth.clientUri` | Client homepage URI advertised during Dynamic Client Registration fallback. Defaults to `piConfig.clientUri` from the host's manifest when set, and is omitted rather than guessed under a rebranded host |
-| `oauth.logoUri` | Client logo URL advertised during Dynamic Client Registration fallback (RFC 7591 `logo_uri`). Must be an absolute `http(s)` URL — consent screens fetch it server-side, so local paths render nothing. Omitted from the registration request when unset |
-| `oauth.authServerMetadataUrl` | HTTPS URL of an OAuth/OIDC authorization-server metadata document. When set, this document is authoritative instead of MCP protected-resource discovery; its issuer remains validated by default |
-| `oauth.skipIssuerMetadataValidation` | `true` disables the OAuth authorization-server metadata issuer check for this server. This weakens OAuth mix-up protection and should only be used for known-misconfigured internal servers while their metadata is being fixed. |
-| `bearerToken` / `bearerTokenEnv` | Token or env var name; `bearerToken` supports `${VAR}` and `$env:VAR` interpolation. A leading `!` in `bearerToken` runs a command when the HTTP server connects; use `!!` for a literal leading `!`. |
-| `bearerTokenStore` | Set to `true` to read a static bearer token from the adapter-owned OS credential store when `auth` is `"bearer"` and no `bearerToken` or `bearerTokenEnv` is configured. Stored records are keyed only by the server name, bind to the resolved server URL, and are never named by config. Store a token with `pi-mcp-adapter token set <server>`, which reads it from a masked prompt or stdin pipe and never from an argument. `/mcp-adapter token status <server>` and `/mcp-adapter token remove <server>` manage non-secret state inside Pi; `/mcp-adapter token set` stays disabled until Pi exposes masked secret input. |
-| `lifecycle` | `"lazy"` (default), `"eager"`, `"keep-alive"`, or `"lazy-keep-alive"` |
-| `idleTimeout` | Minutes before idle disconnect (overrides global) |
-| `requestTimeoutMs` | Request timeout in milliseconds for live MCP calls (overrides global; if omitted or `<= 0`, the MCP SDK default timeout is used). For a tool call, the timeout restarts whenever the tool reports progress; task-augmented calls instead apply it to each task request. When it is omitted or `<= 0`, Executor's `execute` and `call` get at least 6 minutes (see [Executor approvals](prompts-and-ui.md#executor-approvals)) |
-| `protocolVersion` | `"legacy"` (default), `"auto"`, or `"2026-07-28"`; modern negotiation is opt-in |
-| `tasks` | MCP Tasks extension support on 2026-07-28 connections (default: true; set `false` to opt out); see [Task-augmented tool calls](#task-augmented-tool-calls) |
-| `exposeResources` | Expose MCP resources as tools (default: true) |
-| `directTools` | `true`, `string[]`, or `false` — register tools individually instead of through proxy |
-| `toolPrefix` | Override global `settings.toolPrefix` for this server (`"server"`, `"short"`, `"none"`, or `"mcp"`) |
-| `includeTools` | `string[]` of tool names or glob patterns to expose (matches original names like `get_screenshot`, generated resource names like `read_figjam`, and prefixed names like `figma_get_screenshot`) |
-| `excludeTools` | `string[]` of tool names or glob patterns to hide (applied after `includeTools`) |
-| `searchKeywords` | `{ "tool-or-glob": ["keyword", ...] }` — extra keywords that boost `mcp({ search })` ranking for matching tools; never shown to the model |
-| `openUi` | Set to `false` to never open MCP App UIs for this server's tools (default: true). The server is told the host has no UI, so tools that would defer to an MCP App form run and return their results inline; sign-in and URL elicitation are unaffected |
-| `appendStructuredContent` | Set to `false` to show the model only a tool result's `content` when it has any (default: true); `structuredContent` is still shown when `content` is empty. Use it for a server whose `content` already says what the model needs, so its machine payload doesn't cost context on every call |
-| `roots` | Set to `false` to not send this server the Pi session directory as its root (default: true). Use it for servers that let client roots replace the directories in their own args, such as the official filesystem server, when those directories should stay in force |
-| `description` | What the server offers, in a sentence (same key as Pi's `mcp.json`). `mcp({ server })` shows it under the listing header, `mcp({ search })` ranks the server's tools by it like tool descriptions, and the `/mcp-adapter` panel shows it when the server is expanded. Without it, the panel shows the first line of the server's instructions. A non-string value is ignored with a warning. |
-| `debug` | Show server stderr (default: false). Log messages a server sends over MCP always go to `~/.pi/agent/mcp.log`, which moves to `mcp.log.1` past 5 MB |
-| `trace` | Enable metadata-only JSONL protocol tracing for this server; payloads, prompts, tool arguments/results, authorization data, and URLs are never persisted |
-| `disabled` | Keep the server visible in config and status, but prevent connections, authentication, tools, and resource calls (only literal `true` disables it) |
+| 字段 | 含义 |
+|---|---|
+| `command` | stdio executable，与 url/socket 互斥 |
+| `args` | command arguments |
+| `socket` | 显式 `rmcp-mux` Unix socket，支持 env/`~`；与 command/url 互斥 |
+| `env` | stdio env，支持 `${VAR}`、`$env:VAR`；`!command` 在连接时执行，`!!` 转义 literal `!` |
+| `inheritEnv` | 默认 true 继承 host env；false 只留下 SDK platform defaults 和显式 env，不是空环境或 sandbox |
+| `cwd` | stdio working directory，支持 env/`~` |
+| `url` | Streamable HTTP endpoint，按规则 fallback SSE；支持 raw env interpolation，变量缺失时请求前失败 |
+| `headers` | HTTP headers，支持 env/secret command |
+| `requestHeadersCommand` | 每个 transport HTTP request 执行的可信 signer；stdin versioned JSON `method/url/bodyBase64`，stdout header object；command/args/env 支持 env，失败阻止请求 |
+| `caFile` | HTTPS origin 的 PEM CA/bundle，**替换**默认 roots；relative 按 process cwd，支持 env/`~`；不可读/无效时 fail closed |
+| `auth` | `bearer`、`oauth`、false，或 user-global `{provider:"name"}`；HTTP 省略自动探测 OAuth |
+| `oauth.grantType` | `authorization_code` 默认，或 `client_credentials` |
+| `oauth.clientId/clientSecret` | 预注册 client；secret 支持 `!command/!!`；clientId 高于 CIMD |
+| `oauth.clientMetadataUrl` | opt-in 的 operator-hosted public HTTPS CIMD URL，非根 path；支持时作为 client_id，否则 DCR fallback；不内置/托管文档；配 secret 必须另有显式 clientId |
+| `oauth.scope` | scope |
+| `oauth.authorizationParams` | provider 额外 authorization 参数；不可覆盖 flow-owned fields |
+| `oauth.redirectUri` | 浏览器 callback；loopback http 支持 exact port 或 `{port}`；https 预注册 callback 手动粘贴完成 |
+| `oauth.clientName/clientUri/logoUri` | DCR metadata；clientUri 采用 host manifest piConfig.clientUri，rebranded host 缺省时省略不猜；logoUri 只能 absolute http(s) |
+| `oauth.authServerMetadataUrl` | authoritative HTTPS OAuth/OIDC metadata，仍校验 issuer |
+| `oauth.skipIssuerMetadataValidation` | 默认 false；true 弱化 mix-up protection，仅供临时兼容已知坏 metadata |
+| `bearerToken/bearerTokenEnv` | 显式 token 或 env name，token 支持 env/secret command |
+| `bearerTokenStore` | 默认 false；true 且无显式 token/env 时从 Adapter OS store 读，绑定 server name + resolved URL，不能由 config 自选 account |
+| `lifecycle` | lazy/eager/keep-alive/lazy-keep-alive |
+| `idleTimeout` | 分钟，覆盖 global；0 关闭 |
+| `requestTimeoutMs` | 毫秒，省略/<=0 SDK 默认；progress 重置 tool timeout，Tasks 每次 request 独立计时；Executor execute/call 省略时至少 6 分钟 |
+| `protocolVersion` | legacy 默认、auto、2026-07-28；modern opt-in |
+| `tasks` | modern Tasks 默认 true，false 不用 Task path |
+| `exposeResources` | 默认 true，resources 转 tools |
+| `directTools` | false 默认、true、原始名字 string[]、search |
+| `toolPrefix` | server/short/none/mcp，覆盖 global |
+| `includeTools/excludeTools` | original/resource-generated/prefixed names 或 glob[]，exclude 后应用 |
+| `searchKeywords` | tool/glob 到 string[]，只影响 Adapter search，不进 schema/cache |
+| `openUi` | true 默认；false 不宣告 Apps UI capability，不开 UI/session，server 可改为 inline 返回 |
+| `appendStructuredContent` | true 默认；false 且 content 非空时不重复把 structuredContent 展示给模型；content 空时仍展示 |
+| `roots` | **true 默认，会发送 Pi session cwd**；false 不向该 server 披露 roots，可避免覆盖 filesystem server 自己 args 中目录 |
+| `description` | server 用途，参与 search/panel/server listing；非 string 忽略并警告；未设时 panel 用 instructions 首行 |
+| `debug` | 默认 false，显示 stderr；MCP log notifications 另写 `<Pi agent dir>/mcp.log`，超过 5 MB 轮换为 mcp.log.1 |
+| `trace` | metadata-only JSONL；不存 raw payload/prompt/args/result/auth/URL |
+| `disabled` | 仅 literal true 禁用连接/auth/tools/resources，配置/status 仍可见 |
 
-Wherever a field supports `${VAR}`, `${VAR:-default}` uses `default` when `VAR` is unset, as in Claude Code's `.mcp.json`. A variable that is set but empty stays empty, and a variable with a default is never reported as missing.
+`${VAR:-default}` 只在 unset 时取 default，已设为空仍为空，不报缺变量。`literalEnv: true` 让 stdio env 保持 literal。Transport 与 helper 的完整环境边界见下文。
 
-### Custom HTTPS trust
+## HTTPS 与网络诊断
 
-`caFile` works with Streamable HTTP, SSE, and per-request header commands. Requests using this trust reject all redirects; configure the final HTTPS endpoint directly. Other origins and servers retain default trust. Layered configuration drops inherited trust when replacing the URL or switching away from HTTP. This option covers the MCP origin, including connection-owned OAuth requests to that exact origin, but not the separate interactive OAuth flow or private-CA authorization servers on other origins. Thanks to [@desmonna](https://github.com/desmonna) for #527.
+`caFile` 适用于 Streamable HTTP、SSE、per-request headers command 走的 MCP origin；hostname/expiry 验证仍开，不信任其他 origins。带此 trust 的 request 拒绝所有 redirects，须配置最终 HTTPS URL。层叠配置换 URL 或离开 HTTP 会丢弃 inherited trust。它覆盖该 origin 的 connection-owned OAuth，不覆盖独立 interactive OAuth 或另一个 origin 的 private-CA auth server。
 
-### macOS local-network access
+macOS 15+ 对 literal private/link-local IP 的 HTTP 连接若报 `EHOSTUNREACH/ENETUNREACH/EACCES`，会保留 cause 并提示 Local Network Privacy；不解析 hostname，也不能把此 hint 当隐私拒绝证明。检查 System Settings → Privacy & Security → Local Network 中真正 hosting app 的权限并重启；Apple Terminal/SSH 可用于诊断。给 unsigned CLI 签名不保证解决 responsible-code attribution。参见 [Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)。
 
-On macOS 15+, Local Network Privacy may deny access to a LAN MCP server depending on the app responsible for hosting Pi. For HTTP URLs with literal private/link-local IPv4 or IPv6 addresses, the adapter adds a hint to `EHOSTUNREACH`, `ENETUNREACH`, or `EACCES` connection errors while retaining the original cause. These codes can also mean routing or firewall trouble; the hint is not proof of a privacy denial. Hostnames are not resolved for this diagnostic.
+## Protocol negotiation
 
-Check **System Settings > Privacy & Security > Local Network** for the hosting app, enable access if listed, then restart that app and Pi. If it is absent or access still fails, try launching Pi directly from Apple Terminal.app or over SSH (contexts Apple documents as exempt). Permission is attributed to responsible code, not necessarily Node or Pi; signing an unsigned CLI alone does not guarantee a permission prompt or fix host attribution. See [Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
+`legacy` 使用 classic initialize，不发 `server/discover` 或 2026 headers，兼容 deployed 2025-era servers。`auto` 探测 2026-07-28，只在明确 legacy evidence 时保守 fallback。Cloudflare Workers createMcpHandler 等 v2 stateless servers 可设置 auto。Stdio 每次 fresh auto connection 先短命 sibling 探测，再启动 session process，增加一次 spawn 并可能等待 request timeout；socket 原地探测。HTTP 用真实 Streamable connection；只有明确不支持 Streamable 的 404/405/406/415 等才 fallback SSE，auth/cancel/timeout/server error 不 fallback。
 
-### Protocol version negotiation
+固定 `2026-07-28` 不支持 legacy/SSE fallback，server 未提供该 revision 就失败。全局默认仍 legacy。
 
-The adapter defaults to `protocolVersion: "legacy"`. Omitting the field uses the classic MCP initialize sequence without `server/discover` or 2026 headers, preserving compatibility with deployed 2025-era servers.
+## Tasks
 
-Use `"auto"` to probe for MCP 2026-07-28 and conservatively fall back to the classic handshake when the server provides legacy evidence. Set it for Cloudflare Workers `createMcpHandler` and other MCP SDK v2 stateless servers. The adapter keeps `"legacy"` as the global default for compatibility. For stdio servers, the SDK probes with a short-lived sibling process before starting the session process, so each fresh auto connection adds one process spawn and can wait for the configured request timeout. Explicit Unix sockets are custom transports and probe in place. HTTP auto negotiation uses the actual Streamable HTTP connection; the adapter falls back to legacy SSE only when the endpoint definitively rejects Streamable HTTP (for example 404/405/406/415), never for authentication failures, cancellation, timeouts, or server errors.
-
-Use `"2026-07-28"` to pin that revision. Pinning has no legacy or SSE fallback and fails if the server does not offer the requested version.
-
-### Task-augmented tool calls
-
-The adapter supports the [MCP Tasks extension](https://modelcontextprotocol.io/extensions/tasks/overview) (`io.modelcontextprotocol/tasks`, SEP-2663), which lets long-running tools return a durable task handle instead of blocking the connection. Tasks need an MCP 2026-07-28 connection, and the default `"legacy"` handshake doesn't offer one, so set `protocolVersion` on the server:
+支持 [Tasks extension](https://modelcontextprotocol.io/extensions/tasks/overview) `io.modelcontextprotocol/tasks`（SEP-2663）；需要 modern connection 且 server 宣告 extension：
 
 ```json
-{
-  "mcpServers": {
-    "ci": { "url": "https://ci.example.com/mcp", "protocolVersion": "auto" }
-  }
-}
+{ "mcpServers": { "ci": { "url": "https://ci.example.com/mcp", "protocolVersion": "auto" } } }
 ```
 
-The task session then activates only when the server advertises the extension, so nothing changes for servers without task support. Set `tasks: false` on a server to opt out and keep the plain synchronous call path. Legacy (2025-11-25) experimental tasks are not supported.
+未宣告时不改变正常调用；`tasks:false` 强制同步路径。不支持 legacy 2025-11-25 experimental tasks。
 
-When the server answers a call with a task, Pi doesn't wait for it:
+### 异步结果与投递
 
-- The tool call returns right away with the task id, and the agent keeps working. The adapter polls the task in the background, honoring the server's suggested poll interval.
-- When the task ends, its result reaches the model once, as a new message that starts `MCP task <id> (<server>/<tool>) completed.` (or `failed.`, `cancelled.` or `outcome unknown.`). If the agent is idle, the message starts a turn; if it is busy, the message waits until the current turn ends. Results go through the same output guard as a normal call. A failed task delivers its error, and a tool result with `isError: true` arrives as a tool error.
-- If the task asks a question (`input_required`), the same form or browser prompt opens as for a direct `elicitation/create` request, even though the call already returned. Your answer goes back via `tasks/update`.
-- Esc while the call is still waiting for the server cancels the task with a cooperative `tasks/cancel`. Once the task id is back, Esc no longer touches the task. To stop it, run `/mcp-adapter tasks`, which lists running tasks with their latest status, then `/mcp-adapter tasks stop <server>/<taskId>`. The footer shows how many tasks are running.
-- The agent can stop a task too, for example when you ask it to. The call's result tells it the key, and `mcp({ cancelTask: "<server>/<taskId>" })` sends the same `tasks/cancel`; the task's message then says the agent stopped it. It only stops work the agent started, so like the command it needs no tool approval. This works only while the `mcp` tool is available; with `disableProxyTool` the call's result leaves the hint out, and only `/mcp-adapter tasks stop` can stop the task.
+交互式普通 tool call 收到 Task handle 后立即返回 ID，agent 可继续工作；后台按 server 建议间隔 polling。Terminal result 通过[共享 durable mailbox](mailbox.md)进入模型，消息以 `MCP task <id> (<server>/<tool>) completed.` 开始，或 failed/cancelled/outcome unknown。结果走 output guard；failed 附错误，`isError:true` 按 tool error 处理。只有共享 mailbox 决定何时自动运行和合并 wake，Task 不再独立 sendMessage/triggerTurn。Durable acceptance 与 native projection 分开，失败不可冒充已送达。
 
-Some calls still wait for the result, because their caller needs the value or nobody would see a later message:
+`input_required` 仍打开原有 form/browser elicitation，答案经 `tasks/update` 返回。初始 call 等 handle 期间 Esc cooperative `tasks/cancel`；拿到 handle 后 Esc 不再取消它。用 `/mcp-adapter tasks` 查看 latest status，`tasks stop <server>/<taskId>` 停止；footer 显示运行数。模型可用 `mcp({cancelTask:"<server>/<taskId>"})` 停止自己发起的任务，不额外审批。隐藏 proxy 时不显示此提示，只能用 slash command。
 
-- calls from code: Pi's codemode scripts, other tools, and other extensions through the runtime tool-call event
-- MCP UI tools and the UI window's own tool calls
-- [Executor](https://executor.sh) tools
-- sessions outside the interactive terminal: print, JSON and RPC modes, which includes Pi subagents
+以下调用需要值或无法接收后续自动消息，因此**等待**最终结果：codemode/其他工具/extension runtime event、UI tools/iframe calls、Executor、print/JSON/RPC（包括 subagent）。取消这些调用也发送 tasks/cancel；失败按同步错误返回。
 
-For those calls, cancelling the Pi tool call sends `tasks/cancel`, and a failed task surfaces as the same error a synchronous call would have produced.
+### 恢复、取消与 owner
 
-Running tasks keep going when the adapter replaces a server's connection: after a failed health check, when the server's HTTP session expires, or after `/mcp-adapter reconnect`. The adapter follows each task on the new connection and sends no cancel.
+Health failure、HTTP session expiry、显式 reconnect 替换连接后继续跟踪原 task，不发送 cancel。Session switch/fork/reload/quit 保存 active tasks 到所属 session，重新打开同一 session 才恢复；fork/new session 不继承。Accepted terminal mail 的恢复归共享 mailbox，不重复跑 tool 或向 sibling branch 改投。
 
-Switching to another session, forking, reloading or quitting Pi saves the running tasks in the session file instead of cancelling them. When that same session starts again, with `/resume` (which reopens a saved session) or by opening it after a restart, the adapter reconnects to each task's server, follows the task and delivers its result once. A fork or a new session doesn't pick them up.
+显式 stop/cancelTask、logout、以及连接彻底关闭且没有 replacement（如 server process 退出）会 cooperative cancel，并产生对应终态通知。Disable/remove 在 reload 生效：保存任务，不发 cancel；新 session runtime 找不到 server 时报告 outcome unknown，远端可能仍继续工作。
 
-These still cancel a running task with `tasks/cancel`, and the model is told once for each:
+无法继续跟踪时只产生对应的 unknown outcome，不自动重试原 tool，避免重复副作用。原因包括 server removed/disabled、URL/command 改变、server 回 tasks/get `-32602`（expired）、连接/认证失败，或 connection change 后无法 follow。`env/headers` 改变不计入当前 task identity 检测。
 
-- `/mcp-adapter tasks stop <server>/<taskId>` and `mcp({ cancelTask })`
-- `/mcp-adapter logout <server>`, which closes the connection to clear its credentials
-- a connection that closes with no new connection to replace it, such as when the server process exits
+Stdio process 通常随 Pi 退出，重启后任务多半 unknown。保存 active task 是恢复 polling 的记录，不是旧 volatile terminal result 的补偿 outbox；不能编造历史未持久化结果。当前 terminal delivery 的冻结身份、payload、lineage、ACK 与 owner 见[mailbox](mailbox.md)。
 
-Disabling a server with `/mcp-adapter disable <server>`, or removing it from the config, takes effect at `/reload`. The reload saves the server's running tasks like any other session stop, and when the session starts again without that server, the model is told the outcome is unknown. No cancel is sent, so the task may still finish on the server.
+### 协议限制
 
-When the adapter can't follow a task after a reconnect or a restart, the model gets one message: `MCP task <id> (<server>/<tool>) outcome unknown.`, the reason, and a note that calling the tool again may repeat the work. The reason is one of these:
+Tasks 使用官方 `@modelcontextprotocol/ext-tasks` requester，在 SDK client 下接 dedicated raw channel，链上连接 transport handler，不替换 transport。Trace 可见双向 task frame 的 metadata；不消费 `notifications/tasks`，只 polling。Timeout 按 initiating call/每个 poll，不限制总 task duration；运行时保持连接不 idle stop。
 
-- 'Server "<server>" is not configured in this session; the task may still be running on it', when the server was removed or disabled
-- 'Server "<server>" was reconfigured since this task started', when the server's url or command changed
-- "Expired on the server", when the server no longer knows the task id (it answers `tasks/get` with error `-32602`)
-- 'Could not reach "<server>"', when the connection fails or the server needs sign-in
-- "It could not be followed after its connection changed", for any other cause
+有 active task 时该 connection 的所有 tools/call 走 task-aware path，不走 Client.callTool；SDK client-side structuredContent output-schema validation 与 SEP-2243 Mcp-Param-* header mirroring 因此不运行，不能把 server 自己的验证等同 client double-check。
 
-Limits:
+SDK 负责不同协议年代的 envelope/result/list_changed/cancel/multi-round-trip sampling/elicitation。Embedded-input progress callback 没有 originating tool/resource identity，不能提供 durable per-tool waiting row；TUI 保留 dialog，proxy 可显示 progress。Issuer validation 默认保持开启。Roots 默认披露 session cwd；protocol cache-hint 配置/UI 尚未实现。
 
-- A stdio server's process usually exits when Pi does, and the task with it, so a task resumed on a stdio server usually ends as "outcome unknown".
-- A change to a server's `env` or headers isn't detected, so the adapter follows the task as if the server were the same.
-- If a result hasn't reached the model when the session stops, a task restored from the session file is resumed and delivered on the next start. For a task started in the current session, that result can be lost.
+## Stdio 环境边界
 
-Task traffic is dispatched on a dedicated raw channel below the SDK client (the published MCP SDK does not yet decode task result shapes itself), built on the official `@modelcontextprotocol/ext-tasks` requester package. The channel chains onto the connected transport's handlers without replacing the transport, and raw task frames appear in `/mcp-trace` in both directions. Task status notifications (`notifications/tasks`) are not consumed; polling is used exclusively. `requestTimeoutMs` applies per task request (the initiating call and each poll), not to the overall task duration, so a task can run for hours. While a task runs, its server's connection stays open instead of closing when idle.
+`inheritEnv:false` 只约束实际 stdio child 和 modern negotiation sibling，保留 SDK platform defaults + explicit env；不影响别的 server。Env interpolation 仍可主动读取 host `${VAR}`、`$env:VAR`、`{env:VAR}`，因此不是 isolation sandbox。
 
-One trade-off while tasks are active: every `tools/call` on that connection is dispatched through the task-aware path instead of `Client.callTool`, so the SDK's client-side output-schema validation of `structuredContent` and SEP-2243 `Mcp-Param-*` header mirroring do not run for those calls. Servers still validate their own results; only the client-side double-check is skipped.
+以下 helpers 仍继承 full host env：npm/npx resolution/cache population、`!command` secret helper、HTTP requestHeadersCommand。需要更小暴露面时用 direct executable 且避免 secret helpers。Agent Plugins/OpenCode schema 不接受 Adapter-specific inheritEnv，要在 Adapter override 设置。
 
-The stable SDK handles era-specific request envelopes, result decoding, list-changed subscriptions, cancellation, and multi-round-trip sampling/elicitation. The SDK's embedded-input progress callback does not expose the originating tool or resource identity, so the adapter cannot maintain a durable per-tool waiting status row; interactive sessions keep the existing input dialog visible, and proxy calls show request progress when UI is available. The adapter keeps strict OAuth issuer validation in every mode. It answers `roots/list` with the Pi session directory, the same root Pi's built-in MCP sends. Server log messages (`notifications/message`) are appended to `~/.pi/agent/mcp.log` in the same format as Pi's built-in MCP. Configuration/UI for protocol cache hints is not yet implemented.
-
-### Stdio environment boundaries
-
-`inheritEnv: false` applies only to the actual MCP stdio server process and, for `protocolVersion: "auto"` or `"2026-07-28"`, its disposable SDK negotiation sibling. It does not change the default for other servers: omitting the field or setting it to `true` preserves the existing full host-environment inheritance. With `false`, the SDK still supplies its platform defaults and configured `env` values remain explicit overlays; the result is not a literally empty environment and is not an OS sandbox.
-
-Environment interpolation remains intentional. `${VAR}`, `$env:VAR`, and `{env:VAR}` values still read selected host variables and can place those values in the child. `literalEnv: true` keeps its existing behavior by treating configured stdio `env` values as literals. The following helper boundaries are unchanged and still retain the full host environment even when a server uses `inheritEnv: false`:
-
-- npm/npx cache resolution and cache-population subprocesses;
-- `!command` secret helpers used by stdio `env` (and other secret fields); and
-- the HTTP `requestHeadersCommand` helper.
-
-For tighter use, configure a direct executable instead of npm/npx and avoid `!command` secret helpers. This option limits stdio child inheritance only; it does not provide complete multi-agent or helper-process isolation.
-
-## Shared MCP processes with rmcp-mux
-
-To share one stdio MCP server across Pi sessions, run it under [`rmcp-mux`](https://github.com/VetCoders/rmcp-mux) and point each session at the service socket:
+## 显式 rmcp-mux
 
 ```json
-{
-  "mcpServers": {
-    "memory": {
-      "socket": "~/.rmcp-servers/rmcp-mux/sockets/memory.sock"
-    }
-  }
-}
+{ "mcpServers": { "memory": { "socket": "~/.rmcp-servers/rmcp-mux/sockets/memory.sock" } } }
 ```
 
-The adapter owns only its client socket and closes that connection when the Pi runtime stops. `rmcp-mux` owns the upstream process, request routing, initialization cache, restart policy, client limits, and socket permissions. Start and configure the mux separately; the adapter never discovers, starts, adopts, or stops its daemon. A socket is an explicit trusted local endpoint, so do not point unrelated projects or users at a mux service unless its tools, state, credentials, and filesystem access are intended to be shared.
+Adapter 只拥有 client socket。Mux daemon 的启动/发现/adoption/停止、upstream process、routing、initialize cache、restart、client limits 和 socket permissions 都由外部 [rmcp-mux](https://github.com/VetCoders/rmcp-mux) 管理。本包不隐式运行 daemon；共享 endpoint 意味着共享 tools/state/credentials/filesystem scope，只对明确允许共享的项目/用户配置。
 
-## Install from one URL
-
-Install an MCP endpoint without editing configuration:
+## URL install
 
 ```js
 mcp({ action: "install", url: "https://example.com/mcp" })
 ```
 
-Install validates and connects the endpoint. New entries use a name derived from the hostname and are saved to the global `mcp-adapter.json`; existing URL entries are reused without rewriting. Pass `server` to choose a name or `target: "project"` to save to the project's `.mcp.json`. Unsafe URLs, name collisions, and failed connections are not persisted.
+先验证和连接，再保存新条目到 global Adapter config，name 默认来自 hostname；`server` 指定名字，`target:"project"` 写项目 `.mcp.json`。已有同 URL 复用不重写；unsafe URL、name collision、连接失败不持久化。`settings.allowInstall:false` 阻止 gateway install，不影响 search/connect/auth/runtime registration/setup。
 
-Set `settings.allowInstall` to `false` in `mcp-adapter.json` or another adapter config source (not Pi's `mcp.json` or `settings.json`) to block `mcp({ action: "install" })` for constrained or headless agents. Connect, search, tool calls, authentication, runtime registration, and interactive setup are unaffected.
+Exclusive mode 的 project target 必须是 active config path；否则用 global。不能把 runtime registration 直接 promote 为 config，需手写完整 headers/transport/auth definition。
 
-In exclusive config mode, a project target must be the active config path; otherwise use the global target. URL install cannot promote runtime-registered servers: save their complete definitions manually so required headers and transport/auth settings are retained.
-
-Public servers are ready immediately. For OAuth servers, the same action opens the authorization page and watches a reachable loopback callback. After the user grants consent, an `mcp-oauth-status` message returns the agent to connect the server and verify its discovered tools. Remote/headless callbacks retain the [manual completion fallback](auth.md#remoteheadless-authentication).
+OAuth server 先打开 consent page 并观察 loopback callback；成功通知也走 mailbox，再由 agent 连接并检查 tools。Remote/headless 保留[手动完成](auth.md#remoteheadless-认证)，credential success 不等同通知已 durably accepted。

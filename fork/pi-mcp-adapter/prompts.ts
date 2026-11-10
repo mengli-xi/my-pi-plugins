@@ -4,8 +4,8 @@ import type {
   PromptMessage,
 } from "@modelcontextprotocol/client";
 import type { McpExtensionState } from "./state.ts";
-import { isServerDisabled, type McpConfig, type PromptMetadata } from "./types.ts";
-import { formatPromptCommandName } from "./types.ts";
+import { isServerDisabled, type McpConfig, type PromptMetadata } from "./runtime-types.ts";
+import { formatPromptCommandName } from "./runtime-types.ts";
 import { isServerCacheValid, loadMetadataCache, reconstructPromptMetadata } from "./metadata-cache.ts";
 import { logger } from "./logger.ts";
 import { truncateAtWord } from "./utils.ts";

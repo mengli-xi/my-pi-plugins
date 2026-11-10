@@ -1,5 +1,6 @@
 // npx-resolver.ts - Resolve npx/npm exec binaries to avoid npm parent processes
-import { existsSync, readFileSync, realpathSync, readdirSync, statSync, writeFileSync, renameSync, mkdirSync, openSync, readSync, closeSync, unlinkSync } from "node:fs";
+import { existsSync, realpathSync, readdirSync, statSync, writeFileSync, renameSync, mkdirSync, openSync, readSync, closeSync } from "node:fs";
+import { canonicalJson, createFileReader, describeFileError } from "./file-version-cache.ts";
 import { join, dirname, extname, resolve, sep } from "node:path";
 import { getAgentPath } from "./agent-dir.ts";
 import { throwIfAborted } from "./abort.ts";
@@ -192,10 +193,7 @@ function resolveFromNpmCache(packageSpec: string, binName?: string): NpxCacheEnt
 
   let pkg: { bin?: string | Record<string, string>; version?: string } | null = null;
   try {
-    pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as {
-      bin?: string | Record<string, string>;
-      version?: string;
-    };
+    pkg = readPackageFile(packageJsonPath).value ?? null;
   } catch {
     return null;
   }
@@ -368,8 +366,8 @@ function findCachedPackageDir(cacheDir: string, packageName: string, exactVersio
     if (!existsSync(packageJsonPath)) continue;
     if (exactVersion) {
       try {
-        const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { version?: unknown };
-        if (pkg.version !== exactVersion) continue;
+        const pkg = readPackageFile(packageJsonPath).value;
+        if (pkg?.version !== exactVersion) continue;
       } catch {
         continue;
       }
@@ -407,12 +405,21 @@ function detectJsBinary(binPath: string): boolean {
   }
 }
 
+const readPackageFile = createFileReader(text => JSON.parse(text) as { bin?: string | Record<string, string>; version?: string });
 let npmCacheDirCached: string | null | undefined;
+let npmCacheEnvironment: string | undefined;
 
 function getNpmCacheDir(): string | null {
+  const identity = JSON.stringify([process.env.NPM_CONFIG_CACHE, process.env.npm_config_cache, process.env.HOME, process.env.PATH,
+    process.env.NPM_CONFIG_USERCONFIG, process.env.npm_config_userconfig, process.cwd()]);
+  if (identity !== npmCacheEnvironment) {
+    npmCacheEnvironment = identity;
+    npmCacheDirCached = undefined;
+  }
   if (npmCacheDirCached !== undefined) return npmCacheDirCached;
-  if (process.env.NPM_CONFIG_CACHE) {
-    npmCacheDirCached = process.env.NPM_CONFIG_CACHE;
+  const configured = process.env.npm_config_cache ?? process.env.NPM_CONFIG_CACHE;
+  if (configured) {
+    npmCacheDirCached = resolve(configured);
     return npmCacheDirCached;
   }
   try {
@@ -434,14 +441,14 @@ function getNpxCachePath(): string {
   return getAgentPath("mcp-npx-cache.json");
 }
 
-function readNpxCachePayload(cachePath: string): unknown | null {
-  if (!existsSync(cachePath)) return null;
-  try {
-    return JSON.parse(readFileSync(cachePath, "utf-8")) as unknown;
-  } catch {
-    return null;
-  }
-}
+const readNpxCacheFile = createFileReader((text): NpxCache | null => {
+  const raw: unknown = JSON.parse(text);
+  // Version 1's key did not encode invocation identity; migrate only after a successful resolution.
+  if (asRecord(raw)?.version === 1) return null;
+  const cache = toNpxCache(raw);
+  if (!cache) throw new Error("invalid npx cache format");
+  return cache;
+});
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -477,52 +484,38 @@ function toNpxCache(value: unknown): NpxCache | null {
   const entries = createCacheEntries();
   for (const [key, rawEntry] of Object.entries(rawEntries)) {
     const entry = toNpxCacheEntry(rawEntry);
-    if (entry) entries[key] = entry;
+    if (!entry) throw new Error("invalid npx cache entry");
+    entries[key] = entry;
   }
   return { version: CACHE_VERSION, entries };
 }
 
-function clearLegacyCache(): boolean {
-  const cachePath = getNpxCachePath();
-  const raw = asRecord(readNpxCachePayload(cachePath));
-  if (raw?.version !== 1) return false;
-  try {
-    unlinkSync(cachePath);
-  } catch {
-    try {
-      writeFileSync(cachePath, "", "utf-8");
-    } catch {
-      // Cache cleanup is best effort; resolution must still proceed.
-    }
-  }
-  return true;
-}
-
-clearLegacyCache();
-
 function loadCache(): NpxCache | null {
-  if (clearLegacyCache()) return null;
-
-  return toNpxCache(readNpxCachePayload(getNpxCachePath()));
+  try {
+    return readNpxCacheFile(getNpxCachePath()).value ?? null;
+  } catch (error) {
+    console.warn(`MCP npx cache unavailable: ${describeFileError(error)}`);
+    return null;
+  }
 }
 
 function saveCacheEntry(key: string, entry: NpxCacheEntry): void {
   try {
     const cachePath = getNpxCachePath();
-    const dir = dirname(cachePath);
-    mkdirSync(dir, { recursive: true });
-
-    const existing = toNpxCache(readNpxCachePayload(cachePath));
+    const existing = readNpxCacheFile(cachePath).value;
     const entries = createCacheEntries();
     if (existing) Object.assign(entries, existing.entries);
     const merged: NpxCache = { version: CACHE_VERSION, entries };
 
     merged.entries[key] = entry;
+    if (existing && canonicalJson(existing) === canonicalJson(merged)) return;
+    mkdirSync(dirname(cachePath), { recursive: true });
     const tmpPath = `${cachePath}.${process.pid}.tmp`;
     writeFileSync(tmpPath, JSON.stringify(merged, null, 2), "utf-8");
     renameSync(tmpPath, cachePath);
-  } catch {
-    // Cache writes are best effort; resolution must still proceed.
+  } catch (error) {
+    // Resolution can proceed, but a failed read never replaces the existing cache.
+    console.warn(`MCP npx cache not saved: ${describeFileError(error)}`);
   }
 }
 

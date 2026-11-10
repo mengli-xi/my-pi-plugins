@@ -1,3 +1,4 @@
+import { uiNativeContent } from "./mailbox.ts";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import net from "node:net";
@@ -214,6 +215,7 @@ export async function maybeStartUiSession(
   state: McpExtensionState,
   request: UiSessionRequest,
 ): Promise<UiSessionRuntime | null> {
+  const sendMail = state.captureMail?.();
   const log = logger.child({
     component: "UiSession",
     server: request.serverName,
@@ -351,36 +353,39 @@ export async function maybeStartUiSession(
       consentManager: state.consentManager,
       ...(hostContext !== undefined ? { hostContext } : {}),
 
-      onMessage: (params: UiMessageParams) => {
-        const prompt = extractUiPromptText(params);
+      onMessage: async (params: UiMessageParams) => {
+        if (!params.deliveryId) throw new Error("Missing UI deliveryId; action was not accepted");
+        const prompt = extractUiPromptText(params) ?? (params.role === "user" && params.content?.some(part => part && typeof part === "object" && "type" in part && part.type === "image") ? "[image]" : undefined);
         if (prompt) {
-          if (state.sendMessage) {
-            state.sendMessage(
+          if (!sendMail) throw new Error("MCP mailbox is unavailable; action was not accepted");
+          if (sendMail) {
+            await sendMail(
               {
                 customType: "mcp-ui-prompt",
-                content: [{ type: "text", text: `User sent prompt from ${request.serverName} UI: "${prompt}"` }],
+                content: uiNativeContent(`User sent prompt from ${request.serverName} UI: "${prompt}"`, params.content),
                 display: true,
                 details: { server: request.serverName, tool: request.toolName, prompt },
               },
-              { triggerTurn: true },
+              params.deliveryId,
             );
-            log.debug("Triggered agent turn for UI prompt", { prompt: prompt.slice(0, 50) });
+            log.debug("Accepted UI prompt into mailbox", { prompt: prompt.slice(0, 50) });
           }
         } else if (params.type === "intent" || params.intent) {
           const intent = params.intent ?? "";
           const intentParams = params.params;
-          if (intent && state.sendMessage) {
+          if (intent && !sendMail) throw new Error("MCP mailbox is unavailable; action was not accepted");
+          if (intent && sendMail) {
             const paramsStr = intentParams ? ` ${JSON.stringify(intentParams)}` : "";
-            state.sendMessage(
+            await sendMail(
               {
                 customType: "mcp-ui-intent",
                 content: [{ type: "text", text: `User triggered intent from ${request.serverName} UI: ${intent}${paramsStr}` }],
                 display: true,
-                details: { server: request.serverName, tool: request.toolName, intent, params: intentParams },
+                details: { server: request.serverName, tool: request.toolName, intent, ...(intentParams ? { params: intentParams } : {}) },
               },
-              { triggerTurn: true },
+              params.deliveryId,
             );
-            log.debug("Triggered agent turn for UI intent", { intent });
+            log.debug("Accepted UI intent into mailbox", { intent });
           }
         } else if (params.type === "notify" || params.message) {
           const text = params.message ?? "";
@@ -390,22 +395,24 @@ export async function maybeStartUiSession(
         }
       },
 
-      onContextUpdate: (params: UiModelContextParams) => {
+      onContextUpdate: async (params: UiModelContextParams) => {
+        if (!params.deliveryId) throw new Error("Missing UI deliveryId; action was not accepted");
         const update = createUiModelContextUpdate(params);
         log.debug("Model context update from UI", {
           hasContent: !!params.content,
           hasStructured: !!params.structuredContent,
           hasUpdate: !!update,
         });
-        if (update && state.sendMessage) {
-          state.sendMessage(
+        if (update && !sendMail) throw new Error("MCP mailbox is unavailable; action was not accepted");
+        if (update && sendMail) {
+          await sendMail(
             {
               customType: "mcp-ui-context",
-              content: [{ type: "text", text: `User submitted model context from ${request.serverName} UI:\n${update.summary}` }],
+              content: uiNativeContent(`User submitted model context from ${request.serverName} UI:\n${update.summary}`, params.content),
               display: true,
               details: { server: request.serverName, tool: request.toolName, context: update },
             },
-            { triggerTurn: true },
+            params.deliveryId,
           );
         }
       },

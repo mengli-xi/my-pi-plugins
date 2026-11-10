@@ -3,7 +3,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import stripJsonComments from "strip-json-comments";
 
@@ -442,56 +441,9 @@ function describeConnectError(err, definition, url) {
   return parts.length > 0 ? parts.join(" — ") : "connection failed";
 }
 
-const PI_CORE_PACKAGE = "@earendil-works/pi-coding-agent";
-
-// Pi is a peer dependency and doesn't resolve when this CLI is installed as a Pi package, so fall
-// back to the Pi install behind the first `pi` on PATH, the binary the doctor runs for `pi --version`.
-async function importPiCore() {
-  try {
-    return await import(PI_CORE_PACKAGE);
-  } catch (err) {
-    const names = process.platform === "win32" ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").map((ext) => `pi${ext}`) : ["pi"];
-    const bin = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
-      .flatMap((dir) => names.map((name) => path.join(dir, name)))
-      .find((file) => {
-        try {
-          fs.accessSync(file, fs.constants.X_OK);
-          return fs.statSync(file).isFile();
-        } catch {
-          return false;
-        }
-      });
-    if (!bin) throw err;
-    const isPiCore = (dir) => {
-      const file = path.join(dir, "package.json");
-      return fs.existsSync(file) && JSON.parse(fs.readFileSync(file, "utf8")).name === PI_CORE_PACKAGE;
-    };
-    let root;
-    if (/\.(cmd|ps1)$/i.test(bin)) {
-      // Windows npm shims sit beside the prefix's node_modules and name the package they launch.
-      const shimmed = path.join(path.dirname(bin), "node_modules", PI_CORE_PACKAGE);
-      if (/node_modules[\\/]@earendil-works[\\/]pi-coding-agent[\\/]/i.test(fs.readFileSync(bin, "utf8")) && isPiCore(shimmed)) root = shimmed;
-    } else {
-      // npm links bin/pi to a file inside Pi's package; only the package that owns that file counts.
-      const real = fs.realpathSync(bin);
-      for (let dir = path.dirname(real); !root; dir = path.dirname(dir)) {
-        if (isPiCore(dir)) root = dir;
-        else if (path.dirname(dir) === dir) break;
-      }
-      // Pi's own installer makes bin/pi a shell launcher in the agent dir that runs the release
-      // named by install/current-version, so look where that launcher looks.
-      const current = path.join(path.dirname(path.dirname(real)), "install", "current-version");
-      if (!root && fs.existsSync(current)) {
-        const managed = path.join(path.dirname(current), "releases", fs.readFileSync(current, "utf8").trim(), "node_modules", PI_CORE_PACKAGE);
-        if (isPiCore(managed)) root = managed;
-      }
-    }
-    if (!root) throw err;
-    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-    const target = pkg.exports?.["."];
-    const entry = typeof target === "string" ? target : target?.import ?? pkg.main;
-    return import(pathToFileURL(path.join(root, entry)).href);
-  }
+// The runtime peer owns this CLI's Pi API; never substitute an unrelated Pi from PATH.
+function importPiCore() {
+  return import("@earendil-works/pi-coding-agent");
 }
 
 async function runDoctor(argv, log, error) {
@@ -518,14 +470,8 @@ async function runDoctor(argv, log, error) {
   }
 
   const cwd = process.cwd();
-  // Pi 0.99+ owns ~/.pi/agent/mcp.json and .pi/mcp.json; older Pi used those names for adapter config.
-  const piVersion = spawnSync("pi", ["--version"], { encoding: "utf8", timeout: 5_000, shell: process.platform === "win32" }).stdout ?? "";
-  const [major, minor] = piVersion.trim().split(".").map(Number);
-  const piSupportsMcp = major > 0 || minor >= 99;
-  config.setPiMcpConfigEnabled(piSupportsMcp);
-  if (!piSupportsMcp && [config.getPiMcpGlobalConfigPath(), config.getProjectPiMcpConfigPath(cwd)].some((file) => fs.existsSync(file))) {
-    error("Pi 0.99 or later wasn't found on PATH, so Pi's own mcp.json files were not checked.");
-  }
+  // This fork targets Pi 1.5; do not infer config ownership from the daily pi on PATH.
+  config.setPiMcpConfigEnabled(true);
   const loaded = config.loadMcpConfigWithSources(undefined, cwd);
   const provenance = config.getServerProvenance(undefined, cwd);
   let projectTrusted = false;

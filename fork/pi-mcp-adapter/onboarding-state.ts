@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { mkdirSync, writeFileSync, renameSync } from "node:fs";
+import { canonicalJson, createFileReader } from "./file-version-cache.ts";
 import { dirname } from "node:path";
 import { getAgentPath } from "./agent-dir.ts";
 
@@ -23,37 +24,36 @@ export function getOnboardingStatePath(): string {
   return getAgentPath("mcp-onboarding.json");
 }
 
-export function loadOnboardingState(): McpOnboardingState {
-  const path = getOnboardingStatePath();
-  if (!existsSync(path)) return { ...DEFAULT_STATE };
+const readOnboardingFile = createFileReader((text): McpOnboardingState => {
+  const raw = JSON.parse(text) as Partial<McpOnboardingState>;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || raw.version !== 1) throw new Error("invalid onboarding state format");
+  return {
+    version: 1,
+    sharedConfigHintShown: raw.sharedConfigHintShown === true,
+    setupCompleted: raw.setupCompleted === true,
+    ...(typeof raw.lastDiscoveryFingerprint === "string"
+      ? { lastDiscoveryFingerprint: raw.lastDiscoveryFingerprint }
+      : {}),
+    ...(Array.isArray(raw.piSignInImportsAsked)
+      ? {
+          piSignInImportsAsked: raw.piSignInImportsAsked.filter((entry): entry is { server: string; url: string } =>
+            typeof entry?.server === "string" && typeof entry.url === "string"),
+        }
+      : {}),
+    ...(typeof raw.piBuiltinMcpHandledVersion === "string"
+      ? { piBuiltinMcpHandledVersion: raw.piBuiltinMcpHandledVersion }
+      : {}),
+  };
+});
 
-  try {
-    const raw = JSON.parse(readFileSync(path, "utf-8")) as Partial<McpOnboardingState>;
-    if (!raw || typeof raw !== "object") return { ...DEFAULT_STATE };
-    return {
-      version: 1,
-      sharedConfigHintShown: raw.sharedConfigHintShown === true,
-      setupCompleted: raw.setupCompleted === true,
-      ...(typeof raw.lastDiscoveryFingerprint === "string"
-        ? { lastDiscoveryFingerprint: raw.lastDiscoveryFingerprint }
-        : {}),
-      ...(Array.isArray(raw.piSignInImportsAsked)
-        ? {
-            piSignInImportsAsked: raw.piSignInImportsAsked.filter((entry): entry is { server: string; url: string } =>
-              typeof entry?.server === "string" && typeof entry.url === "string"),
-          }
-        : {}),
-      ...(typeof raw.piBuiltinMcpHandledVersion === "string"
-        ? { piBuiltinMcpHandledVersion: raw.piBuiltinMcpHandledVersion }
-        : {}),
-    };
-  } catch {
-    return { ...DEFAULT_STATE };
-  }
+export function loadOnboardingState(): McpOnboardingState {
+  return structuredClone(readOnboardingFile(getOnboardingStatePath()).value ?? DEFAULT_STATE);
 }
 
 export function saveOnboardingState(state: McpOnboardingState): void {
   const path = getOnboardingStatePath();
+  const current = readOnboardingFile(path);
+  if (current.exists && canonicalJson(current.value) === canonicalJson(state)) return;
   mkdirSync(dirname(path), { recursive: true });
   const tmpPath = `${path}.${process.pid}.tmp`;
   writeFileSync(tmpPath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");

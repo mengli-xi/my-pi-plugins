@@ -1,424 +1,131 @@
-# Authentication
+# 认证
 
-This document describes the OAuth 2.1 + PKCE authentication implementation for the Pi MCP Adapter using the official MCP SDK, plus [headers, bearer tokens, and secret commands](#headers-bearer-tokens-and-secret-commands) for servers that don't use OAuth.
+HTTP OAuth 使用官方 MCP SDK 的 OAuth/PKCE，实现 discovery、registration、callback 和 refresh。静态 header/bearer/secret command 见后半。URL、issuer、secret scope 与 store 不可用时的 fail-closed 边界都不能因使用方便而绕过。
 
-## Overview
+## OAuth 配置
 
-The Pi MCP Adapter uses the official MCP SDK's built-in OAuth implementation, which provides:
-
-- **Automatic OAuth endpoint discovery** (RFC 9728) - No manual configuration needed
-- **Dynamic Client Registration** (RFC 7591) - The default for URL-only servers when no pre-registered `clientId` is configured and the server supports registration
-- **Client ID Metadata Documents** (SEP-991) - An advanced opt-in that uses an operator-supplied public HTTPS metadata URL as `client_id` when the authorization server opts in
-- **Automatic callback handling** - Built-in HTTP server handles callbacks automatically
-- **Automatic token refresh** - SDK handles token refresh transparently
-
-## Features
-
-- **PKCE (S256)** - Mandatory code challenge method for OAuth 2.1
-- **Automatic Callback Server** - Local browser redirects automatically when available
-- **Manual Remote Flow** - Copy auth URLs and pasted redirect URLs/codes for headless SSH sessions
-- **Dynamic Client Registration** - Registers by default when no pre-registered client is configured and the server supports registration
-- **Client ID Metadata Documents** - Opts into a configured, operator-hosted URL-based client ID when the authorization server advertises support
-- **Auto-Discovery** - Discovers OAuth endpoints from server metadata
-- **Automatic Token Refresh** - SDK handles expired tokens automatically
-- **State Parameter Validation** - CSRF protection
-- **Secure Token Storage** - Persistent OAuth entries are stored in the operating system credential store
-
-## Configuration
-
-### Minimal Configuration (Recommended)
-
-For most MCP servers, you only need the URL:
+最小配置只需 `url`，HTTP 自动探测 OAuth；`auth:"oauth"` 强制，`auth:false` 关闭：
 
 ```json
-{
-  "mcpServers": {
-    "my-oauth-server": {
-      "url": "https://api.example.com/mcp"
-    }
-  }
-}
+{ "mcpServers": { "docs": { "url": "https://api.example.com/mcp" } } }
 ```
 
-OAuth is automatically enabled for HTTP servers. The SDK will:
-- Auto-detect if the server requires OAuth
-- Discover OAuth endpoints from the server
-- Use Dynamic Client Registration when no pre-registered client is configured and the server supports it
-- Handle the entire OAuth flow including callback
+Discovery 支持 RFC 9728 protected-resource metadata 和 401 `WWW-Authenticate` 的 `resource_metadata`。没有显式 clientId 时，server 支持 registration 则默认 DCR（RFC 7591）。Adapter 不默认托管 CIMD 文档。
 
-Pi does not configure or host a Client ID Metadata Document by default. URL-only configurations continue to use Dynamic Client Registration. CIMD is available only through the advanced, operator-supplied `oauth.clientMetadataUrl` option below.
+| `oauth` 字段 | 合同 |
+|---|---|
+| `grantType` | authorization_code 默认或 client_credentials |
+| `clientId/clientSecret` | 预注册 client；secret 支持 `!command`。显式 ID 高于 CIMD |
+| `clientMetadataUrl` | 显式 public HTTPS、非根 path 的 operator-hosted CIMD；server 宣告 `client_id_metadata_document_supported:true` 才作 client_id，其他情况 DCR fallback；配 secret 但无显式 ID 拒绝 |
+| `scope` | 请求 scopes |
+| `authorizationParams` | 如 `{access_type:"offline",prompt:"consent"}`；禁止覆盖 client_id/redirect_uri/scope/state/code_challenge/response_type/resource 等 flow-owned fields |
+| `redirectUri` | 浏览器回调，loopback http exact port 或 `{port}`；非 loopback https 用手动完成 |
+| `clientName/clientUri/logoUri` | DCR metadata；clientName 默认 Pi Coding Agent，clientUri 按 host manifest，不猜 rebranded host URL；logoUri 是 absolute http(s) URL |
+| `authServerMetadataUrl` | authoritative HTTPS OAuth/OIDC document，绕过不可用的 protected-resource discovery，仍校验 issuer |
+| `skipIssuerMetadataValidation` | 默认 false；true 只作已知错配 server 的临时 workaround，会弱化 mix-up protection |
 
-### Optional Configuration
+CIMD 必须公开可 fetch，metadata 与当前 redirect_uris/grant_types/response_types/token_endpoint_auth_method 一致，由 operator 维护。Default URL-only 仍走 DCR。
 
-You can optionally provide a pre-registered client:
+动态 fallback client 默认在 auth 开始时 lazy bind `127.0.0.1` 的 OS-assigned port。`redirectUri` 可固定 `http://localhost:3118/callback` 等 provider 要求的 callback，也可 `http://localhost:{port}/callback`；loopback host 只允许 localhost/127.0.0.1/[::1]，explicit port 精确 bind，`{port}` 代入实际端口。
+
+Pre-registered client 未设 redirectUri 时精确使用 `MCP_OAUTH_CALLBACK_PORT`，默认 19876/127.0.0.1/callback。Callback path 与配置一致，验证 state，处理 code/state/error 并显示 success/error page，pending authorization 5 分钟超时。
+
+DCR 注册保存 client 信息及 server 返回的 redirect URIs；新 browser flow 若有 tokens 的 cached dynamic client 不含当前 redirect URI（或缺失），重新注册；普通 refresh 不做该 redirect check，已有 refresh grant 可继续用。Authorization-code flow 用 S256 PKCE 和加密随机 state；client_credentials 不用 PKCE/browser/callback。
+
+### Client credentials
 
 ```json
-{
-  "mcpServers": {
-    "my-oauth-server": {
-      "url": "https://api.example.com/mcp",
-      "auth": "oauth",
-      "oauth": {
-        "clientId": "your-client-id",
-        "clientSecret": "your-client-secret",
-        "scope": "read write",
-        "authorizationParams": { "access_type": "offline", "prompt": "consent" },
-        "redirectUri": "http://localhost:3118/callback"
-      }
-    }
-  }
-}
+{ "mcpServers": { "service": { "url": "https://api.example.com/mcp", "auth": "oauth", "oauth": { "grantType": "client_credentials", "clientId": "service-client", "clientSecret": "${SERVICE_CLIENT_SECRET}", "scope": "read" } } } }
 ```
 
+不打开浏览器，redirectUri 忽略；clientName/clientUri 仍用于 DCR metadata。
 
+## 发起、完成与退出
 
-### Configuration Options
+`/mcp-auth <server>` 默认由用户主动发起；无参数仅 TUI picker。Panel Ctrl+A 或 needs-auth server Enter 也可发起。开启 `settings.autoAuth:true` 后 proxy/direct connect/tool needs-auth 会认证，再重试原操作一次。回调服务只在需要时启动。
 
-- `url` - The MCP server URL (required)
-- `auth` - Set to `"oauth"` to force OAuth, `false` to disable, or omit to auto-detect
-- `oauth.grantType` - `"authorization_code"` (default, browser flow) or `"client_credentials"` (non-interactive)
-- `oauth.clientId` - Pre-registered client ID. Takes precedence over `oauth.clientMetadataUrl` when both are configured.
-- `oauth.clientSecret` - Client secret for confidential clients (optional). When `oauth.clientMetadataUrl` is also set, an explicit `oauth.clientId` is required; the explicit client takes precedence.
-- `oauth.clientMetadataUrl` - Advanced opt-in for an operator-supplied public HTTPS Client ID Metadata Document URL with a non-root path. The URL is used as `client_id` when the authorization server advertises `client_id_metadata_document_supported: true`; otherwise Dynamic Client Registration remains the fallback. The document must be publicly fetchable and match this client's metadata, especially `redirect_uris`. The adapter does not provide a default URL or host this document.
-- `oauth.scope` - Requested OAuth scopes (optional)
-- `oauth.authorizationParams` - Extra authorization URL parameters for provider-specific extensions, such as Google's `{ "access_type": "offline", "prompt": "consent" }`. Flow-owned parameters like `client_id`, `redirect_uri`, `scope`, `state`, `code_challenge`, `response_type`, and `resource` cannot be overridden.
-- `oauth.redirectUri` - Browser callback URI to advertise and bind, such as `http://localhost:3118/callback`. Use `{port}` in a loopback URI when the provider permits an OS-assigned RFC 8252 port, for example `http://127.0.0.1:{port}/callback` (optional)
-- `oauth.clientName` - Client display name used for Dynamic Client Registration fallback (optional, defaults to `Pi Coding Agent`)
-- `oauth.clientUri` - Client homepage URI used for Dynamic Client Registration fallback (optional)
-- `oauth.authServerMetadataUrl` - HTTPS OAuth/OIDC authorization-server metadata document to use authoritatively when MCP protected-resource discovery is unavailable (optional; issuer validation remains enabled)
-- `oauth.skipIssuerMetadataValidation` - Set `true` only for a known-misconfigured authorization server whose metadata issuer cannot be fixed immediately. This weakens OAuth issuer validation.
+Adapter **不读、导入或删除 Pi 内建 MCP 的私有 credentials**，没有 startup import prompt 或 Ctrl+P。Adapter 已持有的 URL-bound credentials 不受影响；过去只依赖 native import 的用户需重新 `/mcp-auth <server>`。这不影响下面通过 Pi 公开 model registry 取得 provider token。
 
-Dynamic fallback clients normally omit `oauth.redirectUri`; the adapter starts the callback server lazily on the default loopback host (`127.0.0.1`, as RFC 8252 recommends) and asks the OS for an available local port when auth begins. Use `oauth.redirectUri` when the provider requires a pre-registered callback, such as Slack MCP's Claude-compatible `http://localhost:3118/callback`, or when a server only accepts a `localhost` redirect (for example `http://localhost:{port}/callback`). A loopback URI must use `http://` with `localhost`, `127.0.0.1`, or `[::1]`. It may contain an explicit port, which is bound exactly, or `{port}`, which is replaced with the OS-assigned port in the authorization and token requests.
+完成后 SDK 附 access token 并自动 refresh；无效 credentials 显示 needs-auth。`/mcp-adapter logout <server>` 清理 Adapter credentials 并断开。在同一 process 内 logout 是 linearizable boundary：此前开始的 OAuth 不得在清理后复活 credentials，之后的新 OAuth 等 logout 完成；公开显式 token update 保留 last-writer 语义。不同 Pi processes 不协调，仍可能 race。
 
-### Non-Interactive `client_credentials`
+### Remote/headless 认证
 
-For machine-to-machine OAuth, configure `grantType: "client_credentials"`.
+远端 TUI 显示完整 authorization URL，在本地浏览器批准后，如 loopback 不能返回远端，复制地址栏的完整 callback URL，在同一 Pi session 粘贴完成；直接可达时自动结束等待。
 
-```json
-{
-  "mcpServers": {
-    "my-service": {
-      "url": "https://api.example.com/mcp",
-      "auth": "oauth",
-      "oauth": {
-        "grantType": "client_credentials",
-        "clientId": "service-client-id",
-        "clientSecret": "service-client-secret",
-        "scope": "read write"
-      }
-    }
-  }
-}
-```
-
-This flow does not open a browser or use callback handling. `oauth.redirectUri` is ignored for `client_credentials`; `oauth.clientName` and `oauth.clientUri` still apply to dynamic client registration metadata.
-
-## Usage
-
-### Step 1: Authenticate
-
-Run the `/mcp-auth` command with the server name:
-
-```
-/mcp-auth my-oauth-server
-```
-
-Manual `/mcp-auth` is the default flow. If you set `settings.autoAuth: true`, proxy/direct tool execution will trigger OAuth automatically when a server returns `needs-auth`, then retry the original operation once.
-
-This will:
-1. Start the callback server lazily on an OS-assigned local port, on an OS-assigned host-specific `{port}` callback, or on the exact `oauth.redirectUri` port for fixed callbacks
-2. Discover OAuth endpoints automatically
-3. Use Dynamic Client Registration by default, or the explicitly configured Client ID Metadata Document when supported
-4. Open your browser for authentication
-5. Wait for the automatic callback
-6. Complete the OAuth flow
-7. Store tokens securely
-
-### Import a sign-in from Pi's built-in MCP
-
-On Pi 0.99 and later, Pi's built-in MCP stores its OAuth sign-ins in `~/.pi/agent/mcp-auth.json` (under `PI_CODING_AGENT_DIR` when set). When a configured OAuth server has no adapter credentials for its URL and that URL exactly matches one in Pi's file, interactive sessions ask once per server and URL, at session start before any server connects:
-
-- **Import sign-in** copies Pi's tokens and client registration, bound to that URL. Pi's PKCE verifier and state are never copied.
-- **Sign in again** changes nothing; run `/mcp-auth <server>` when you need the server.
-
-If the server rotates refresh tokens, the adapter's first refresh can sign Pi's shell `pi mcp` commands out of that server.
-
-To import later, or for project servers (not covered by the startup prompt), press `ctrl+p` in `/mcp-adapter`. It imports every eligible server without asking and reconnects them. The action only appears when there is something to import.
-
-Pi's file is never changed. Nothing is imported in non-interactive sessions, with `settings.oauthCredentialStore: "encrypted-file"`, or for `client_credentials` servers. Malformed files and entries are skipped.
-
-### Remote/headless authentication
-
-If Pi is running on a remote server, `/mcp-auth <server>` shows a clickable authorization URL first. Open it in your local browser and approve access, then select **Yes** in Pi to open the callback input. The browser may fail to load the loopback callback page because `127.0.0.1` refers to your workstation; copy the full URL from its address bar and paste it into Pi. The authorization screen closes automatically instead when the browser can reach Pi's callback directly.
-
-The same flow is available through the proxy tool for non-interactive clients. By default, persistent OAuth requires an available OS credential store; on headless Linux that usually means an unlocked Secret Service/libsecret keyring. The adapter fails closed instead of falling back to plaintext credentials when the secure store is unavailable.
-
-Windows OpenSSH network logons can return `ERROR_NO_SUCH_LOGON_SESSION` (1312) because Credential Manager is unavailable to that logon. For this case, explicitly set `settings.oauthCredentialStore` to `"encrypted-file"` and inject `PI_MCP_ADAPTER_OAUTH_FILE_KEY` as canonical base64 for 32 random bytes (`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`). Encrypted entries live under the Pi agent directory's `mcp-oauth-encrypted/`; keep the key separately and reauthenticate after loss or rotation. This backend never falls back to the OS store or imports legacy plaintext; see [Token Storage](#token-storage) for its security model.
+非交互客户端：
 
 ```js
-mcp({ action: "auth-start", server: "linear-server" })
+mcp({ action: "auth-start", server: "docs" })
+mcp({ action: "auth-complete", server: "docs", args: { redirectUrl: "http://127.0.0.1:19876/callback?code=...&state=..." } })
 ```
 
-For a loopback redirect, the adapter attempts to open the returned authorization URL, watches the callback, completes token exchange, and sends an `mcp-oauth-status` event when authentication finishes. If Pi is remote or cannot open a browser, open the returned URL locally. If the browser cannot reach Pi's callback, copy the full callback URL from the address bar and complete the flow in the same Pi session:
+也兼容 `args:{code:"..."}` 和 JSON-string args。完整 URL 校验保存的 state；raw code 用于直接展示 code 的 provider。Authorization URLs/codes 是敏感数据。Loopback auth-start 尝试打开 URL 并观察 callback，后台结果经[durable mailbox](mailbox.md)发送 `mcp-oauth-status`；凭据成功不代表通知投递成功，通知失败单独报告。
 
-```js
-mcp({
-  action: "auth-complete",
-  server: "linear-server",
-  args: { redirectUrl: "http://127.0.0.1:19876/callback?code=...&state=..." }
-})
+OAuth success 的投影 guard 使用**当前 effective server URL**和实时 secure-store 的只读状态，而不是启动时 URL 或 process token cache；不触发 refresh/import/compact/write/delete。配置变更、logout/外部删除、server disabled/unapproved 或 owner retired 都不能被旧 success 通知绕过。恢复只重投已接受的 carrier，不重新认证。
+
+## Secure token storage
+
+默认由 `@napi-rs/keyring` 写 macOS Keychain、Windows Credential Manager、Linux Secret Service/libsecret，按 configured server name 存 tokens、dynamic client 信息、历史 verifier/state 字段和 serverUrl binding；URL 改变不能复用旧 credentials。
+
+Windows 超 1000 UTF-16 code units 用 manifest + chunks；macOS/Linux 普通 entry 为一个 item，真实 native size error 直接上报。旧 chunk entry 的普通读取可校验并 compact 成单 item 后清旧 chunks；**status inspection 只读，不 compact**。生产运行不接受 fake-keyring/memory-test-store 开关；替身只能在测试侧注入。
+
+OS store 不可用 fail closed，不 fallback plaintext。Headless Linux 需 unlocked Secret Service；Windows OpenSSH network logon 可能报 `ERROR_NO_SUCH_LOGON_SESSION` (1312)。Linux revoked inherited keyring 可在 native operation 的 KeyRevoked 时 best-effort retry 一次 `keyctl session - <runtime> <packaged helper>`（OAuth recovery helper 使用 node），10 秒 timeout；须 PATH 有 keyctl/所需 runtime 且新 session store 可用。缺失/locked/其他错误仍 fail closed；`PI_MCP_ADAPTER_DISABLE_KEYRING_RECOVERY=1` 可禁用 recovery。此机制不生成替代 plaintext store。
+
+### 显式 encrypted-file
+
+设置 `settings.oauthCredentialStore:"encrypted-file"`，从外部 secret mechanism 注入 `PI_MCP_ADAPTER_OAUTH_FILE_KEY`，必须是 32 random bytes 的 canonical base64：
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-You can also pass only the `code` query parameter with `args: { code: "..." }`. JSON-string args remain supported. Redirect URL completion validates the saved OAuth state; raw code completion is available for providers that display a code directly. Treat authorization URLs and codes as sensitive; they can grant access to the MCP server until the flow expires or completes.
+key 不能写配置或与 ciphertext 同放。AES-256-GCM versioned envelope 在 `<Pi agent dir>/mcp-oauth-encrypted/sha256-<server-hash>/credentials.json`；URL/secrets 只在 ciphertext，account-bound authenticated data 防跨 account 搬移。采用同目录 atomic replacement 和可用平台的 private modes，POSIX 读取检查 modes，但不把它冒充 Windows ACL；保密边界是外部 key 的 encryption。
 
-### Step 2: Use the Server
+此 backend 不 fallback OS store、不读 oauthDir/MCP_OAUTH_DIR、不 import legacy plaintext，选择后需重新认证。Key 丢失/轮换时旧 envelope 不可读，移除旧 envelope 后重新认证；Adapter 不代管 key。
 
-Once authenticated, use the server normally:
+### 缓存、实时检查与 legacy plaintext
 
-```
-mcp({ server: "my-oauth-server" })
-mcp({ tool: "my-tool", args: { key: "value" } })
-```
+普通 SDK 每个请求都会取 token，所以完整 entry 在 process 内缓存 present/absent；auth/refresh/logout 即时更新，避免逐请求打 OS store。Panel/status 与 mailbox success guard 刻意绕过此 cache，只读实时 store。
 
-The SDK automatically:
-- Adds the access token to requests
-- Refreshes expired tokens automatically
-- Re-authenticates if tokens are invalid
+其他 process 改/删 credentials 不会即时更新普通 request cache；该 needs-auth episode 第一次 credential-backed failure 会清 cache，下次读 reload；restart 也清除。`PI_MCP_ADAPTER_DISABLE_AUTH_CACHE=1` 可恢复逐请求读取。
 
-To clear stored OAuth credentials and force a fresh authorization:
-
-```
-/mcp-adapter logout my-oauth-server
-```
-
-Within one Pi process, logout is a linearizable boundary: OAuth work that began
-before logout cannot recreate credentials after they are cleared, and new OAuth
-work is admitted after logout finishes. Explicit token updates made through the
-public API retain last-writer semantics. Separate Pi processes are intentionally
-not coordinated, so concurrent cross-process credential operations can still race.
-
-## How It Works
-
-### Authentication Flow
-
-```
-┌─────────┐     ┌──────────────┐     ┌─────────────────┐
-│   Pi    │────▶│  MCP Server  │────▶│  OAuth Server   │
-│         │     │              │     │                 │
-│ 1. Init │     │ 2. Discovery │     │ 3. Register     │
-│         │     │              │     │                 │
-│         │◀────│              │◀────│ 4. Auth URL     │
-│         │     │              │     │                 │
-│         │────▶│  Callback    │◀────│ 5. Browser      │
-│         │     │  Server      │     │    Redirect     │
-│         │     │              │     │                 │
-│         │◀────│              │◀────│ 6. Code         │
-│         │     │              │     │                 │
-│         │────▶│              │────▶│ 7. Exchange     │
-│         │     │              │     │                 │
-│         │◀────│              │◀────│ 8. Tokens       │
-└─────────┘     └──────────────┘     └─────────────────┘
-```
-
-### Auto-Discovery
-
-The SDK attempts to discover OAuth endpoints using:
-
-1. **RFC 9728 Metadata** - Fetches `/.well-known/oauth-protected-resource`
-2. **WWW-Authenticate Header** - Parses `resource_metadata` from 401 responses
-
-### Client ID Metadata Documents and Dynamic Registration
-
-CIMD is an advanced, explicit opt-in. Set `oauth.clientMetadataUrl` to a stable, operator-supplied public HTTPS URL that serves this client's OAuth metadata. When authorization-server discovery advertises `client_id_metadata_document_supported: true`, the adapter and SDK use that URL directly as `client_id` and skip Dynamic Client Registration. The URL must have a non-root path. An explicit `oauth.clientId` takes precedence. Combining `oauth.clientMetadataUrl` with `oauth.clientSecret` without an explicit `oauth.clientId` is rejected.
-
-The adapter does not provide a default URL or host the public document: operators must publish it and keep fields such as `redirect_uris`, `grant_types`, `response_types`, and `token_endpoint_auth_method` consistent with the configured flow. URL-only/default Pi configurations therefore continue to use Dynamic Client Registration. When the server does not advertise CIMD support, or no metadata URL is configured, the SDK uses Dynamic Client Registration if the server supports it:
-
-1. Discovers the registration endpoint from OAuth metadata
-2. Registers a new client with:
-   - `client_name`: configured `oauth.clientName` or "Pi Coding Agent"
-   - `client_uri`: configured `oauth.clientUri` or the adapter repository URL
-   - `redirect_uris`: `["http://127.0.0.1:<active-callback-port>/callback"]`, or the configured `oauth.redirectUri`
-   - `grant_types`: `["authorization_code", "refresh_token"]`
-3. Stores the registered client credentials and the redirect URIs returned by the authorization server
-
-When a fresh browser auth starts, cached dynamic fallback client info with tokens is re-registered if its stored redirect URIs are missing or do not include the current redirect URI. Token refresh does not perform this redirect check, so existing refresh-token grants keep working even after a callback setting changes.
-
-### Callback Server
-
-A Node.js HTTP server runs on a loopback callback endpoint and handles the active callback path:
-
-- Dynamic registration starts the callback server only when auth begins, binds the default host `127.0.0.1`, and asks the OS for an available local port
-- Pre-registered clients (`oauth.clientId`) without `oauth.redirectUri` require the exact configured callback port from `MCP_OAUTH_CALLBACK_PORT` or the default `19876` on `127.0.0.1`
-- `oauth.redirectUri` binds the exact loopback host and path. An explicit port is bound exactly; `{port}` asks the OS for a port and is replaced with that assigned value before the URI is advertised to the provider
-
-- Handles `code`, `state`, and `error` parameters
-- Displays success/error HTML pages
-- Validates state parameter for CSRF protection
-- Has a 5-minute timeout for pending authorizations
-
-## Token Storage
-
-Persistent OAuth entries are stored per configured server name in the operating system credential store, using macOS Keychain, Windows Credential Manager, or Linux Secret Service/libsecret through `@napi-rs/keyring`. The stored entry contains tokens, dynamic client information, legacy verifier/state fields when present, and the server URL binding.
-
-Windows Credential Manager cannot hold a typical large OAuth JSON blob in one value, so payloads over 1,000 UTF-16 code units are stored as a manifest plus chunks; the size-limited test store uses the same representation. macOS Keychain and Linux Secret Service keep each record in one item, including ordinary 8–10 KiB records; if an unusually large record exceeds the native store's actual limit, that store error is surfaced. This avoids separate prompts for digest-addressed Keychain chunks. On macOS and Linux, the first ordinary read of a previously chunked record validates and rewrites it as one item before cleaning up its old chunks. Windows and the size-limited test store retain the chunked representation. Status inspection reads the existing representation but does not compact it; existing secure-record and legacy-plaintext cleanup semantics still apply.
-
-The adapter fails closed when the OS credential store is unavailable. On headless Linux, configure an unlocked Secret Service-compatible keyring before using persistent OAuth; the adapter does not silently fall back to plaintext token files. Windows OpenSSH network logons may report `ERROR_NO_SUCH_LOGON_SESSION` (1312) because Credential Manager has no credential set for that logon.
-
-For Windows OpenSSH/headless use, `settings.oauthCredentialStore: "encrypted-file"` explicitly selects an AES-256-GCM file store. It requires `PI_MCP_ADAPTER_OAUTH_FILE_KEY` to contain canonical base64 for exactly 32 random bytes; generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` and inject it through an external secret mechanism. Never place the key in config or beside the ciphertext. One authenticated, versioned envelope is stored per hashed server account at `<Pi agent directory>/mcp-oauth-encrypted/sha256-<server-hash>/credentials.json`. The server URL and secrets appear only inside ciphertext, and account-bound authenticated data prevents copying an envelope to another account.
-
-Encrypted-file writes use private directory/file modes where supported and same-directory atomic replacement. POSIX modes are checked on reads, but they do not establish a Windows ACL; encryption with the external key is the confidentiality boundary. This backend never falls back to the OS store, reads `oauthDir` / `MCP_OAUTH_DIR`, or imports legacy plaintext. Reauthenticate after opting in. Key loss or rotation makes existing envelopes unreadable; remove them and reauthenticate with the new key.
-
-On Linux, if credential access fails because Pi inherited a revoked session keyring, the adapter makes one best-effort retry through `keyctl session - node <packaged helper>`. This lets explicit re-authentication write fresh credentials from a new session keyring without restarting a long-lived tmux or server process. The recovery path requires `keyctl` and `node` on `PATH`; missing, locked, or otherwise unavailable credential stores still fail closed.
-
-Complete credential entries are held in memory for the lifetime of the Pi process on every supported credential-store platform. The MCP SDK reads the access token before every outbound request, so caching avoids a credential-store lookup on each tool call; on Linux this specifically avoids overloading the Secret Service daemon. The cache is filled on the first read for a server and covers both present and absent entries. Authenticating, refreshing, and logging out all update it immediately, so credential changes made through Pi take effect at once. Status-panel inspection deliberately bypasses it and still reads the store directly.
-
-A credential changed or deleted by another process while Pi is running is not observed immediately. The affected server picks it up after the first credential-backed authentication failure in that `needs-auth` episode: Pi discards the cached entry, and the following read reloads from the credential store. Restarting Pi also clears the cache. Set `PI_MCP_ADAPTER_DISABLE_AUTH_CACHE=1` to turn the cache off entirely and restore a credential-store read per request.
-
-Older versions stored plaintext entries at `~/.pi/agent/mcp-oauth/sha256-<server-hash>/tokens.json`, or under `settings.oauthDir` / `MCP_OAUTH_DIR`. With the default OS backend, the first read after upgrade imports a valid legacy entry and removes the plaintext `tokens.json`. The encrypted-file backend leaves legacy files untouched. These directories are legacy import locations, not persistent credential stores or isolation namespaces.
-
-The stored `serverUrl` field ensures credentials are invalidated if the server URL changes.
+旧 `tokens.json` 位于 `<Pi agent dir>/mcp-oauth/sha256-<server-hash>/`，或 oauthDir/MCP_OAUTH_DIR。默认 OS backend 的普通首次读可单向 import 合法 legacy entry，成功后删除该 plaintext；encrypted-file 留它不动。这些只是 legacy import location，不是隔离 namespace。Status/mailbox 只读重检不执行这种迁移。
 
 ## Pi provider tokens
 
-An HTTP server can use the token of a provider you signed in to with Pi's `/login`, instead of MCP OAuth. This needs Pi 0.99.2 or later:
-
 ```json
-{
-  "mcpServers": {
-    "example": {
-      "url": "https://mcp.example.com/mcp",
-      "auth": { "provider": "example-provider" }
-    }
-  }
-}
+{ "mcpServers": { "docs": { "url": "https://mcp.example.com/mcp", "auth": { "provider": "example-provider" } } } }
 ```
 
-- The adapter asks Pi's model registry for the token on every request, so Pi's refreshes apply at once. The token is sent as `Authorization: Bearer <token>`, and never stored, cached, or shown.
-- The token goes only to the origin (scheme, host, and port) of the server's `url`. Requests carrying it refuse redirects, so it can't follow one to another URL.
-- The `url` must be `https`, or `http` on `localhost`, `127.0.0.1`, or `[::1]`. Other entries are skipped with a notice.
-- Only user-global config may use it; a server defined or overridden by a project file is skipped with a notice. Pi's own `mcp.json` files have the same rule.
-- When Pi has no token for the provider, the request isn't sent and the server shows as needing sign-in. Run `/login <provider>`, then `/mcp-adapter reconnect <server>`. These servers never start MCP OAuth.
-- A session without Pi's model registry can't connect these servers and says why: older Pi, or `createMcpAdapter()` loaded outside a Pi session. `pi-mcp-adapter doctor` reports them as `needs-auth` without connecting, because it can't read Pi's tokens.
+每次 request 通过 Pi 公开 model registry 取 `/login` token，发送 Authorization Bearer，不由 Adapter 存/cache/展示。只发送到配置 URL 的 origin（scheme/host/port），带 token 拒绝 redirects。URL 须 HTTPS 或 loopback HTTP。仅 user-global，project 定义/override 跳过并警告，Pi MCP config 同规则。
 
-## Headers, bearer tokens, and secret commands
+无 token 时不发 request，needs-auth，需 `/login <provider>` 后 reconnect；不启动 MCP OAuth。无 model registry 的独立 SDK/doctor 不能访问 Pi token，报告 limitation/needs-auth。这不是 native MCP sign-in import。
 
-With explicit `auth: "oauth"`, configured HTTP `headers` also accompany native OAuth metadata discovery (including `oauth.authServerMetadataUrl`), dynamic registration, code exchange, and refresh, **only at the configured MCP URL's origin** (scheme, host, and port). Discovered or explicitly configured cross-origin OAuth endpoints receive no configured service headers. SDK-owned headers such as OAuth `Authorization` and content types take precedence over configured `headers`. Requests carrying configured service headers reject all HTTP redirects, including same-origin redirects; configure the final endpoint directly. Browser authorization navigation and loopback callbacks do not use these headers. Missing or empty header credentials fail closed.
+## Headers、bearer 与 secret commands
 
-`requestHeadersCommand` follows the fetch path, not the URL path: during a server connection, it wraps the SDK transport fetch (`requestFetch`), so it runs for MCP requests and SDK-owned OAuth requests using that fetch, including discovery, dynamic registration, token exchange (including `client_credentials`), and refresh. It also runs for cross-origin OAuth endpoints: unlike configured `headers`, command-produced headers are **not origin-scoped**. The command receives each request's exact method, URL, and body and must decide where its credentials belong. Its returned headers are applied last, overriding even SDK `Authorization` and content types on name collisions; avoid those names unless intentional.
+显式 `auth:"oauth"` 的 configured headers 可随 native metadata discovery（含 authServerMetadataUrl）、DCR、exchange/refresh 发送，但**只限 MCP URL origin**。其他 OAuth origins 不带 service headers，SDK OAuth Authorization/content types 优先。带 service headers 的 fetch 拒绝所有 redirects，包括 same-origin；browser navigation/callback 不带它们。缺/空 credential fail closed。
 
-Provider-owned metadata loading through `authFetch` (notably `oauth.authServerMetadataUrl`) bypasses the command, even during a connection. Standalone OAuth start/complete/refresh helpers use their own OAuth fetch, not the transport wrapper, and also bypass it. Browser authorization navigation and loopback callbacks never invoke the command. Thus this is transport-fetch signing, not a hook for every OAuth interaction.
+`requestHeadersCommand` 是 transport `requestFetch` signer，不是通用 OAuth hook。Connection 中 MCP 与 SDK 经该 fetch 的 discovery/DCR/exchange/client_credentials/refresh 都会调用，包括 cross-origin OAuth；command headers **不自动 origin-scoped**，helper 收到 exact method/URL/body，必须自行决定 credential scope。返回 headers 最后应用，可覆盖 SDK Authorization/content types，非有意不要碰这些名字。
 
-Secret values in `headers`, `bearerToken`, `oauth.clientSecret`, and stdio `env` may use a leading `!command` to obtain their value at connection or authentication time. On Windows the command runs with Git Bash when it is found (the same lookup as Pi: the standard Git install locations, then `bash.exe` on `PATH`), otherwise with cmd.exe. The command runs with stdin and stderr suppressed, stdout is limited to 1 MiB and trimmed, and it must finish within 10 seconds with non-empty output; failures stop the connection or authentication flow. Commands are not run during the preliminary MCP OAuth challenge probe or while reading, merging, previewing, hashing, or rendering configuration. OAuth header commands resolve lazily for the actual SDK backchannel requests, once per authentication leg or connection; the preliminary probe omits command headers. Use `!!` to escape a literal leading `!`; ordinary and escaped values retain environment interpolation.
+Provider-owned `authFetch` metadata、standalone OAuth start/complete/refresh 不经过 signer；browser/callback 也不经过。不要据 URL 相同就假设这些路径都会签名。
 
-For local desktop bearer tokens, `bearerTokenStore: true` can opt in to the adapter-owned credential-store namespace. It never falls back to plaintext if the store is unavailable, if the stored record is malformed, or if the stored URL differs from the effective server URL. Literal tokens, command tokens, and environment tokens keep precedence so existing configs do not change. Create or rotate a stored token with `pi-mcp-adapter token set <server>` (masked prompt on a terminal, or piped stdin such as `security find-generic-password -s my-token -w | pi-mcp-adapter token set <server>`); the record binds to the effective configured URL at write time. Token commands need Node 22.18+.
+`headers/bearerToken/oauth.clientSecret/stdio env` 可用前导 `!command` 动态取 secret；连接/auth 才执行，读/merge/preview/hash/render 配置不执行，preliminary challenge probe 不执行 command headers。Header commands 在实际 SDK backchannel 每 authentication leg/connection lazy resolve 一次。`!!` 是 literal leading `!`；普通/literal 值仍做 env interpolation。
 
-On Linux, bearer-token storage also recovers automatically when a native operation fails with `KeyRevoked`, including wrapped errors from a revoked inherited session keyring. Each failed read/write/remove is retried once through `keyctl session - <current runtime> <packaged helper>`, with a 10-second timeout and no plaintext fallback. This requires `keyctl` on `PATH` and a working credential store in the fresh session; other storage errors still fail closed. Set `PI_MCP_ADAPTER_DISABLE_KEYRING_RECOVERY=1` to disable this recovery. Normal Pi and token CLI launches need no special wrapper.
+Command stdin/stderr suppressed，stdout trim、上限 1 MiB，10 秒内须非空，失败停止连接/auth。Windows 优先 Git Bash（标准位置再 PATH bash.exe），否则 cmd.exe。
 
-## Security Considerations
+### 静态 bearer store
 
-### PKCE
+`auth:"bearer", bearerTokenStore:true` 在无显式 bearerToken/bearerTokenEnv 时读 Adapter namespace，按 name 存且绑定 resolved URL；store unavailable/malformed/URL mismatch 均不 fallback plaintext。Literal/command/env 优先，已有配置不变。
 
-All OAuth flows use PKCE with the S256 method, preventing authorization code interception attacks.
+`pi-mcp-adapter token set <server>` 仅 masked terminal prompt 或 piped stdin，不接受 argv secret；Node 22.18+。Pi 内只提供 token status/remove，不提供 set，直到 host 有 masked secret input。Native Linux KeyRevoked recovery 与上文相同。
 
-### State Parameter
+## 故障排查与安全边界
 
-A cryptographically secure random state parameter is generated for each flow and validated on callback.
+- No OAuth tokens：`/mcp-auth <server>`。
+- Discovery/DCR unsupported 或 HTTP 403：向 provider 获取 pre-registered clientId；必要时设置可信 authoritative metadata URL，不关闭 issuer check 来掩盖未知 server。
+- Fixed callback 占用/不匹配：按 provider 注册精确 redirectUri 或释放配置端口；dynamic fallback 自取 OS port，不依赖默认固定端口空闲。
+- Browser 未打开/remote：复制显示的 URL，保留同 session 手动 callback 完成。
+- 不把所有 flows 都称 PKCE：PKCE/state 保护 authorization_code，client_credentials 无 browser code。
+- Credential URL binding、issuer validation 与 store failure 都保留错误上下文；不能把 upstream main 的 Unreleased security 修复推断成本包 7.0.1 已覆盖。
 
-### Issuer Metadata Validation
-
-OAuth authorization-server metadata normally must echo the expected issuer. This protects against authorization-server mix-up. The adapter keeps this check on by default.
-
-For private servers with known-broken metadata, `oauth.skipIssuerMetadataValidation: true` forwards the SDK's issuer-validation opt-out for that server only. Use it only as a temporary workaround while the server metadata is fixed. Do not use it for public or untrusted servers.
-
-When an MCP server does not publish usable protected-resource metadata, configure `oauth.authServerMetadataUrl` with the HTTPS URL of its OAuth/OIDC authorization-server metadata document. That document is authoritative instead of MCP protected-resource discovery, and its issuer is still checked by default. Treat this as trusted configuration and point it only at a metadata endpoint you explicitly trust.
-
-### Credential Stores
-
-Persistent OAuth credentials are written to the OS credential store by default, or only to the encrypted file store when explicitly selected. Legacy plaintext files are read only for one-way migration to the default OS store and are removed after successful import. On Linux, revoked session-keyring errors can be retried once through a fresh `keyctl session` helper during explicit re-authentication.
-
-Credential entries reside in process memory for the lifetime of the Pi process rather than being re-read per request, and the process-memory copy is discarded on exit.
-
-### URL Validation
-
-Credentials are tied to a specific server URL. If the URL changes, the credentials are invalidated and re-authentication is required.
-
-## Troubleshooting
-
-### "No OAuth tokens found"
-
-Run `/mcp-auth <server>` to authenticate.
-
-### "Failed to discover OAuth endpoints"
-
-The SDK automatically discovers OAuth endpoints from the MCP server. If discovery fails, the server may require a pre-registered client ID:
-
-```json
-{
-  "mcpServers": {
-    "server": {
-      "url": "https://api.example.com/mcp",
-      "auth": "oauth",
-      "oauth": {
-        "clientId": "your-client-id",
-        "scope": "read"
-      }
-    }
-  }
-}
-```
-
-### "Dynamic client registration not supported" or "Dynamic Client Registration rejected (HTTP 403)"
-
-Some servers only accept pre-registered clients. Obtain a client ID from your OAuth provider and set `oauth.clientId` (and `oauth.clientSecret` if the provider issued one).
-
-Figma's remote server (`https://mcp.figma.com/mcp`) only accepts clients Figma has approved, and Pi isn't one yet. Use the Figma desktop app's local server instead: run `/mcp-adapter setup` and add Figma (desktop).
-
-### Callback server already in use
-
-Dynamic fallback browser OAuth uses a lazy OS-assigned port on the default loopback host (`127.0.0.1`), so the configured default port being busy should not block fallback registration.
-
-For pre-registered OAuth clients (`oauth.clientId`), the callback redirect URI must match the provider registration policy. Set `oauth.redirectUri` to the full fixed callback, such as Slack MCP's Claude-compatible `http://localhost:3118/callback`, use a loopback `{port}` URI when the provider explicitly permits dynamic RFC 8252 ports, or free/set `MCP_OAUTH_CALLBACK_PORT` when you rely on the default `/callback` path without an explicit redirect URI.
-
-### Browser doesn't open
-
-If the browser fails to open (e.g., in SSH sessions), the authorization URL will be displayed. Copy it manually to your browser.
-
-## Architecture
-
-The OAuth implementation uses the following modules:
-
-- `mcp-auth.ts` - Auth storage and retrieval through the OS credential store, with one-way legacy `tokens.json` import
-- `mcp-oauth-provider.ts` - SDK OAuthClientProvider implementation
-- `mcp-callback-server.ts` - Node.js HTTP callback server
-- `mcp-auth-flow.ts` - High-level auth flow using SDK transport
-
-## SDK Integration
-
-The implementation uses the stable modular MCP client and OAuth APIs:
-
-```typescript
-import {
-  auth,
-  StreamableHTTPClientTransport,
-  UnauthorizedError,
-  type OAuthClientProvider,
-} from "@modelcontextprotocol/client"
-```
-
-The `McpOAuthProvider` class implements `OAuthClientProvider` and is passed to `StreamableHTTPClientTransport`:
-
-```typescript
-const transport = new StreamableHTTPClientTransport(url, {
-  authProvider: new McpOAuthProvider(serverName, serverUrl, config, callbacks),
-})
-```
-
-## References
-
-- [MCP SDK Documentation](https://github.com/modelcontextprotocol/typescript-sdk)
-- [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization)
-- [OAuth 2.1](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-11)
-- [PKCE (RFC 7636)](https://datatracker.ietf.org/doc/html/rfc7636)
-- [OAuth Client ID Metadata Document](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00)
-- [Dynamic Client Registration (RFC 7591)](https://datatracker.ietf.org/doc/html/rfc7591)
-- [OAuth Protected Resource Metadata (RFC 9728)](https://datatracker.ietf.org/doc/html/rfc9728)
+公开 OAuth helpers 及 refresh 配置边界见[扩展 API](extension-api.md#sdk-配置)。规范参考：[MCP Authorization](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization)、[PKCE](https://datatracker.ietf.org/doc/html/rfc7636)、[DCR](https://datatracker.ietf.org/doc/html/rfc7591)、[CIMD](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00)。

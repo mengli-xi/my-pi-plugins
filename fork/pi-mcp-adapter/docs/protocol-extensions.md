@@ -1,47 +1,62 @@
 # Protocol extensions
 
-A companion Pi extension can implement an additional MCP protocol capability using the adapter's existing server configuration, authentication and connection lifecycle. Register the capability's methods, then explicitly request its operations. Registration does not connect or subscribe to servers.
+可信 Pi extension 可以借 Adapter 现有配置/auth/连接实现额外 MCP capability；先声明方法，再显式执行。Registration 不连接、不订阅。普通 tools/call 仍用[工具 API 与审批](tools.md)。
 
 ```ts
-import { registerMcpProtocol } from 'pi-mcp-adapter';
-
+import { registerMcpProtocol } from "pi-mcp-adapter";
 const protocol = registerMcpProtocol(pi, {
-  namespace: 'example',
-  requests: ['example/list'],
-  streams: ['example/stream'],
-  notifications: ['notifications/example/active', 'notifications/example/item', 'notifications/example/list_changed'],
+  namespace: "example",
+  requests: ["example/list"],
+  streams: ["example/stream"],
+  notifications: ["notifications/example/active", "notifications/example/item", "notifications/example/list_changed"],
 });
-const session = await protocol.connect('configured-server');
-const watch = session.watchNotifications(['notifications/example/list_changed'], () => {
-  // Invalidate the companion's catalog; re-fetch when needed.
+const session = await protocol.connect("configured-server");
+const watch = session.watchNotifications(["notifications/example/list_changed"], () => {
+  // Invalidate the consumer's catalog, then explicitly re-fetch.
 });
-const catalog = await session.request('example/list', {});
-// Validate the capability-specific result before using it.
-const stream = session.openStream('example/stream', { name: 'chosen-item' }, (method, params) => {
-  // Validate and render this capability's notifications in the companion.
+const catalog = await session.request("example/list", {});
+// Validate capability-specific results before use.
+const stream = session.openStream("example/stream", { name: "chosen-item" }, (method, params) => {
+  // Validate and render this capability's notifications.
 });
-await stream.sent; // Written to the server, not necessarily acknowledged.
-const end = await stream.closed; // cancelled, ended, error, or disconnected
-// Alternatively: await stream.cancel();
+await stream.sent; // transmission, not acknowledgement
+const end = await stream.closed; // cancelled, ended, error, disconnected
+// Or: await stream.cancel();
 watch.close();
 session.close();
-protocol.dispose(); // Close its sessions and unregister the namespace.
+protocol.dispose();
 ```
 
-Call registration after the adapter has loaded (for example on first use); an unavailable hook throws an actionable error for the companion to handle. Only one registration may own a namespace per adapter. Namespaces and method declarations are copied at registration. Requests/streams must belong to that namespace; notifications must use `notifications/<namespace>/...`. Core namespaces such as `tools`, `resources`, and `subscriptions` are reserved and cannot be registered. Ordinary tool calls continue through the adapter's tool-call API and its approval handling.
+## 注册与权限
 
-This API exposes no SDK client, transport, arbitrary send method, or handler replacement. `request` accepts only declared request methods and returns an ordinary SDK request result. `openStream` accepts only declared stream methods and delivers only declared notifications correlated to that stream through `params._meta["io.modelcontextprotocol/subscriptionId"]`. Unrelated traffic continues to the SDK. The adapter allocates request IDs, sends cancellation, and reports remote results/errors, server cancellation, transport closure, and session replacement. Consumer exceptions terminate only that consumer's stream. Parameters cannot override reserved `_meta` fields.
+Adapter 已加载后注册（如首次使用）；hook 缺失抛 actionable error，调用方必须处理。每 Adapter namespace 唯一，declarations/namespace 复制。Request/stream 必须在声明 namespace，notification 必须 `notifications/<namespace>/...`；tools/resources/subscriptions 等 core namespaces 保留。
 
-An operation prevents idle cleanup only while its request, stream, or notification observer is active. Counts belong to the exact connection and never transfer during reconnect. Closing a protocol session or disposing its registration cancels its work without closing the shared MCP client. Consumers must observe `session.signal` or `stream.closed` and explicitly reconnect after a disconnection; there is no automatic subscription or replay. A stream's `sent` promise confirms transmission only: acknowledgement validation, activation timeouts, heartbeat policy, and any agent wakeup belong to the companion protocol implementation.
+API 不泄露 SDK client/transport/arbitrary send/handler replacement。Request 仅声明 methods，返回普通 SDK result；stream 仅声明 methods，通知只按 `params._meta["io.modelcontextprotocol/subscriptionId"]` correlation 路由。Params 不能覆盖 reserved _meta；其他 traffic 继续给 SDK。
 
-`watchNotifications(methods, handler)` observes only declared notification methods outside the adapter's extension streams, such as a capability's catalog-change notification. Each observer has `close()` and a `closed` promise with the same termination reasons as a stream. Notification parameters and method declarations are copied, observer failures close only that observer, and messages continue to the SDK. Stream-correlated messages belong to their stream handler and are not broadcast to observers. Watching is passive: it does not send a subscription request or create a remote notification channel. If a transport/server does not deliver catalog-change notifications, the companion must refresh its catalog through ordinary requests.
+需要 active Pi session、effective enabled server，连接经过正常 project trust/server approval/lazy/runtime owner。它是可信已安装代码的 API，不是 sandbox，不能限制同 process 任意 extension code；consumer 负责额外 capability consent、payload validation，把外部结果当不可信数据。
 
-Stream JSON-RPC errors preserve their code, message, and optional data in `end.protocolError`, alongside the display string `end.error`. Ordinary requests retain the SDK's typed rejection. This lets companions distinguish authorization failure, unsupported operations, and transient failures without parsing display text.
+## 生命周期
 
-An active Pi session and an enabled server in its effective configuration are required. Connection setup uses normal project trust, server approval, lazy connection, and runtime ownership checks. This is a trusted installed-extension API, not a sandbox for untrusted extension code. The method restrictions preserve the adapter's protocol and tool boundaries; they cannot constrain arbitrary code running in Pi's process. Companions own additional capability consent and payload validation, and should treat received content as external data.
+Adapter 分配 request ID，发送 cancel，报告 remote result/error/server cancel/transport close/session replace。Consumer throw 只关自身 stream。
 
-The API works over every transport currently supported by the adapter: **stdio, Streamable HTTP, legacy HTTP+SSE, and Unix sockets**. The SDK provides ordinary custom requests and the underlying transport. Since it lacks a generic long-lived extension stream primitive, the adapter provides one internal router per transport. Streamable HTTP uses the SDK's per-request abort signal and stream-end callback; cancellation closes only that request's SSE response, preserving sibling streams and normal MCP requests. Shared-channel transports use `notifications/cancelled`. A request-stream EOF without a final response reports `disconnected`; the protocol session remains usable while its shared connection is alive. The SDK still owns HTTP headers, OAuth, TLS, and transport-level resumption. An MCP protocol cursor belongs to the companion and is separate from an SSE transport resumption token.
+Request/stream/notification observer 活跃时才阻止 idle cleanup，counts 绑定 exact connection，不迁到 reconnect。Close session/dispose registration 取消其工作，不关闭共享 client。Consumer 观察 session.signal/stream.closed，断开后显式 reacquire；无自动订阅/重放。
 
-Companions can implement polling, streaming, and webhook subscription management using these same primitives. Poll and webhook control calls are ordinary declared requests; webhook receiving, signature verification, renewal, delivery selection, cursor/replay policy, and persistence belong to the companion. No webhook server or delivery loop is started by the adapter. A companion should reacquire a session after idle disconnection before its next scheduled request, and must stop retrying when its Pi session ends. WebSocket is not currently an adapter transport; this API adds no new network transport or server configuration.
+`sent` 只证明写到 server，不证明 ACK。Activation timeout、heartbeat、cursor/replay、persistence 与 agent wake 都由 capability consumer 管理；不能由 sent 推断远端接受，也不能借 API 增设本包第二条后台 native delivery。
 
-Across independently loaded Pi packages, use the synchronous event bus `pi-mcp-adapter:protocol:v1` with `{version: 1, definition}`. The adapter sets `result` to the mediated protocol handle or `error` to a registration error; an absent result/error means the hook is unavailable. This is also how `registerMcpProtocol` works. A companion can use the structural contract without importing another adapter instance.
+## Notifications 与错误
+
+Watch 只观察声明但不属于 active extension stream 的 notification（如 catalog change），有 close 和同 stream termination reasons 的 closed promise。Params/declarations 复制，observer throw 仅关闭自身，SDK 仍收到。Stream-correlated message 不广播给 observers。Watch 被动，不发 subscribe、不建 remote channel；若 server/transport 不送，consumer 自己定期普通 request 刷 catalog。
+
+Stream JSON-RPC error 保留 end.protocolError 的 code/message/data 和 display end.error；普通 request 保留 SDK typed rejection，不用 parse display text 分辨 auth/unsupported/transient。
+
+## Transport 边界
+
+适用 stdio、Streamable HTTP、legacy HTTP+SSE、Unix socket，不添加 WebSocket 或新的 server config。SDK 负责普通 request/transport/HTTP headers/OAuth/TLS/resumption；Adapter 为缺失的 generic long-lived stream primitive 在每 transport 放一个内部 router。
+
+Streamable HTTP 用 per-request abort/stream-end callback，cancel 只关该 SSE response，不影响 sibling streams；shared-channel transports 用 notifications/cancelled。Request-stream EOF 没 final response 为 disconnected，共享连接仍 alive 则 session 可继续用。Capability cursor 与 SSE transport resumption token 是两层，不能混用。
+
+Poll/webhook control 也是普通 declared request。Webhook receiving/signature verification/renewal/delivery selection/cursor/replay/persistence 归 consumer；Adapter 不启动 webhook server/delivery loop。定时请求遇 idle disconnect 需 reacquire，Pi session 结束必须停止 retry。
+
+## 跨 package event
+
+Synchronous `pi-mcp-adapter:protocol:v1`，请求 `{version:1,definition}`；Adapter 同步写 mediated handle 到 result，或写 error。两者都没有是 hook 不可用，必须降级。`registerMcpProtocol` 本身也这样实现；consumer 可以使用 structural contract，不 import 第二份 Adapter instance。新协议必须带版本，不能模仿 legacy approval event 命名。
