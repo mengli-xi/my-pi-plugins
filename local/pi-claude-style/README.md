@@ -27,6 +27,8 @@
 ```sh
 npm run typecheck -w pi-claude-style
 npm test -w pi-claude-style
+npm run check:internals -w pi-claude-style
+npm run check:host -w pi-claude-style
 ```
 
 自动测试使用临时配置、fixture 或 faux provider，不证明真实 provider、人工终端或完整 profile。跨插件联测见 [integration](../../integration/README.md)。

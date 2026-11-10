@@ -21,7 +21,7 @@
 - 选择 user message 会删除该 prompt 及后续对话，并将其文本恢复到 editor。
 - rewind 不重建 runtime。它先用 public `ctx.navigateTree()` 走 Pi 自己的 `/tree` 移动：leaf 改位置、agent context 与 transcript 重建、extension 拿到 `session_before_tree` 否决权和 `session_tree` 通知；随后才裁剪 JSONL。被裁掉的正是这次导航已经挪出 active path 的部分，所以任何 extension 看到的都不比一次普通 `/tree` 更少。旧实现用 `switchSession()` 替换 session，会重建 services、重新注册全部 extension、再跑一遍 session 启动流程——用户看到的「整个会话 reload」就是它。
 - 动 session 之前必须先 close 并 resolve editor-slot panel。清掉 `ui.custom()` component 并不会 resolve 它的 promise，在 row callback 里改 session 会让旧 `/rewind` command 和 main input loop 一直挂着，transcript 也会在打开的面板底下重绘。
-- 裁剪后会把 live `SessionManager` 重新绑定到裁剪后的文件，让内存和磁盘一致；否则后续 append 会挂在文件里已经不存在的 entry 上。这一步依赖 `SessionManager.setSessionFile`，由 `npm run check-internals` 盯着。
+- 裁剪后会把 live `SessionManager` 重新绑定到裁剪后的文件，让内存和磁盘一致；否则后续 append 会挂在文件里已经不存在的 entry 上。这一步依赖 `SessionManager.setSessionFile`，由 `npm run check:internals` 盯着。
 - 选中的 root-to-message path 会原子写回同一 JSONL file。session ID、file path 与 display name 保持稳定；被丢弃的 branch 不再占据 active transcript。
 - 裁剪前会创建 sibling backup。普通裁剪在第一次异步 I/O 前记录文件 inode/size/mtime，提交前比较并在同一 event-loop turn 内替换；准备期间追加或替换文件会中止裁剪并保留新状态，不自动重试或导航回过期 leaf。这不是防住任意外部写入的跨进程文件锁。
 - session 重新绑定成功后，读取稳定 backup inode，在内存中生成 gzip，再进入有界的跨进程归档发布临界区。普通准备失败会尝试导航回原 leaf；重绑失败后的文件恢复先检查预期字节，不覆盖后来追加的内容。回滚/导航恢复失败会同时保留原始错误和恢复错误，并报告恢复文件线索，不冒充已恢复成功。undo 也通过临时 sibling 恢复，导航被 `session_before_tree` 取消时会恢复 rewind 后的文件和 leaf，undo 点仍可重试。
@@ -35,7 +35,7 @@
 
 ```sh
 npm run check
-npm run check-internals -- /path/to/pi-1.5.0
+PI_BIN=/path/to/pi-1.5.0 npm run check:host
 ```
 
 支持 Pi 1.5，TypeScript 直接加载，无 build/dist。共享依赖统一由根 workspace 安装。验证使用独立 HOME、agent/config/cache 与 session directory，不读取或改动日常 profile，不迁移真实 session、归档或图片。

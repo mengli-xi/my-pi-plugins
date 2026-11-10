@@ -48,7 +48,7 @@ Pi baseline 是 1.5.0，catalog 保留历史文件名 `src/compat/pi-1.3.ts`。2
 
 Bun splitting 保留首次使用 import，UIKit 内联，Pi API、`typebox`、主入口 `conf` 和 `pi-runtime-contracts` external。Main、child、诊断和 shared/lazy chunks 全部使用 `.ts` 后缀，内容仍是编译 JavaScript：Pi 1.5 Jiti async ESM `.js` 可能 native import 到另一份 SDK class，误 patch 错 realm。只改最外层入口不够，也不提供旧 `.js` shim。`config-storage.cjs` 不导入 Pi class，刻意保持 native CJS。
 
-修改 TypeScript 或 source-only compiled consumer dependency 后显式 `npm run build`，新开 Pi process，不用 `/reload` 代替。`tsconfig.json` noEmit；生成 dist 不提交。`check-internals:host` 同时验证 eager probes、最终 component identity 和实际 compact patch，不能拿 source-only probe 冒充 bundle gate。
+修改 TypeScript 或 source-only compiled consumer dependency 后显式 `npm run build`，新开 Pi process，不用 `/reload` 代替。`tsconfig.json` noEmit；生成 dist 不提交。`check:host` 同时验证 eager probes、最终 component identity 和实际 compact patch，不能拿 source-only probe 冒充 bundle gate。
 
 `dist/child.ts` 只导出 named SDK factory，Main 登记 capability。child 在 execution assembly 安装轻量 recorder，attach 安装 view，detach await 在途 shell 并释放 view，不结束 session。不能使用 `PI_OFFLINE` 禁掉 provider 网络；child 不安装 Main control、Goal/Todo、selector、external contributor 或全局 updater。return label 属于 editor chrome，不新增 footer 行，display name 不改 native session name。
 

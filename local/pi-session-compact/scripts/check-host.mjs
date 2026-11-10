@@ -1,3 +1,4 @@
+import { piBin, installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, existsSync, realpathSync } from "node:fs";
@@ -8,8 +9,7 @@ const pkg = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-compact-v2-host-")));
 const agent = join(root, "agent"), cwd = join(root, "cwd"), home = join(root, "home");
 const session = join(root, "session.jsonl"), requests = join(root, "requests.jsonl");
-const binary = process.env.PI_COMPACT_HOST_BINARY;
-if (!binary) throw new Error("Set PI_COMPACT_HOST_BINARY to an explicit Pi 1.5.0 executable");
+const binary = piBin();
 const artifacts = process.env.PI_COMPACT_HOST_ARTIFACTS;
 const evidence = { binary, realRequests: 0, checks: [] };
 const lines = path => existsSync(path) ? readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)) : [];
@@ -87,7 +87,7 @@ export default function(pi) {
 }`);
   const env = { ...process.env, HOME: home, PI_CODING_AGENT_DIR: agent, PI_NEXT_AGENT_DIR: agent };
   evidence.version = execFileSync(binary, ["--version"], { env, encoding: "utf8" }).trim();
-  check("Pi 1.5.0", evidence.version === "1.5.0");
+  check("Pi CLI 与 SDK 版本一致", evidence.version === installedPiVersion());
   runtime = start(); await runtime.rpc("get_state");
   await runtime.prompt("SEED_OWNER 用户要求保持 API");
   await runtime.rpc("prompt", { message: "/seed-owner-rules" });

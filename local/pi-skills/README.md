@@ -87,7 +87,8 @@ Loaded 行通过 `pi.claude-style.custom-entry-presentations.v1` 委托 CC Style
 ```sh
 npm run typecheck -w pi-skills
 npm test -w pi-skills
-npm run check-internals -w pi-skills -- /absolute/path/to/pi-1.5.0
+npm run check:internals -w pi-skills
+PI_BIN=/absolute/path/to/pi-1.5.0 npm run check:host -w pi-skills
 npm run test:integration
 ```
 

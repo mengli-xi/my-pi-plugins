@@ -1,3 +1,4 @@
+import { piBin, installedPiVersion } from "../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
@@ -7,8 +8,8 @@ import { offlineGuard, sourceResolver, testSandbox } from "./scripts/test-env.mj
 import test from "node:test";
 
 test("Pi 1.5 loads production per-file dist and validates proxy arguments without loading optional implementations", () => {
-  const binary = process.env.PI_MCP_TEST_PI_BINARY;
-  assert.ok(binary && isAbsolute(binary), "set PI_MCP_TEST_PI_BINARY to an explicit stock Pi 1.5.0 binary (no PATH fallback)");
+  const binary = piBin();
+  assert.ok(binary && isAbsolute(binary), "set PI_BIN to an explicit stock Pi binary");
   const actualBinary = realpathSync(binary);
   let hostRoot = dirname(actualBinary);
   while (!existsSync(join(hostRoot, "package.json"))) {
@@ -18,7 +19,7 @@ test("Pi 1.5 loads production per-file dist and validates proxy arguments withou
   }
   const hostManifest = JSON.parse(readFileSync(join(hostRoot, "package.json"), "utf8"));
   assert.equal(hostManifest.name, "@earendil-works/pi-coding-agent");
-  assert.equal(hostManifest.version, "1.5.0");
+  assert.equal(hostManifest.version, installedPiVersion());
   assert.equal(realpathSync(resolve(hostRoot, hostManifest.bin.pi)), actualBinary);
   const hostEntry = pathToFileURL(resolve(hostRoot, hostManifest.exports["."].import)).href;
   for (const asset of ["index.js", "index.d.ts", "types.d.ts", "oauth.d.ts", "host-managed.d.ts", "config.d.ts", "metadata-cache.d.ts", "app-bridge.bundle.js", "mcp-keyring-helper.cjs", "semantic-search.js", "ui-session.js"]) {
@@ -33,7 +34,7 @@ test("Pi 1.5 loads production per-file dist and validates proxy arguments withou
       cwd: hostRoot, env: sandbox.env, encoding: "utf8", timeout: 30_000,
     }).trim();
     const version = execFileSync(process.execPath, ["--import", sourceResolver, "--import", offlineGuard, actualBinary, "--version"], { env: sandbox.env, encoding: "utf8", timeout: 30_000 }).trim();
-    assert.equal(version, "1.5.0");
+    assert.equal(version, installedPiVersion());
     execFileSync(process.execPath, ["--import", sourceResolver, "--import", offlineGuard, "--input-type=module", "--eval", `
       import assert from "node:assert/strict";
       import { registerHooks } from "node:module";
@@ -42,7 +43,7 @@ test("Pi 1.5 loads production per-file dist and validates proxy arguments withou
       registerHooks({ load(url, context, nextLoad) { loaded.add(url); return nextLoad(url, context); } });
       const { createAgentSessionServices, createAgentSessionFromServices, SessionManager, SettingsManager, initTheme, VERSION } = await import(${JSON.stringify(hostEntry)});
       const { fauxProvider, fauxAssistantMessage, fauxToolCall } = await import(${JSON.stringify(fauxEntry)});
-      assert.equal(VERSION, "1.5.0"); initTheme("dark");
+      assert.equal(VERSION, ${JSON.stringify(installedPiVersion())}); initTheme("dark");
       const root = process.env.FORK15_TEST_ROOT, cwd = join(root, "cwd"), agentDir = join(root, "agent");
       const faux = fauxProvider({ provider: "mcp-fixture", api: "mcp-fixture", models: [{ id: "offline" }], tokensPerSecond: 100000 });
       faux.setResponses([

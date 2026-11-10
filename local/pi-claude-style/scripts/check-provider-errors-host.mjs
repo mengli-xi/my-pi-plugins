@@ -1,3 +1,4 @@
+import { piBin, installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -8,12 +9,9 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const extensionPath = join(packageRoot, "dist", "index.ts");
-const binary = resolve(process.argv[2] ?? process.env.PI_BINARY ?? "");
+const binary = piBin();
 
-if (!process.argv[2] && !process.env.PI_BINARY) {
-  console.error("usage: npm run check-provider-errors:host -- /path/to/final/pi");
-  process.exit(2);
-}
+
 if (!existsSync(binary)) {
   console.error(`final Pi binary not found: ${binary}`);
   process.exit(2);
@@ -22,8 +20,8 @@ const binaryVersion = execFileSync(binary, ["--version"], {
   encoding: "utf8",
   timeout: 5_000,
 }).trim();
-if (binaryVersion !== "1.5.0") {
-  console.error(`expected final Pi 1.5.0 binary, got ${JSON.stringify(binaryVersion)}`);
+if (binaryVersion !== installedPiVersion()) {
+  console.error(`expected final Pi ${installedPiVersion()} binary, got ${JSON.stringify(binaryVersion)}`);
   process.exit(2);
 }
 if (!existsSync(extensionPath)) {
@@ -772,7 +770,7 @@ try {
     }
     assert.equal(pane.includes("Retry failed after"), false, pane);
     assert.equal(scenario.errors.some((message) => pane.includes(message)), false, pane);
-    console.log(`pi 1.5.0 real TUI · ${scenario.provider} · ${scenario.errors.length} errors · one ${finalRow} row`);
+    console.log(`pi ${binaryVersion} real TUI · ${scenario.provider} · ${scenario.errors.length} errors · one ${finalRow} row`);
     await cleanupTui();
     tuiServer = undefined;
     tuiServerClosed = undefined;

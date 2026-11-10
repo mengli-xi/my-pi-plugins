@@ -127,6 +127,8 @@ Main 和普通插件不要求宿主补丁。原版 Pi 1.5.0 也能打开 Subagen
 
 ## 验证入口
 
+Pi 新版本的隔离兼容检查与可选版本应用见[升级 Pi](CONTRIBUTING.md#升级-pi)。
+
 ```sh
 bun install --frozen-lockfile
 npm run typecheck

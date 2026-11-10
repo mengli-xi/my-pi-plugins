@@ -1,3 +1,4 @@
+import { piBin } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -10,12 +11,8 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const extensionPath = join(packageRoot, "dist", "index.ts");
 const probesUrl = pathToFileURL(join(packageRoot, "dist", "src", "probes.ts")).href;
 const internalsUrl = pathToFileURL(join(packageRoot, "dist", "src", "internals.ts")).href;
-const binary = resolve(process.argv[2] ?? process.env.PI_BINARY ?? "");
+const binary = piBin();
 
-if (!process.argv[2] && !process.env.PI_BINARY) {
-  console.error("usage: npm run check-internals:host -- /path/to/final/pi");
-  process.exit(2);
-}
 if (!existsSync(binary)) {
   console.error(`final Pi binary not found: ${binary}`);
   process.exit(2);

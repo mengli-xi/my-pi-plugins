@@ -118,7 +118,7 @@ export interface RewindDependencies {
  * Rewind rewrites that session's own file, so it has to rebind the manager to
  * the pruned bytes; otherwise memory keeps the discarded branch and later
  * appends orphan themselves against entries the file no longer holds.
- * `npm run check-internals` verifies the method after a Pi upgrade.
+ * `npm run check:internals` verifies the method after a Pi upgrade.
  */
 interface LiveSessionFileControl {
 	setSessionFile(sessionFile: string): void;

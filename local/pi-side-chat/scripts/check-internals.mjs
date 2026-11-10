@@ -1,3 +1,4 @@
+import { piBin, installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,9 +8,9 @@ import { fileURLToPath } from "node:url";
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const extension = resolve(packageDir, "test", "internals-probe-extension.ts");
 const fauxProvider = resolve(packageDir, "test", "faux-provider.ts");
-const executable = process.argv[2] ?? process.env.PI_TEST_EXECUTABLE ?? process.env.PI_EXECUTABLE;
+const executable = piBin();
 if (!executable || !existsSync(executable)) {
-  console.error(`Set an existing stock Pi 1.5.0 binary via argument or PI_TEST_EXECUTABLE: ${executable}`);
+  console.error(`Set an existing stock Pi binary via PI_BIN: ${executable}`);
   process.exit(1);
 }
 const reportDir = mkdtempSync(join(tmpdir(), "pi-side-chat-probes-"));
@@ -55,7 +56,7 @@ try {
   if (!existsSync(reportFile)) throw new Error("Side Chat probe extension did not report completion");
   const report = JSON.parse(readFileSync(reportFile, "utf8"));
   const expected = ["side-chat.child.render-session-entries", "side-chat.child.compaction-display"];
-  if (!report.ok || report.version !== "1.5.0" || JSON.stringify(report.probes) !== JSON.stringify(expected)) {
+  if (!report.ok || report.version !== installedPiVersion() || JSON.stringify(report.probes) !== JSON.stringify(expected)) {
     throw new Error(`Unexpected Side Chat probe report: ${JSON.stringify(report)}`);
   }
   console.log(JSON.stringify(report));

@@ -85,10 +85,10 @@ role 仅有 `main | child | side`，默认 main；每个实例独立，不读 ch
 ```sh
 bun install --frozen-lockfile # 在仓库根运行；以下验证命令在包目录运行
 npm run check
-npm run test:host
+npm run check:host
 ```
 
-host 脚本默认使用本包安装的 `node_modules/.bin/pi`，可用 `PI_MEMORY_HOST_BINARY` 指定其他 Pi 1.5.0 binary；脚本会核对版本。HOME、agent directory、XDG config 和 session JSONL 都在新建临时目录，不读取或复制日常 profile、auth，也不加载 Magic Context。固定 RPC + faux provider，零真实推理请求。验证会话中途改磁盘后连续几轮实际 system 内容逐字节不变、没有新 memory patch、手动 `/compact` 后下一轮刷新，以及 resume 读取当前磁盘并保留历史。核心测试另覆盖 identity、直接追加 compaction、分支/会话/项目变化；这些回归不依赖其他 package 的源码安装。命令注册与系统快照由本包 `test:host` 核对；跨插件验证见[根 integration](../../../integration/README.md)。
+host 脚本默认使用仓库根安装的 `node_modules/.bin/pi`，可用 `PI_BIN` 指定其他 Pi binary；脚本会核对 CLI 与已安装 SDK 版本一致。HOME、agent directory、XDG config 和 session JSONL 都在新建临时目录，不读取或复制日常 profile、auth，也不加载 Magic Context。固定 RPC + faux provider，零真实推理请求。验证会话中途改磁盘后连续几轮实际 system 内容逐字节不变、没有新 memory patch、手动 `/compact` 后下一轮刷新，以及 resume 读取当前磁盘并保留历史。核心测试另覆盖 identity、直接追加 compaction、分支/会话/项目变化；这些回归不依赖其他 package 的源码安装。命令注册与系统快照由本包 `check:host` 核对；跨插件验证见[根 integration](../../../integration/README.md)。
 
 `PI_MEMORY_HOST_ARTIFACTS=<目录>` 可保存 host 请求、session 与检查结果。结束会等待本次启动的 Pi process 退出并删除临时目录，不碰其他进程。
 

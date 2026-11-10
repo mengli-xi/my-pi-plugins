@@ -17,7 +17,7 @@ try {
     throw new Error("usage: node scripts/test-runner.mjs <vitest|node> [args...]");
   }
   const env = { ...sandbox.env };
-  if (process.env.PI_MCP_TEST_PI_BINARY) env.PI_MCP_TEST_PI_BINARY = process.env.PI_MCP_TEST_PI_BINARY;
+  if (process.env.PI_BIN) env.PI_BIN = process.env.PI_BIN;
   const result = spawnSync(process.execPath, commandArgs, { stdio: "inherit", env });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;

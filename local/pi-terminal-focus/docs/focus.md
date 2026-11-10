@@ -10,7 +10,7 @@
 - extension 使用 public `getEditorComponent()` / `setEditorComponent()` 包装当前 editor factory，并返回原 editor 实例。它只在失焦帧中删除 public `CURSOR_MARKER` 及紧接的 `renderFakeCursor()` APC 包装，保留 cursor cell 文本；其他样式、字符、reset 和行几何保持不变。
 - package 不拥有普通 terminal input，不改变 Pi focus tree，也不依赖 patched host。它包装当前 public `Terminal.start()` / `stop()` method：TUI stop 前关闭 focus reporting，start 后恢复；teardown 会恢复原 method identity。
 - fullscreen viewport 提前消费 focus event；`compat/pi-1.3.ts` 观察 `TuiAltScreen.handleViewportInput` 后仍转交 Pi，保留 selection/gesture 清理。该私有 seam 用 `fullscreen.focus-input` probe 验证，失效时 warning。regular 继续使用 public `onTerminalInput()`。
-- render shape 不匹配时 fail open，并通过 UI warning 报告一次；`npm run check-internals` 在 Pi 升级后验证该 seam。
+- render shape 不匹配时 fail open，并通过 UI warning 报告一次；`npm run check:internals` 在 Pi 升级后验证该 seam。
 - 控制序列写入同步失败时不把状态记为已切换，下次 bind/start/stop 可以重试；写入未抛异常只代表已发送命令，不代表终端确认生效。清理仍为 best effort，不阻塞原生 terminal lifecycle。
 - editor 绑定失败时，每个 owner 最多尝试通知一次；原始错误作为 cause 保存在现有内存状态中，不把异常正文放入通知。通知 sink 已失效时不继续抛错影响输入，release/new owner 会清理该诊断。
 
@@ -26,7 +26,7 @@
 
 ```sh
 npm run check
-npm run check-internals -- /path/to/pi-1.5.0
+PI_BIN=/path/to/pi-1.5.0 npm run check:host
 ```
 
 支持 Pi 1.5，TypeScript 直接加载，无 build/dist。验证前先按[根安装说明](../../../README.md#安装与加载)安装依赖；以下验证命令在包目录运行。

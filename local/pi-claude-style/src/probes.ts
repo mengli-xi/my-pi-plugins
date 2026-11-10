@@ -4,7 +4,7 @@
  * The installers each declare their own as they install, which is what keeps a
  * *disabled* feature from reporting names it is not using. This list answers a
  * different question — "if I upgrade pi, what here would break?" — where the
- * right scope is everything, installed or not. `npm run check-internals` is
+ * right scope is everything, installed or not. `npm run check:internals` is
  * its only consumer.
  *
  * Importing a patch module does not install anything: the probe tables are

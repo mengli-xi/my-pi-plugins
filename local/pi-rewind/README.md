@@ -27,6 +27,8 @@ CC 的 `pi.claude-style.editor-image-source.v2` 提供图片源恢复回执；�
 ```sh
 npm run typecheck -w pi-rewind
 npm test -w pi-rewind
+npm run check:internals -w pi-rewind
+npm run check:host -w pi-rewind
 ```
 
 自动测试使用临时配置、fixture 或 faux provider，不证明真实 provider、人工终端或完整 profile。跨插件联测见 [integration](../../integration/README.md)。

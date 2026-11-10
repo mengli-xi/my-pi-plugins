@@ -29,13 +29,9 @@
     "build": "tsc -p tsconfig.build.json --noEmit && node scripts/build.mjs",
     "check": "npm run typecheck && npm run build && npm test",
     "prepare": "npm run build",
-    "check-internals": "node ../../scripts/isolated-agent.mjs node --experimental-strip-types scripts/check-internals.ts",
-    "check-internals:host": "node scripts/check-internals-host.mjs",
-    "check-retry-child:host": "node scripts/check-retry-child-host.mjs",
-    "check-provider-errors:host": "node scripts/check-provider-errors-host.mjs",
     "test:main-statusline": "node ../../scripts/isolated-agent.mjs bun test/integration/main-statusline.mjs",
-    "test:host-fixtures": "node ../../scripts/isolated-agent.mjs bun test/integration/host-fixtures.mjs",
-    "test:history:host": "node ../../scripts/isolated-agent.mjs bun test/integration/full-history.mjs"
+    "check:internals": "node ../../scripts/isolated-agent.mjs node --experimental-strip-types scripts/check-internals.ts",
+    "check:host": "node ../../scripts/check-host.mjs npm run build :: node scripts/check-internals-host.mjs :: node scripts/check-retry-child-host.mjs :: node scripts/check-provider-errors-host.mjs :: bun test/integration/host-fixtures.mjs :: bun test/integration/full-history.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "^1.5.0",

@@ -1,6 +1,7 @@
+import { piBin, installedPiVersion } from "../../../../scripts/pi-checks.mjs";
 // Real Pi 1.5 TUI fixtures for pi-claude-style, driven by a faux provider.
 //
-//   bun test/integration/host-fixtures.mjs /path/to/pi [--update] [--only name,...]
+//   PI_BIN=/path/to/pi bun test/integration/host-fixtures.mjs [--update] [--only name,...]
 //
 // Each scenario starts a fresh Pi process in a pseudo-terminal with a
 // temporary agent directory, renders it through a headless xterm and compares
@@ -19,13 +20,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../..");
 const snapshotDir = join(here, "host-fixtures");
 const args = process.argv.slice(2);
-const binary = args.find((arg) => !arg.startsWith("--")) ?? process.env.PI_BINARY;
+const binary = piBin();
 const update = args.includes("--update");
 const onlyFlag = args.indexOf("--only");
 const only = onlyFlag >= 0 ? new Set((args[onlyFlag + 1] ?? "").split(",").filter(Boolean)) : undefined;
-if (!binary) throw new Error("usage: bun test/integration/host-fixtures.mjs /path/to/pi [--update] [--only a,b]");
 const version = execFileSync(binary, ["--version"], { encoding: "utf8" }).trim();
-assert.equal(version, "1.5.0", `expected the final Pi 1.5.0 binary, got ${version}`);
+assert.equal(version, installedPiVersion(), `expected the installed SDK version, got ${version}`);
 
 const extensions = [
   join(packageRoot, "dist/index.ts"),

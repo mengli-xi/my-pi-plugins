@@ -27,6 +27,7 @@
 ```sh
 npm run typecheck -w pi-cc-memory
 npm test -w pi-cc-memory
+npm run check:host -w pi-cc-memory
 ```
 
 自动测试使用临时配置、fixture 或 faux provider，不证明真实 provider、人工终端或完整 profile。跨插件联测见 [integration](../../integration/README.md)。

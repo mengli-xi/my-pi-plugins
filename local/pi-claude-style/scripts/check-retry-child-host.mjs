@@ -1,3 +1,4 @@
+import { piBin } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
@@ -5,8 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const binary = resolve(process.argv[2] ?? process.env.PI_BINARY ?? "");
-if (!process.argv[2] && !process.env.PI_BINARY) throw new Error("usage: node scripts/check-retry-child-host.mjs /path/to/pi");
+const binary = piBin();
+
 const keep = !!process.env.CC_RETRY_CHILD_ARTIFACTS;
 const root = keep ? resolve(process.env.CC_RETRY_CHILD_ARTIFACTS) : await mkdtemp(join(tmpdir(), "cc-retry-child-"));
 try {

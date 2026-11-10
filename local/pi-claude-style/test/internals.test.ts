@@ -172,7 +172,7 @@ test("every declared probe has a unique id and a non-empty consequence", () => {
 });
 
 test("the real probes all pass against the installed pi", () => {
-  // The offline half of `npm run check-internals`, as a test: a pi upgrade
+  // The offline half of `npm run check:internals`, as a test: a pi upgrade
   // that removes a patched prototype fails the suite rather than degrading
   // the transcript silently.
   declareProbes(ALL_PROBES);

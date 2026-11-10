@@ -55,7 +55,7 @@ Side 共享 Main 的文件系统、网络与 credentials，没有 sandbox 或跨
 ```sh
 npm run typecheck -w pi-side-chat
 npm test -w pi-side-chat
-PI_TEST_EXECUTABLE=/path/to/stock-pi-1.5.0 npm run check-internals -w pi-side-chat
+PI_BIN=/path/to/stock-pi-1.5.0 npm run check:host -w pi-side-chat
 PI_TEST_EXECUTABLE=/path/to/stock-pi-1.5.0 npm run test:ui -w pi-side-chat
 npm run test:integration
 PI_TEST_EXECUTABLE=/path/to/stock-pi-1.5.0 npm run test:integration:side-chat

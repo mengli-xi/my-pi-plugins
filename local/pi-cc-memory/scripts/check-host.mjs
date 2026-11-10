@@ -1,3 +1,4 @@
+import { piBin, installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -8,8 +9,8 @@ import { fileURLToPath } from "node:url";
 import { getCurrentSystemMessage, getSystemMessageText } from "@earendil-works/pi-ai";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-assert.equal(process.argv.length, 2, "test:host does not accept profile arguments");
-const binary = process.env.PI_MEMORY_HOST_BINARY ?? join(packageRoot, "../../node_modules/.bin/pi");
+assert.equal(process.argv.length, 2, "check:host does not accept profile arguments");
+const binary = piBin();
 const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-cc-memory-host-")));
 const home = join(root, "home");
 const agent = join(root, "agent");
@@ -29,7 +30,7 @@ const hostVersion = execFileSync(binary, ["--version"], {
   cwd: root, encoding: "utf8",
   env: { ...process.env, HOME: home, PI_CODING_AGENT_DIR: agent, PI_NEXT_AGENT_DIR: agent, XDG_CONFIG_HOME: join(root, "config") },
 }).trim();
-assert.equal(hostVersion, "1.5.0", "host verification requires Pi 1.5.0");
+assert.equal(hostVersion, installedPiVersion(), "host verification requires the installed SDK version");
 const evidence = { binary, hostVersion, realRequests: 0, checks: [] };
 const check = (label, value) => { assert.ok(value, label); evidence.checks.push(label); };
 

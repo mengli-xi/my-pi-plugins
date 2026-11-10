@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+import { piBin } from "../../../scripts/pi-checks.mjs";
 // ExtensionContext exposes a readonly SessionManager. Rewind must rebind the
 // concrete manager after rewriting bytes and restore its leaf on undo, so these
-// mutation seams remain explicit probes. An optional binary tests its real host.
+// mutation seams remain explicit probes. --host uses the shared PI_BIN resolver.
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -22,7 +23,7 @@ function checkProbes(SessionManager) {
   return !failed;
 }
 
-const binary = process.argv[2];
+const binary = process.argv[2] === "--host" ? piBin() : undefined;
 if (!binary) {
   if (!checkProbes(SessionManager)) process.exitCode = 1;
 } else {

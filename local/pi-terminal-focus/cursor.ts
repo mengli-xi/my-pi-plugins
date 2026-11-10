@@ -120,7 +120,7 @@ function warnRenderDrift(): void {
   const notify = state.notify;
   if (!notify) return;
   queueMicrotask(() => notify(
-    "pi-terminal-focus: Pi editor cursor render shape changed; cursor hiding failed open. Run npm run check-internals.",
+    "pi-terminal-focus: Pi editor cursor render shape changed; cursor hiding failed open. Run npm run check:internals.",
     "warning",
   ));
 }
@@ -202,7 +202,7 @@ function bindTerminal(tui: TUI): void {
     });
     if (restore) state.fullscreenObserver = { tui, restore };
     else queueMicrotask(() => state.notify?.(
-      "pi-terminal-focus: fullscreen focus observer missing; run npm run check-internals.", "warning",
+      "pi-terminal-focus: fullscreen focus observer missing; run npm run check:internals.", "warning",
     ));
   }
 }

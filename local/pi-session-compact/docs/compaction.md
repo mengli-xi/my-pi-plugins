@@ -100,7 +100,7 @@ summaryTokens 退役，读取给中文禁用说明，不控制接收/渲染/cut/
 # 仓库根
 npm run check -w pi-session-compact
 # 包目录；显式指定 Pi 1.5.0
-PI_COMPACT_HOST_BINARY=/path/to/pi-1.5.0 node scripts/check-host.mjs
+PI_BIN=/path/to/pi-1.5.0 npm run check:host
 node --experimental-strip-types scripts/replay-saved.mjs /path/to/copied-inputs /path/to/evidence
 ```
 

@@ -1,11 +1,12 @@
 #!/usr/bin/env node
+import { piBin } from "../../../scripts/pi-checks.mjs";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const binary = process.argv[2];
+const binary = process.argv[2] === "--host" ? piBin() : undefined;
 if (binary) {
   const agentDir = mkdtempSync(join(tmpdir(), "pi-focus-probe-"));
   try {

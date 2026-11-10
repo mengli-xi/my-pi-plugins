@@ -19,8 +19,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --experimental-transform-types --test tests/*.test.ts",
-    "check-internals": "node scripts/check-internals.mjs",
-    "check": "npm run typecheck && npm run check-internals && npm test"
+    "check": "npm run typecheck && npm run check:internals && npm test",
+    "check:internals": "node ../../scripts/isolated-agent.mjs node scripts/check-internals.mjs",
+    "check:host": "node ../../scripts/check-host.mjs node scripts/check-internals.mjs --host"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "^1.5.0",

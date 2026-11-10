@@ -1,3 +1,4 @@
+import { piBin } from "../../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, existsSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,8 +6,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import xterm from "@xterm/headless";
 
-const binary = process.argv[2];
-if (!binary) throw new Error("usage: bun test/integration/full-history.mjs <stock-pi>");
+const binary = piBin();
 const root = mkdtempSync(join(tmpdir(), "cc-history-test-"));
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const cols = Number(process.env.CC_FULL_HISTORY_COLS ?? 120);
@@ -145,7 +145,7 @@ try {
 }
 if (!inputs && !unload) {
   for (const variant of ["inputs", "unload"]) {
-    const followup = Bun.spawn([process.execPath, fileURLToPath(import.meta.url), binary], {
+    const followup = Bun.spawn([process.execPath, fileURLToPath(import.meta.url)], {
       env: { ...process.env, CC_FULL_HISTORY_INPUTS: variant === "inputs" ? "1" : "0", CC_FULL_HISTORY_UNLOAD: variant === "unload" ? "1" : "0" }, stdin: "ignore", stdout: "inherit", stderr: "inherit",
     });
     assert.equal(await followup.exited, 0, `${variant} host regression`);

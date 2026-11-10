@@ -1,12 +1,12 @@
 /**
- * `npm run check-internals` — does the installed pi still have the names this
+ * `npm run check:internals` — does the installed pi still have the names this
  * package patches?
  *
  * Answers the eager half of the question without a session: prototype methods
  * and exported classes, checked against whatever `@earendil-works/pi-coding-agent`
  * resolves to right now. Run it after upgrading pi; a clean exit means no
  * prototype in that source graph has gone missing. It does not validate the
- * final Bun bundle; follow it with `check-internals:host` against that binary.
+ * final Bun bundle; follow it with `check:host` against that binary.
  *
  * It cannot see instance fields — `this.box`, `this.chatContainer`, `Text`'s
  * own `text`. Those need a live component, so they are reported from the patch

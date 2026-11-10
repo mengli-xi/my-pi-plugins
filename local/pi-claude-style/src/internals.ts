@@ -16,7 +16,7 @@
  * So each patch declares what it depends on, and the outcome is recorded:
  *
  * - **Prototype names** are checked eagerly, before anything is installed.
- *   `npm run check-internals` runs exactly these against the installed pi and
+ *   `npm run check:internals` runs exactly these against the installed pi and
  *   needs no session, so a pi upgrade can be cleared in one command.
  * - **Instance fields** cannot be seen without a live instance, so the patch
  *   body reports its own first outcome through `markOk` / `markBroken`.
@@ -308,7 +308,7 @@ export function markReported(fingerprint: string, version: string = piVersion())
  * every probe in the first session after an upgrade — reporting it there would
  * fire a full-width warning that says nothing except "you just upgraded", and
  * the next real one would get skimmed past. It surfaces in `/internals` and in
- * `npm run check-internals`, both of which are asked rather than pushed.
+ * `npm run check:internals`, both of which are asked rather than pushed.
  */
 export function consumeNewDrift(
   version: string = piVersion(),

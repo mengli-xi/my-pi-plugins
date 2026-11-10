@@ -54,7 +54,7 @@
     "test:vitest": "node scripts/test-runner.mjs vitest run --config scripts/vitest.config.ts",
     "test:watch": "node scripts/test-runner.mjs vitest --config scripts/vitest.config.ts",
     "test:public-exports": "npm run build && node scripts/test-runner.mjs node --test public-exports.test.mjs",
-    "test:host": "npm run build && node scripts/test-runner.mjs node --test dist-host.test.mjs"
+    "check:host": "node ../../scripts/check-host.mjs npm run build :: node scripts/test-runner.mjs node --test dist-host.test.mjs"
   },
   "repository": {
     "type": "git",
