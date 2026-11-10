@@ -32,7 +32,9 @@ spinner 下方的活动工具是独立 component，不嵌进 working 文本。�
   ⎿ Choice -> Selected label
 ```
 
-single-select/custom answer 显示标量；multi-select 保留全部 label；note 不丢。未答取消明确 declined，部分作答后取消保留答案并追加取消状态。`details.chat` 与 `details.explain` 分别显示 `Chat about this:` / `Explain More:`，不能把非取消空结果误认为已回答。title/header 用正文强度、chrome muted、答案深蓝；错误保持明确错误状态。仅隐藏视觉 envelope，session/result 数据原样保留。
+single-select/custom answer 显示标量；multi-select 同时保留 `selected` 的全部 label 与 `answer` 的自填文本；每题 note 不丢。`details.globalNote` 单列为 `Global note:`，提交和取消都保留；它不算题目答案。仅按 `details.unanswered` 明示的索引显示 `Unanswered:`，题号从 1 开始，并附上已有 header/question；不从缺失答案、缺失字段或 model envelope 猜未答题目或答案。旧 details 没有这些可选字段时保持原呈现。
+
+未答取消明确 declined，部分作答后取消保留答案并追加取消状态。`details.chat` 与 `details.explain` 分别显示 `Chat about this:` / `Explain More:`，保留此前答案和 note，不能把非取消空结果误认为已回答。`isError` 或非空字符串 `details.error` 优先显示 failed；即使同时 `cancelled`，也不能称为用户拒答。错误摘要优先使用 `details.error`，否则取 result text 的首个非空行。title/header 用正文强度、chrome muted、答案深蓝。仅隐藏视觉 envelope，session/result 数据原样保留。
 
 ## Web 与 Edit
 

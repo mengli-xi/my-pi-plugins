@@ -57,6 +57,83 @@ test("formats answered questions from structured details in argument order", () 
   ]);
 });
 
+test("keeps selected labels and custom text in multi answers", () => {
+  for (const [selected, answer, expected] of [
+    [["Redis", "Memory"], "Local disk", "Redis, Memory, Local disk"],
+    [undefined, "Local disk", "Local disk"],
+    [[], null, "No selection"],
+  ] as const) {
+    const display = formatQuestionDisplay({}, result({
+      answers: [{ questionIndex: 0, kind: "multi", answer, selected }],
+      cancelled: false,
+    }));
+    assert.deepEqual(display.rows, [
+      { kind: "answer", title: "Question 1", answer: expected },
+    ]);
+  }
+});
+
+test("shows global notes and only explicitly unanswered question indexes", () => {
+  const args = { questions: [
+    { question: "Which cache?", header: "Cache" },
+    { question: "When to refresh?" },
+    { question: "How long?", header: "TTL" },
+  ] };
+  const display = formatQuestionDisplay(args, result({
+    answers: [{ questionIndex: 0, kind: "option", answer: "Redis", notes: "Shared" }],
+    cancelled: false,
+    unanswered: [2],
+    globalNote: "Keep the current fallback.\nReview later.",
+  }));
+  assert.equal(display.state, "answered");
+  assert.deepEqual(display.rows, [
+    { kind: "answer", title: "Cache", answer: "Redis" },
+    { kind: "note", text: "Shared" },
+    { kind: "text", text: "  ⎿ Unanswered: Question 3 (TTL)" },
+    { kind: "text", text: "  ⎿ Global note: Keep the current fallback.\nReview later." },
+  ]);
+  assert.deepEqual(formatQuestionDisplay(args, result({
+    answers: [{ questionIndex: 0, kind: "option", answer: "Redis" }],
+    cancelled: false,
+  })).rows, [{ kind: "answer", title: "Cache", answer: "Redis" }]);
+});
+
+test("keeps global notes without treating them as question answers", () => {
+  for (const cancelled of [false, true]) {
+    const display = formatQuestionDisplay({}, result({
+      answers: [],
+      cancelled,
+      globalNote: "Need more time.",
+    }));
+    assert.equal(display.state, cancelled ? "declined" : "answered");
+    assert.deepEqual(display.rows, [{ kind: "text", text: "  ⎿ Global note: Need more time." }]);
+  }
+  for (const details of [
+    { answers: [], cancelled: false, globalNote: 42 },
+    { answers: [], cancelled: false, unanswered: [-1] },
+    { answers: [], cancelled: false, unanswered: ["1"] },
+  ]) {
+    assert.equal(formatQuestionDisplay({}, result(details)).title, "Questionnaire completed");
+  }
+});
+
+test("treats questionnaire errors as failures rather than user declines", () => {
+  for (const details of [
+    { answers: [], cancelled: true, error: "no_ui" },
+    { error: "no_ui" },
+  ]) {
+    const display = formatQuestionDisplay({}, result(details, {
+      text: "User declined to answer questions",
+    }));
+    assert.equal(display.state, "failed");
+    assert.equal(display.title, "Questionnaire failed");
+    assert.deepEqual(display.rows, [{ kind: "text", text: "  ⎿ no_ui" }]);
+  }
+  assert.equal(formatQuestionDisplay({}, result({
+    answers: [], cancelled: true, error: false,
+  })).state, "declined");
+});
+
 test("formats declined, partial cancellation, malformed and failed questions", () => {
   assert.equal(
     formatQuestionDisplay(

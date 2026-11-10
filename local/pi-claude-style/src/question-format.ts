@@ -17,6 +17,8 @@ interface QuestionAnswer {
 interface QuestionnaireDetails {
   answers: QuestionAnswer[];
   cancelled: boolean;
+  globalNote?: string;
+  unanswered?: number[];
   chat?: QuestionControlRequest;
   explain?: QuestionControlRequest;
 }
@@ -101,6 +103,10 @@ function questionnaireDetails(value: unknown): QuestionnaireDetails | undefined 
     !Array.isArray(details.answers) ||
     !details.answers.every(isQuestionAnswer) ||
     typeof details.cancelled !== "boolean" ||
+    (details.globalNote !== undefined && typeof details.globalNote !== "string") ||
+    (details.unanswered !== undefined &&
+      (!Array.isArray(details.unanswered) ||
+        !details.unanswered.every((index) => Number.isInteger(index) && index >= 0))) ||
     (details.chat !== undefined && !chat) ||
     (details.explain !== undefined && !explain) ||
     (details.chat !== undefined && details.explain !== undefined)
@@ -110,6 +116,8 @@ function questionnaireDetails(value: unknown): QuestionnaireDetails | undefined 
   return {
     answers: details.answers,
     cancelled: details.cancelled,
+    ...(typeof details.globalNote === "string" ? { globalNote: details.globalNote } : {}),
+    ...(Array.isArray(details.unanswered) ? { unanswered: details.unanswered } : {}),
     ...(chat ? { chat } : {}),
     ...(explain ? { explain } : {}),
   };
@@ -117,7 +125,8 @@ function questionnaireDetails(value: unknown): QuestionnaireDetails | undefined 
 
 function answerText(answer: QuestionAnswer): string {
   if (answer.kind === "multi") {
-    return answer.selected?.filter(Boolean).join(", ") || "No selection";
+    return [answer.selected?.filter(Boolean).join(", "), answer.answer?.trim()]
+      .filter(Boolean).join(", ") || "No selection";
   }
   return answer.answer?.trim() || "No answer";
 }
@@ -138,8 +147,10 @@ export function formatQuestionDisplay(
       rows: [],
     };
   }
-  if (result.isError) {
-    const error = conciseError(result.text);
+  const detailsError = record(result.details)?.error;
+  const errorCode = typeof detailsError === "string" ? detailsError.trim() : "";
+  if (result.isError || errorCode) {
+    const error = conciseError(errorCode || result.text);
     return {
       state: "failed",
       title: "Questionnaire failed",
@@ -178,6 +189,18 @@ export function formatQuestionDisplay(
     return output;
   });
 
+  if (details.unanswered?.length) {
+    const unanswered = details.unanswered.map((index) => {
+      const question = questions[index];
+      const label = question?.header ?? question?.question;
+      return `Question ${index + 1}${label ? ` (${label})` : ""}`;
+    });
+    rows.push({ kind: "text", text: `  ⎿ Unanswered: ${unanswered.join(", ")}` });
+  }
+  if (details.globalNote?.trim()) {
+    rows.push({ kind: "text", text: `  ⎿ Global note: ${details.globalNote.trim()}` });
+  }
+
   const control = details.explain
     ? { state: "explain" as const, title: "Explain More:", request: details.explain }
     : details.chat
@@ -199,11 +222,11 @@ export function formatQuestionDisplay(
     };
   }
 
-  if (details.cancelled && rows.length === 0) {
+  if (details.cancelled && ordered.length === 0) {
     return {
       state: "declined",
       title: "User declined the questions",
-      rows: [],
+      rows,
     };
   }
   if (details.cancelled) {
