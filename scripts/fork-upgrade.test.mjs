@@ -211,3 +211,36 @@ test("没有显式 file: tarball 时使用 registry 的 https tarball", async t 
   } });
   assert.equal(urls[1], f.info.dist.tarball);
 });
+
+test("exclude 先区分普通文件与目录：不扩大范围，类型不符时拒绝", async t => {
+  const f = fixture(t);
+  const packageDir = path.join(f.temp, "tar/package");
+  const pack = () => {
+    execFileSync("tar", ["-czf", f.tarball, "-C", path.join(f.temp, "tar"), "package"]);
+    f.info.dist.integrity = `sha512-${createHash("sha512").update(readFileSync(f.tarball)).digest("base64")}`;
+    f.saveMeta();
+  };
+  mkdirSync(path.join(packageDir, "src"));
+  writeFileSync(path.join(packageDir, "src/inside.txt"), "源目录\n");
+  mkdirSync(path.join(packageDir, "dist-extra"));
+  writeFileSync(path.join(packageDir, "dist-extra/inside.txt"), "相似前缀\n");
+  writeFileSync(path.join(packageDir, "dist"), "同名普通文件\n");
+  pack();
+  const first = exclude => ({ fork: "pi-new", version: "2.0.0", npm: "demo", registry: f.registry, tarball: pathToFileURL(f.tarball).href, exclude });
+  const vendor = f.git("rev-parse", "vendor/upstream");
+  // 文件规则 src 指向的是目录，不能借它排除整个 src/。
+  await assert.rejects(f.run({ ...first(["src"]), dryRun: true }), /exclude 规则 src 指向普通文件，但上游的 src 不是普通文件；目录规则请写成 src\//);
+  // 目录规则 dist/ 指向的是普通文件，不能排除它。
+  await assert.rejects(f.run({ ...first(["dist/"]), dryRun: true }), /exclude 规则 dist\/ 指向目录，但上游的 dist 不是目录/);
+  assert.equal(f.git("rev-parse", "vendor/upstream"), vendor);
+  // 换成真正的目录后，dist/ 只排除 dist/，不影响 dist-extra/ 和文件规则之外的内容。
+  rmSync(path.join(packageDir, "dist"));
+  mkdirSync(path.join(packageDir, "dist"));
+  writeFileSync(path.join(packageDir, "dist/generated.js"), "生成物\n");
+  pack();
+  await f.run({ ...first(["dist/"]) });
+  assert.deepEqual(f.git("ls-tree", "-r", "--name-only", "vendor/upstream:fork/pi-new").split("\n"), [
+    "UPSTREAM.json", "dist-extra/inside.txt", "index.txt", "src/inside.txt",
+  ]);
+  assert.equal(f.git("status", "--porcelain"), "");
+});

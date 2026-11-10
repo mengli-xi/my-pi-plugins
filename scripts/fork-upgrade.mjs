@@ -154,16 +154,31 @@ export async function upgrade({ root = process.cwd(), fork, version, dryRun = fa
     const source = path.join(extraction, subdirectory);
     if (!lstatSync(source).isDirectory()) throw new Error("归档缺少所需包目录");
     const records = new Map();
+    // 文件规则只匹配普通文件，目录规则只匹配目录并停止递归；类型不符时拒绝，
+    // 避免 "src" 排掉 src/、或 "dist/" 排掉同名普通文件。
+    function excluded(local, stat) {
+      for (const item of exclude) {
+        if (item.endsWith("/")) {
+          if (!`${local}/`.startsWith(item)) continue;
+          if (!stat.isDirectory()) throw new Error(`exclude 规则 ${item} 指向目录，但上游的 ${local} 不是目录；请修正 exclude`);
+          return true;
+        }
+        if (local !== item) continue;
+        if (!stat.isFile()) throw new Error(`exclude 规则 ${item} 指向普通文件，但上游的 ${local} 不是普通文件；目录规则请写成 ${item}/`);
+        return true;
+      }
+      return false;
+    }
     function add(directory, relative = "") {
       for (const name of readdirSync(directory).sort()) {
-        const local = path.posix.join(relative, name);
-        if (exclude.some(item => item.endsWith("/") ? `${local}/`.startsWith(item) : local === item)) continue;
         if ([".git", "UPSTREAM.json"].includes(name) && !relative) {
           if (name === ".git") throw new Error("上游包不能包含 .git");
           continue;
         }
         const filename = path.join(directory, name);
+        const local = path.posix.join(relative, name);
         const stat = lstatSync(filename);
+        if (excluded(local, stat)) continue;
         const target = path.posix.join(prefix, local);
         if (stat.isDirectory()) add(filename, local);
         else if (stat.isFile()) {
