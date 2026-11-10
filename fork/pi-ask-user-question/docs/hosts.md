@@ -1,99 +1,66 @@
-# Hosts and runtime behavior
+# 宿主与降级
 
-Where the questionnaire renders, what it degrades to, and what happens when it cannot
-render at all.
+## 环境选择
 
-## Three environments
-
-| Environment | What the model sees | What you see |
+| 环境 | 模型看到什么 | 用户看到什么 |
 | --- | --- | --- |
-| Interactive terminal | `ask_user_question` in its tool list | The full tabbed TUI overlay |
-| RPC / ACP host (VS Code pendant, Zed, Paseo) | `ask_user_question` in its tool list | A sequence of the host's own native select and input dialogs |
-| Non-interactive run (no UI) | Nothing — the tool is removed | Nothing |
+| 交互终端 | `ask_user_question` | 默认 inline 问卷，必要时 overlay fallback |
+| RPC/ACP、且宿主有 UI | `ask_user_question` | 宿主原生 select/input，按题依次显示 |
+| 无 UI | 工具从 active set 隐藏 | 不弹问卷 |
 
-### Terminal attention
+本工具是 `exposure: "model-only"`：模型直接调用，codemode 的 only 模式也不应把它藏进脚本；脚本不能调用它来触发阻塞交互。
 
-After UI availability and questionnaire validation succeed, the package emits exactly one standard terminal BEL (`\x07`) immediately before the interactive wait begins. The signal is sent to `stdout` only when `process.stdout.isTTY` is true, so redirected output and non-TTY RPC streams stay untouched. A TTY-backed RPC dialog walker receives the same signal as the TUI path.
+## 工具选择约束
 
-The BEL is best effort: if the synchronous terminal write fails, the questionnaire continues and its existing prompt/blocked lifecycle and result envelope are unchanged. The terminal configuration decides whether the BEL is audible, visual, or ignored. No BEL is emitted for missing UI, invalid questionnaires, or a failed TUI session load.
+`before_agent_start` 只在无 UI 时从 active set 隐藏 `ask_user_question`，绝不自动重新加入，保持兄弟工具不变。公开 API 没有 selection revision；即使 active 列表未变，也不能证明用户没有重设权限，不能把 UI 可用当作执行授权。
 
-### Non-interactive runs
+同一 SDK session 从 headless 切回 UI，需由 Host/用户显式调用 `setActiveTools`；新 session 按初始 selection 正常初始化。协调应幂等，不能每轮重写相同 active set。
 
-A `before_agent_start` hook reconciles the active tool set against `ctx.hasUI` before every
-turn. When there is no UI, `ask_user_question` is stripped from the list so the model never
-sees a tool it cannot use — better than offering it and auto-declining every call. When UI
-comes back, the tool is restored. The reconciler is idempotent and leaves sibling tools
-untouched.
+若没有 UI 仍收到调用，执行侧返回 `no_ui`，正文为 `Error: UI not available (running in non-interactive mode)`，不尝试打开界面。
 
-A second guard lives inside the tool handler as a one-turn backstop: if a call somehow
-arrives without UI, it returns `error: "no_ui"` and the text
-`Error: UI not available (running in non-interactive mode)`.
+## Terminal attention
 
-### RPC and ACP hosts
+问卷校验和 UI 检查通过、交互等待开始前，向 TTY stdout 发一次标准 BEL（`\x07`）。终端决定是声音、闪烁还是忽略。重定向或非 TTY 输出不会收到该字节；TTY-backed RPC 等待同样可收到它。
 
-RPC hosts report `hasUI: true` because Pi's dialog sub-protocol works there, but custom
-terminal UI does not render. The package detects this two ways: hosts that advertise
-`ctx.mode === "rpc"` route straight to the dialog walker, skipping the TUI import
-entirely, and older RPC builds are caught by a backstop when custom UI resolves without
-rendering anything. Either path requires the host to expose both `select` and `input`.
+BEL 写入失败不阻止问卷，不改变 prompt/blocked 生命周期或结果；缺 UI、参数无效、TUI 加载失败不发 BEL。事件的准确关联见 [events.md](events.md)。
 
-The walker asks one question per dialog and returns exactly the same result envelope the
-TUI produces. Trade-offs inherent to the native primitives:
+## 宿主已分配行高
 
-- No side-by-side preview pane. Previews are folded into the dialog title instead,
-  truncated at 600 characters each.
-- No tab bar and no Submit review tab — one dialog per question, in order.
-- No notes. Both note kinds — per-question `n` on a question tab and global `n` on the
-  Submit tab — are terminal-only; the host's native `select` and `input` primitives carry
-  no note field.
-- Multi-select is a free-text input. Type option numbers separated by commas (`1,3`).
-  Add a semicolon and custom text to return both (`1,3; another color`). Plain text still
-  returns a custom-only multi-select answer. An empty input commits an empty selection,
-  matching `Next` with nothing selected.
-- In a single-select question, picking `Type something.` opens a text input. Cancelling it
-  or leaving it blank returns to the options; it never records an empty answer.
-- Dismissing any dialog cancels the whole questionnaire, mirroring `Esc` in the TUI.
+可信 Host 若已经给问卷分配了独立区域，可在传入的 `tui.terminal` 上设置 `Symbol.for("rpiv-ask-user-question:host-allocated-rows")` 为 `true`。本包沿用这个上游无版本兼容标记，将 `terminal.rows` 视为已分配的预算，不再套用 inline 的 70% 上限，也不替 Host 决定其布局。未设置或非 `true` 时使用普通 inline/overlay 策略。
 
-If the host can render neither custom UI nor dialogs, the call returns
-`error: "no_custom_ui"` with text telling the model the user never saw the questions and
-that it should ask them as plain chat text instead — explicitly not a decline.
+该标记只影响几何，不授予工具执行、外部答复或读取配置的权限；本包不为发现它扫描其他插件或私有存储。
 
-## Conditional surfaces
+## RPC/ACP
 
-Some parts of the dialog exist only under the right conditions:
+`ctx.mode === "rpc"` 直接走原生 dialog walker，不 import TUI 渲染图。较旧宿主若 custom UI 未实际挂载而返回，也尝试原生 fallback。两条路径都要求同时有 `select` 和 `input`。
 
-| Surface | Appears when |
-| --- | --- |
-| Tab bar and Submit tab | The call carries more than one question |
-| `Next` row | The question is multi-select |
-| `Type something.` row | Always |
-| Side-by-side preview | An option carries a `preview`, and terminal and pane are both ≥ 100 columns |
-| Preview pane at all | Single-select questions only |
-| Collapse shortcut | `collapseKey` is not `"off"` |
-| Full overlay hide on collapse | The host also exposes raw terminal input (the only path that can reopen a hidden overlay); without it, collapsing shrinks the dialog to a visible one-line row instead |
-| Localized chrome | `@juicesharp/rpiv-i18n` is installed |
+每题和相关输入都显示用户可见 `context`，标题默认为 `Why this decision matters`，可随 UI 本地化。答案仍走统一 envelope，但受宿主原语限制：
 
-## Loading and startup cost
+- 没有 tab bar、Submit review、checkbox 和并排 preview。preview 折进标题，每项最多 600 个字符。
+- 没有逐题 notes 或 global note；原生 API 没有独立 notes 字段。不要把控制请求的可选文字误称为 notes 功能对等。
+- 多选用文本输入：`1,3` 选两个选项，`1,3; another color` 同时提交选项和自定义文本，只写文本就是自定义多选答案。空输入是显式空选择。不能解析为合法编号的输入按自定义文本保留，不丢掉数字后面的文字。
+- 单选识别完整选项行、合法的纯编号和选项 label；其他非空回复为用户自己的文本，例如 `2 but change the title` 不能变成只选第 2 项。
+- 选择 `Type something.` 后打开输入，列出题目、context 和选项说明；取消或输入空白返回选项，不取消整份问卷、不丢已有答案。
+- 单选的 `Chat about this` 直接返回讨论请求；`Explain More` 打开可选原生输入，关闭该输入按空文字继续解释请求。两者都不是普通答案。控制语义见 [tool-schema.md](tool-schema.md)。
+- 取消题目的选项对话框或多选输入，取消整份问卷；自定义和控制的 follow-up 有上述例外。
 
-The dialog's render graph costs roughly 560 ms to import, so it is loaded lazily — on the
-first tool call, not when the extension registers. To keep that first call fast and safe,
-the graph is also pre-warmed in the background two seconds after startup. The pre-warm
-timer is unref'd, so it never holds a process open, and a failed pre-warm is swallowed:
-the first real call re-imports and reports properly.
+外部 answer 事件不接管这些原生对话框，返回 `unsupported_host`。没有 custom UI、也没有完整原生 dialogs 时返回 `no_custom_ui`，明确告诉模型用户从未看见问题，改用普通聊天提问，不当成拒答。
 
-The pre-warm exists for a specific failure. Pi's module loader registers a module in its
-graph cache *before* evaluating it and does not evict it if evaluation throws. If your
-package manager replaces the dependency store while Pi is running, one failed import can
-poison the cache for the rest of the process. Evaluating the graph early, while the paths
-Pi resolved at boot still exist, keeps it in memory for the process lifetime and makes
-that unreachable.
+## 取消与等待
 
-When it does happen, you get a structured envelope rather than a raw `TypeError`:
+用户取消、完成作答和执行错误都必须结束本次等待；取消不得伪装成用户选中了默认项。Esc 关闭 notes/控制编辑器与取消整份问卷是两个层级，见 [keyboard.md](keyboard.md)。
 
-| `error` | Meaning | Fix |
+执行 signal 取消与 UI、外部答案可能并发。维护时必须检查已取消调用能结束、等待事件被清理、后续调用还能使用，不把用户没有提交的草稿当答案。具体回归步骤见 [regression-cases.md](regression-cases.md)；这里不承诺宿主 UI 的取消帧时序或跨调用恢复草稿。
+
+## 加载失败
+
+| `error` | 含义 | 处理 |
 | --- | --- | --- |
-| `session_load_failed` | The dialog module could not be imported. | Repair the install if needed, then restart Pi. |
-| `stale_module_cache` | The module cache went stale after an earlier failed import. | Restart Pi — this is unrecoverable in the running process. |
+| `session_load_failed` | 模块无法 import | 修复安装（如有必要），重启 Pi |
+| `stale_module_cache` | namespace 缺少 session class，可能是较早失败污染 loader cache | 重启 Pi |
 
-Both messages tell the model the questions were never shown and to ask them as plain chat
-text instead of treating the failure as a decline.
+两者都保留具体错误上下文，正文要求模型先用普通聊天提问，不视为用户拒答。本包禁用启动 prewarm；首次加载和并发边界见 [startup-performance.md](startup-performance.md)。不要在 Pi 运行中替换依赖来追求热升级。
+
+## 独立使用
+
+可选协作者缺失、先加载或后加载都不能使本包抛错、取消用户操作或留下等待状态。本包不调用其他插件的私有方法；它的原生回执也不要求样式插件存在。本地化 SDK 缺失回退英文，见 [localization.md](localization.md)。

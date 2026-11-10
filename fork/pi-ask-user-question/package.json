@@ -27,13 +27,15 @@
 		"access": "public"
 	},
 	"scripts": {
-		"test": "vitest run"
+		"test": "node ../../scripts/isolated-agent.mjs node --import ../../ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
+		"typecheck": "tsc --noEmit"
 	},
 	"files": [
 		"answer-channel.ts",
 		"ask-user-question.ts",
 		"rpc-fallback.ts",
 		"config.ts",
+		"context.ts",
 		"events.ts",
 		"index.ts",
 		"presentation.ts",
@@ -48,6 +50,7 @@
 		"state/build-questionnaire.ts",
 		"state/external-editor.ts",
 		"state/i18n-bridge.ts",
+		"state/overlay-visibility.ts",
 		"state/key-router.ts",
 		"state/questionnaire-session.ts",
 		"state/row-intent.ts",
@@ -92,8 +95,8 @@
 	},
 	"peerDependencies": {
 		"@juicesharp/rpiv-i18n": "*",
-		"@earendil-works/pi-coding-agent": "*",
-		"@earendil-works/pi-tui": "*",
+		"@earendil-works/pi-coding-agent": "^1.5.0",
+		"@earendil-works/pi-tui": "^1.5.0",
 		"typebox": "*"
 	},
 	"peerDependenciesMeta": {
@@ -103,5 +106,8 @@
 	},
 	"dependencies": {
 		"@juicesharp/rpiv-config": "^2.15.0"
+	},
+	"devDependencies": {
+		"@juicesharp/rpiv-i18n": "^2.15.0"
 	}
 }

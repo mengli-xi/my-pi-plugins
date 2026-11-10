@@ -6,7 +6,7 @@ import type { TabBarProps } from "../../view/components/tab-bar.ts";
 import type { DialogProps } from "../../view/dialog-builder.ts";
 import { displayLabel } from "../i18n-bridge.ts";
 import type { GlobalSelector, PerTabBindingContext, PerTabSelector } from "./contract.ts";
-import { selectConfirmedIndicator, selectSavedNote } from "./derivations.ts";
+import { customDraftValueFor, selectConfirmedIndicator, selectSavedNote } from "./derivations.ts";
 
 function emptyMultiSelectProps(ctx: PerTabBindingContext): MultiSelectViewProps {
 	return {
@@ -64,7 +64,8 @@ export const selectOptionListProps: PerTabSelector<OptionListViewProps> = (state
 	return {
 		selectedIndex: state.optionIndex,
 		focused,
-		inputBuffer: ctx.inputBuffer,
+		// The Explain panel owns the shared editor, not the custom-answer row.
+		inputBuffer: state.explainInputOpen ? customDraftValueFor(state, ctx.i) : ctx.inputBuffer,
 		inputCursorOffset: ctx.inputCursorOffset,
 		...(confirmed ? { confirmed } : {}),
 	};
@@ -85,7 +86,7 @@ export const selectPreviewPaneProps: PerTabSelector<PreviewPaneProps> = (state, 
 	hasNote: selectSavedNote(state.notesByTab, state.answers, ctx.i) !== undefined,
 	selectedIndex: state.optionIndex,
 	focused: ctx.activeView === "options",
-	inputMode: state.inputMode,
+	inputMode: state.inputMode || state.explainInputOpen,
 });
 
 export const selectTabBarProps: GlobalSelector<TabBarProps> = (state, ctx) => {

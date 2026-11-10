@@ -47,7 +47,7 @@ function normalizeStringFields<T extends object>(obj: T, keys: readonly (keyof T
  */
 export function normalizeQuestionParams(params: QuestionParams): QuestionParams {
 	return {
-		...params,
+		...normalizeStringFields(params, ["context"]),
 		questions: params.questions.map((q) => ({
 			...normalizeStringFields(q, ["question", "header"]),
 			options: q.options.map((o) => normalizeStringFields(o, ["label", "description", "preview"])),

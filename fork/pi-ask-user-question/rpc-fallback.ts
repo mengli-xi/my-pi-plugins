@@ -18,6 +18,7 @@
  * option numbers, custom text, or both separated by a semicolon.
  */
 
+import { formatQuestionContext, QUESTION_CONTEXT_HEADING } from "./context.ts";
 import { displayLabel, t } from "./state/i18n-bridge.ts";
 import type { QuestionAnswer, QuestionData, QuestionnaireResult, QuestionParams } from "./tool/types.ts";
 
@@ -42,8 +43,8 @@ const MAX_PREVIEW_CHARS = 600;
  * gate that makes the shape trustworthy.
  */
 export type DialogUI = {
-	select: (title: string, options: string[]) => Promise<string | undefined>;
-	input: (title: string, placeholder?: string) => Promise<string | undefined>;
+	select: (title: string, options: string[], optionsConfig?: { signal?: AbortSignal }) => Promise<string | undefined>;
+	input: (title: string, placeholder?: string, optionsConfig?: { signal?: AbortSignal }) => Promise<string | undefined>;
 };
 
 /** True when the host implements the select/input dialog primitives. */
@@ -85,13 +86,19 @@ function buildPreviewBlock(question: QuestionData): string {
  * `QuestionAnswer` is produced per question otherwise, so the envelope is
  * identical to the TUI path's.
  */
-export async function runRpcQuestionnaire(ui: DialogUI, params: QuestionParams): Promise<QuestionnaireResult> {
+export async function runRpcQuestionnaire(ui: DialogUI, params: QuestionParams, signal?: AbortSignal): Promise<QuestionnaireResult> {
+	const dialogs: DialogUI = {
+		select: async (title, options) => signal?.aborted ? undefined : ui.select(title, options, { signal }),
+		input: async (title, placeholder) => signal?.aborted ? undefined : ui.input(title, placeholder, { signal }),
+	};
 	const answers: QuestionAnswer[] = [];
 	for (let qi = 0; qi < params.questions.length; qi++) {
 		const q = params.questions[qi];
 		const header = q.header ? `[${q.header}] ` : "";
-		const answer = q.multiSelect ? await askMultiSelect(ui, q, qi, header) : await askSingleSelect(ui, q, qi, header);
-		if (answer === undefined) return { answers, cancelled: true };
+		const context = formatQuestionContext(params.context, t("context.heading", QUESTION_CONTEXT_HEADING));
+		const answer = q.multiSelect ? await askMultiSelect(dialogs, q, qi, header, context) : await askSingleSelect(dialogs, q, qi, header, context);
+		if (signal?.aborted || answer === undefined) return { answers, cancelled: true };
+		if ("answers" in answer) return { ...answer, answers };
 		answers.push(answer);
 	}
 	return { answers, cancelled: false };
@@ -115,10 +122,12 @@ async function askSingleSelect(
 	q: QuestionData,
 	questionIndex: number,
 	header: string,
-): Promise<QuestionAnswer | undefined> {
+	context: string,
+): Promise<QuestionAnswer | QuestionnaireResult | undefined> {
 	const options = q.options.map(formatOptionLine);
 	options.push(`${q.options.length + 1}. ${displayLabel("other")}`);
-	const title = `${header}${q.question}${buildPreviewBlock(q)}`;
+	options.push(`${q.options.length + 2}. ${displayLabel("chat")}`, `${q.options.length + 3}. ${displayLabel("explain")}`);
+	const title = `${header}${q.question}${context}${buildPreviewBlock(q)}`;
 	for (;;) {
 		const chosen = await ui.select(title, options);
 		if (chosen == null) return undefined;
@@ -136,10 +145,15 @@ async function askSingleSelect(
 				preview: o.preview && o.preview.length > 0 ? o.preview : undefined,
 			};
 		}
+		if (idx > q.options.length) {
+			const kind = idx === q.options.length + 1 ? "chat" : "explain";
+			const notes = kind === "explain" ? (await ui.input(`${header}${q.question}${context}\n\n${t("explain.question_title", "What would you like explained? (optional)")}`, ""))?.trim() : undefined;
+			return { answers: [], cancelled: false, [kind]: { questionIndex, question: q.question, ...(notes ? { notes } : {}) } };
+		}
 		// "Type something." sentinel → free-text follow-up; cancelling it, or a blank reply (#301),
 		// goes back to the options.
 		const typed = await ui.input(
-			`${header}${q.question}\n\n${q.options.map(formatOptionLine).join("\n")}\n\n${t("rpc.custom_answer_title", CUSTOM_ANSWER_TITLE)}`,
+			`${header}${q.question}${context}\n\n${q.options.map(formatOptionLine).join("\n")}\n\n${t("rpc.custom_answer_title", CUSTOM_ANSWER_TITLE)}`,
 			"",
 		);
 		if (typed == null || typed.trim().length === 0) continue;
@@ -167,10 +181,11 @@ async function askMultiSelect(
 	q: QuestionData,
 	questionIndex: number,
 	header: string,
+	context: string,
 ): Promise<QuestionAnswer | undefined> {
 	const list = q.options.map(formatOptionLine).join("\n");
 	const value = await ui.input(
-		`${header}${q.question}\n\n${list}\n\n${t("rpc.multi_instructions", MULTI_SELECT_INSTRUCTIONS)}`,
+		`${header}${q.question}${context}\n\n${list}\n\n${t("rpc.multi_instructions", MULTI_SELECT_INSTRUCTIONS)}`,
 		MULTI_SELECT_PLACEHOLDER,
 	);
 	if (value == null) return undefined;

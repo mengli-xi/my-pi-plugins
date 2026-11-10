@@ -22,6 +22,8 @@
 export const ASK_USER_PROMPT_EVENT = "rpiv:ask-user:prompt" as const;
 
 export interface AskUserPromptEventPayload {
+	/** User-facing reason; optional here to keep the event contract append-only. */
+	context?: string;
 	questions: ReadonlyArray<AskUserPromptQuestion>;
 	/**
 	 * The tool call's id — always set. Names this questionnaire on

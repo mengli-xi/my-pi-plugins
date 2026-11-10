@@ -36,6 +36,10 @@ export type QuestionnaireAction =
 	| { kind: "confirm"; answer: QuestionAnswer; autoAdvanceTab?: number }
 	| { kind: "toggle"; index: number }
 	| { kind: "multi_confirm"; selected: string[]; answer: string | null; autoAdvanceTab?: number }
+	| { kind: "chat" }
+	| { kind: "explain_open" }
+	| { kind: "explain_close"; value: string }
+	| { kind: "explain"; notes?: string }
 	| { kind: "cancel" }
 	| { kind: "notes_enter" }
 	| { kind: "notes_exit" }
@@ -105,7 +109,7 @@ function buildSingleSelectAnswer(state: QuestionnaireState, runtime: Questionnai
 	if (item.kind === "other") {
 		return null;
 	}
-	if (item.kind === "next") {
+	if (item.kind === "next" || item.kind === "chat" || item.kind === "explain") {
 		return null;
 	}
 	return {
@@ -301,6 +305,24 @@ function routeMultiSelectTab(
 	return { kind: "toggle", index: row.index };
 }
 
+function controlAction(kind: string | undefined): QuestionnaireAction | undefined {
+	if (kind === "chat") return { kind: "chat" };
+	if (kind === "explain") return { kind: "explain_open" };
+	return undefined;
+}
+
+function routeExplainMode(kb: QuestionnaireKeybindings, data: string, runtime: QuestionnaireRuntime): QuestionnaireAction {
+	if (kb.matches(data, KEYBIND_NEW_LINE)) return { kind: "ignore" };
+	if (isConfirm(kb, data)) {
+		const notes = runtime.inputBuffer.trim();
+		return { kind: "explain", ...(notes ? { notes } : {}) };
+	}
+	if (kb.matches(data, KEYBIND_CANCEL)) return { kind: "explain_close", value: runtime.inputBuffer };
+	if (kb.matches(data, KEYBIND_CLEAR)) return { kind: "input_clear" };
+	if (kb.matches(data, KEYBIND_EXTERNAL_EDITOR)) return { kind: "input_edit", value: runtime.inputBuffer };
+	return { kind: "ignore" };
+}
+
 function routeSingleSelectTab(
 	kb: QuestionnaireKeybindings,
 	data: string,
@@ -308,6 +330,8 @@ function routeSingleSelectTab(
 	runtime: QuestionnaireRuntime,
 ): QuestionnaireAction {
 	if (isConfirm(kb, data)) {
+		const control = controlAction(runtime.currentItem?.kind);
+		if (control) return control;
 		const answer = buildSingleSelectAnswer(state, runtime);
 		if (!answer) return { kind: "ignore" };
 		return { kind: "confirm", answer, autoAdvanceTab: computeAutoAdvanceTab(state, runtime) };
@@ -317,6 +341,8 @@ function routeSingleSelectTab(
 	const row = digitRow(data, runtime);
 	if (!row) return { kind: "ignore" };
 	if (row.activatesInputMode) return { kind: "nav", nextIndex: row.index, inputValue: runtime.inputBuffer };
+	const control = controlAction(runtime.items[row.index]?.kind);
+	if (control) return control;
 	const answer = buildSingleSelectAnswer(
 		{ ...state, optionIndex: row.index },
 		{ ...runtime, currentItem: runtime.items[row.index] },
@@ -361,6 +387,7 @@ export function routeKey(data: string, state: QuestionnaireState, runtime: Quest
 	}
 
 	if (state.collapsed) return routeCollapsed(kb, data);
+	if (state.explainInputOpen) return routeExplainMode(kb, data, runtime);
 	if (state.notesVisible) return routeNotesMode(kb, data);
 	if (state.inputMode) return routeInputMode(kb, data, state, runtime);
 	if (runtime.isMulti && state.currentTab === runtime.questions.length) {

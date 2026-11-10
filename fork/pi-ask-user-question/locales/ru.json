@@ -3,6 +3,10 @@
 
   "sentinel.other": "Введите что-нибудь.",
   "sentinel.next": "Далее",
+  "context.heading": "Почему это решение важно:",
+  "hint.explain": "Enter — объяснить",
+  "hint.close": "Esc — закрыть",
+  "explain.question_title": "Что вы хотите уточнить? (необязательно)",
 
   "submit.label": "Отправить ответы",
   "submit.cancel": "Отмена",

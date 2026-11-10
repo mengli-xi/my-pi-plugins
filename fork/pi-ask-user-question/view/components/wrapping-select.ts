@@ -1,5 +1,6 @@
 import type { Component } from "@earendil-works/pi-tui";
 import { visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { leadingDividerFor } from "../../state/row-intent.ts";
 import { renderInlineInputRow } from "./inline-input.ts";
 
 /**
@@ -19,6 +20,8 @@ import { renderInlineInputRow } from "./inline-input.ts";
 export type WrappingSelectItem =
 	| { kind: "option"; label: string; description?: string }
 	| { kind: "other"; label: string; description?: string }
+	| { kind: "chat"; label: string; description?: string }
+	| { kind: "explain"; label: string; description?: string }
 	| { kind: "next"; label: string; description?: string };
 
 export interface WrappingSelectTheme {
@@ -218,8 +221,10 @@ export class WrappingSelect implements Component {
 
 		const { label, isConfirmed } = this.deriveConfirmedState(item, index);
 		const applySelectedStyle = isActive || isConfirmed;
+		const divider = leadingDividerFor(item.kind, width);
 
 		return [
+			...(divider ? [this.theme.scrollInfo(divider)] : []),
 			...this.renderLabelBlock(label, rowPrefix, continuationPrefix, contentWidth, applySelectedStyle),
 			...this.renderDescriptionBlock(item.description, continuationPrefix, contentWidth),
 		];

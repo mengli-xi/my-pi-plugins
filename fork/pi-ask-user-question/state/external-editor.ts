@@ -9,7 +9,7 @@ export interface ExternalEditorTui {
 	requestRender(force?: boolean): void;
 }
 
-function runEditor(command: string, file: string): Promise<void> {
+function runEditor(command: string, file: string, signal?: AbortSignal): Promise<void> {
 	// Keep the command grammar identical to Pi's built-in external-editor flow. A
 	// separate shell or argv parser here would make Ctrl+G behave differently.
 	const [editor, ...args] = command.split(" ");
@@ -19,6 +19,7 @@ function runEditor(command: string, file: string): Promise<void> {
 		const child = spawn(editor, [...args, file], {
 			stdio: "inherit",
 			shell: process.platform === "win32",
+			signal,
 		});
 		child.once("error", reject);
 		child.once("close", (code, signal) => {
@@ -36,17 +37,29 @@ function runEditor(command: string, file: string): Promise<void> {
  * Edit a custom answer with Pi's configured external-editor command. The TUI lifecycle
  * and one-trailing-newline normalization intentionally match Pi's main editor flow.
  */
-export async function editWithExternalEditor(tui: ExternalEditorTui, command: string, value: string): Promise<string> {
+export async function editWithExternalEditor(tui: ExternalEditorTui, command: string, value: string, signal?: AbortSignal): Promise<string | undefined> {
+	if (signal?.aborted) return undefined;
 	const tempDir = mkdtempSync(join(tmpdir(), "rpiv-ask-user-question-"));
 	const tempFile = join(tempDir, "answer.md");
 	let tuiStopped = false;
+	// Complete the stop/start pair synchronously on cancellation, before the host
+	// can replace the session; a late child completion must never restart this TUI.
+	const restore = () => {
+		if (!tuiStopped) return;
+		tuiStopped = false;
+		tui.start();
+		tui.requestRender(true);
+	};
 
 	try {
 		writeFileSync(tempFile, value, "utf8");
 		tui.stop();
 		tuiStopped = true;
+		signal?.addEventListener("abort", restore, { once: true });
+		if (signal?.aborted) { restore(); return undefined; }
 		process.stdout.write(`Launching external editor: ${command}\nPi will resume when the editor exits.\n`);
-		await runEditor(command, tempFile);
+		await runEditor(command, tempFile, signal);
+		if (signal?.aborted) return undefined;
 		return readFileSync(tempFile, "utf8").replace(/\r?\n$/, "");
 	} finally {
 		try {
@@ -54,9 +67,7 @@ export async function editWithExternalEditor(tui: ExternalEditorTui, command: st
 		} catch {
 			// Temp cleanup is best effort; never leave the TUI stopped because it failed.
 		}
-		if (tuiStopped) {
-			tui.start();
-			tui.requestRender(true);
-		}
+		signal?.removeEventListener("abort", restore);
+		restore();
 	}
 }

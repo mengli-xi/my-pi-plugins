@@ -1,6 +1,10 @@
 {
   "sentinel.other": "Type something.",
   "sentinel.next": "Next",
+  "context.heading": "Why this decision matters:",
+  "hint.explain": "Enter to explain",
+  "hint.close": "Esc to close",
+  "explain.question_title": "What would you like explained? (optional)",
 
   "submit.label": "Submit answers",
   "submit.cancel": "Cancel",

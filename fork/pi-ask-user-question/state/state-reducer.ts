@@ -2,6 +2,7 @@ import type { QuestionAnswer, QuestionData, QuestionnaireResult } from "../tool/
 import type { WrappingSelectItem } from "../view/components/wrapping-select.ts";
 import type { QuestionnaireAction } from "./key-router.ts";
 import { ROW_INTENT_META } from "./row-intent.ts";
+import { customDraftValueFor } from "./selectors/derivations.ts";
 import type { QuestionnaireState } from "./state.ts";
 
 /** Session-lifetime constants. No live-component reads — peripheral values live on canonical state. */
@@ -20,6 +21,7 @@ export type Effect =
 	| { kind: "set_input_buffer"; value: string }
 	| { kind: "clear_input_buffer" }
 	| { kind: "open_input_editor"; value: string }
+	| { kind: "set_input_focused"; focused: boolean }
 	| { kind: "set_notes_value"; value: string }
 	| { kind: "set_notes_focused"; focused: boolean }
 	| { kind: "forward_notes_keystroke"; data: string }
@@ -103,14 +105,6 @@ function notesValueFor(state: QuestionnaireState, tab: number): string {
 	return state.notesByTab.get(tab) ?? state.answers.get(tab)?.notes ?? "";
 }
 
-function customDraftValueFor(state: QuestionnaireState, tab: number): string {
-	const draft = state.customDraftsByTab.get(tab);
-	if (draft !== undefined) return draft;
-	const answer = state.answers.get(tab);
-	if (answer?.kind !== "custom" && answer?.kind !== "multi") return "";
-	return typeof answer.answer === "string" ? answer.answer : "";
-}
-
 function setCustomDraft(state: QuestionnaireState, tab: number, value: string): ReadonlyMap<number, string> {
 	const drafts = new Map(state.customDraftsByTab);
 	drafts.set(tab, value);
@@ -143,6 +137,7 @@ function switchTabResult(state: QuestionnaireState, nextTab: number, ctx: ApplyC
 		currentTab: nextTab,
 		optionIndex: answeredRowIndex(state.answers.get(nextTab), ctx.itemsByTab[nextTab] ?? []),
 		inputMode: false,
+		explainInputOpen: false,
 		notesVisible: false,
 		submitChoiceIndex: 0,
 		multiSelectChecked: syncMultiSelectFromAnswers(state.answers, ctx.questions, nextTab),
@@ -202,7 +197,9 @@ const navHandler: Handler<"nav"> = (state, action, ctx) => {
 };
 
 const inputClearHandler: Handler<"input_clear"> = (state, _action, _ctx) => ({
-	state: { ...state, customDraftsByTab: setCustomDraft(state, state.currentTab, "") },
+	state: state.explainInputOpen
+		? { ...state, explainDraftsByTab: new Map(state.explainDraftsByTab).set(state.currentTab, "") }
+		: { ...state, customDraftsByTab: setCustomDraft(state, state.currentTab, "") },
 	effects: [{ kind: "clear_input_buffer" }],
 });
 const inputEditHandler: Handler<"input_edit"> = (state, action, _ctx) => ({
@@ -210,7 +207,9 @@ const inputEditHandler: Handler<"input_edit"> = (state, action, _ctx) => ({
 	effects: [{ kind: "open_input_editor", value: action.value }],
 });
 const inputReplaceHandler: Handler<"input_replace"> = (state, action, _ctx) => ({
-	state: { ...state, customDraftsByTab: setCustomDraft(state, state.currentTab, action.value) },
+	state: state.explainInputOpen
+		? { ...state, explainDraftsByTab: new Map(state.explainDraftsByTab).set(state.currentTab, action.value) }
+		: { ...state, customDraftsByTab: setCustomDraft(state, state.currentTab, action.value) },
 	effects: [{ kind: "set_input_buffer", value: action.value }],
 });
 
@@ -312,6 +311,40 @@ const notesExitHandler: Handler<"notes_exit"> = (state, _action, _ctx) => {
 	};
 };
 
+function controlResult(state: QuestionnaireState, ctx: ApplyContext, kind: "chat" | "explain", explainNotes?: string): ApplyResult {
+	const question = ctx.questions[state.currentTab];
+	if (!question) return { state, effects: [] };
+	const notes = (kind === "explain" ? explainNotes : notesValueFor(state, state.currentTab))?.trim();
+	const globalNote = state.notesByTab.get(ctx.questions.length);
+	return { state, effects: [
+		{ kind: "set_input_focused", focused: false },
+		{ kind: "done", result: {
+			answers: orderedAnswers(state, ctx.questions), cancelled: false,
+			[kind]: { questionIndex: state.currentTab, question: question.question, ...(notes ? { notes } : {}) },
+			...(globalNote ? { globalNote } : {}),
+		} },
+	] };
+}
+
+const chatHandler: Handler<"chat"> = (s, _a, c) => controlResult(s, c, "chat");
+const explainHandler: Handler<"explain"> = (s, a, c) => controlResult(s, c, "explain", a.notes);
+const explainOpenHandler: Handler<"explain_open"> = (state, _action, ctx) => ({
+	state: { ...state, explainInputOpen: true,
+		optionIndex: Math.max(0, (ctx.itemsByTab[state.currentTab] ?? []).findIndex(item => item.kind === "explain")) },
+	effects: [
+		{ kind: "set_input_buffer", value: state.explainDraftsByTab.get(state.currentTab) ?? "" },
+		{ kind: "set_input_focused", focused: true },
+	],
+});
+const explainCloseHandler: Handler<"explain_close"> = (state, action) => ({
+	state: { ...state, explainInputOpen: false,
+		explainDraftsByTab: new Map(state.explainDraftsByTab).set(state.currentTab, action.value) },
+	effects: [
+		{ kind: "set_input_buffer", value: customDraftValueFor(state, state.currentTab) },
+		{ kind: "set_input_focused", focused: false },
+	],
+});
+
 const cancelHandler: Handler<"cancel"> = (s, _a, c) => doneFor(s, c, true);
 const submitHandler: Handler<"submit"> = (s, _a, c) => doneFor(s, c, false);
 const submitNavHandler: Handler<"submit_nav"> = (s, a, _c) => ({
@@ -343,6 +376,10 @@ const HANDLERS: { [K in QuestionnaireAction["kind"]]: Handler<K> } = {
 	confirm: confirmHandler,
 	toggle: toggleHandler,
 	multi_confirm: multiConfirmHandler,
+	chat: chatHandler,
+	explain_open: explainOpenHandler,
+	explain_close: explainCloseHandler,
+	explain: explainHandler,
 	cancel: cancelHandler,
 	notes_enter: notesEnterHandler,
 	notes_exit: notesExitHandler,

@@ -34,7 +34,9 @@ export interface SubmitPickerProps {
 export class SubmitPicker implements StatefulView<SubmitPickerProps> {
 	private props: SubmitPickerProps;
 
-	constructor(private readonly theme: Theme) {
+	private readonly theme: Theme;
+	constructor(theme: Theme) {
+		this.theme = theme;
 		this.props = { rows: [{ active: false }, { active: false }] };
 	}
 

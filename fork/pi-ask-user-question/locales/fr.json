@@ -3,6 +3,10 @@
 
   "sentinel.other": "Écrivez quelque chose.",
   "sentinel.next": "Suivant",
+  "context.heading": "Pourquoi cette décision compte :",
+  "hint.explain": "Entrée pour expliquer",
+  "hint.close": "Échap pour fermer",
+  "explain.question_title": "Que souhaitez-vous voir expliqué ? (facultatif)",
 
   "submit.label": "Envoyer les réponses",
   "submit.cancel": "Annuler",

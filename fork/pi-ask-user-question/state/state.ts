@@ -9,6 +9,8 @@ export interface QuestionnaireState {
 	currentTab: number;
 	optionIndex: number;
 	inputMode: boolean;
+	explainInputOpen: boolean;
+	explainDraftsByTab: ReadonlyMap<number, string>;
 	notesVisible: boolean;
 	answers: ReadonlyMap<number, QuestionAnswer>;
 	multiSelectChecked: ReadonlySet<number>;

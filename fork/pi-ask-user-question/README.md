@@ -1,95 +1,52 @@
-# @juicesharp/rpiv-ask-user-question
+# pi-ask-user-question
 
-[![npm version](https://img.shields.io/npm/v/@juicesharp/rpiv-ask-user-question.svg)](https://www.npmjs.com/package/@juicesharp/rpiv-ask-user-question)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+给 Pi 注册 `ask_user_question`。模型一次提出 1–4 个问题，用户选择选项、输入自己的答案，或先讨论、要求解释；工具把结果作为结构化数据交回模型。本 Fork 以 `@juicesharp/rpiv-ask-user-question` 2.15.0 为上游基线。
 
-<div align="center">
-  <a href="https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question">
-    <img src="https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/cover.png" alt="rpiv-ask-user-question cover: a tabbed terminal questionnaire asking Which real development task are we planning right now?, with numbered options — Bug fix, New feature, Refactor — each under a one-line description, and a footer of key hints" width="50%">
-  </a>
-</div>
+## 加载与使用
 
-Let the model ask you instead of guessing. This extension gives [Pi Agent](https://github.com/badlogic/pi-mono) one tool — `ask_user_question` — that opens a terminal dialog of up to four questions with written-out options, and hands your choices back as structured data. Install it if you would rather spend fifteen seconds picking than an hour undoing a wrong assumption.
+在 Pi 的 package 配置中启用本包目录，重启 Pi。Pi 直接加载 TypeScript 源码，不需要 build 或 `dist/`。使用仓库根目录声明的 Node 与 Pi 开发环境；修改后用新 process 验证，不用 `/reload` 代替重启。
 
-## Install
+模型调用时必须提供 `context`，先用几句话说明用户正在做什么、选择会改变什么，再给当前任务的具体例子。每题写 2–4 个选项及各自的含义或取舍；界面自动补上自定义回答和适用的控制行，模型不要手写这些行。
 
-```sh
-pi install npm:@juicesharp/rpiv-ask-user-question
-```
+- 终端中默认在 transcript 下方的 editor 区域打开问卷，可继续滚动聊天记录；空间不足时问卷内部滚动，冲突时回退 overlay。
+- 每题都有 `Type something.`；多选能同时提交勾选项和自定义文本。
+- 单选另有 `Chat about this` 和 `Explain More`：前者讨论疑虑，后者要求模型立即用人话解释，不把它们当成业务答案或取消。
+- 可以逐题加 note；多题的 Submit tab 可以加 `globalNote`，并标出尚未回答的问题。
+- RPC/ACP 走宿主原生 `select`/`input`；没有 UI 的运行不向模型提供这个工具。
+- 会话历史使用 Pi 原生工具回执显示问题摘要和答案；模型仍收到完整的结果 envelope。
 
-Restart your Pi session.
+本包不自行请求模型、不联网，也没有 slash command。
 
-## Quick start
+## 配置与依赖
 
-Nothing to set up — the tool is live as soon as Pi restarts. Hand the model a task with a real decision buried in it:
+配置可选，默认即可使用。包只读官方 XDG/legacy 配置位置，不创建或修改文件，也不搬到 Pi 的 agent/config 目录。完整路径、键值和缓存边界见 [配置](docs/configuration.md)。
 
-> Add caching to the API client.
+运行时依赖共享库 `@juicesharp/rpiv-config` `^2.15.0`。`@juicesharp/rpiv-i18n` SDK 可选：存在时共享 locale，不存在时用英文；开发装配可以安装 SDK，但不应因此默认启用它的 extension。它提供的 `/languages` 也不由本包注册。
 
-Rather than picking a strategy on your behalf, the model calls `ask_user_question` and a dialog takes over the bottom of your terminal. Move with `↑`/`↓`, choose with `Enter`, press `n` to attach a note to a question or a global note from the Submit tab, or land on `Type something.` to answer in your own words. In a multi-select question, typed custom text is selected automatically and submitted together with checked options. While typing, `Shift+Enter` adds a line, `Ctrl+G` opens Pi's configured external editor, and `Ctrl+U` clears the draft; browsing another option and returning keeps what you wrote. `Esc` abandons the questionnaire entirely.
+## 可选协作与降级
 
-When the questionnaire begins waiting in an interactive TTY, it emits one standard terminal BEL (`\x07`). Your terminal configuration determines whether that appears as an audible alert, a visual alert, or nothing; redirected and non-TTY output is untouched.
+本包单独启用即可工作，不 import 其他插件。`pi-perf`、tmux supervisor 等只可以作为可选消费者，通过事件观察或驱动问卷；缺少它们不影响提问、作答和结束等待。
 
-![Single question in the dialog: the tab strip reads Feature Type, Design Tab, Testing, Release, Submit; the question Which real development task are we planning right now? sits above four numbered options — Bug fix (Recommended), New feature, Refactor, Perf tuning — each with a one-line description, followed by the appended Type something. row](https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/single-question.jpg)
+上游 `rpiv:ask-user:*` 无版本后缀频道按 **legacy 兼容协议** 保留原名，不因目录迁移改名。它们只面向可信同进程参与方；本包不提供远程连接、认证或网络转发。完整 payload、`toolCallId` 关联和 answer verdict 见 [事件协议](docs/events.md)。
 
-When the model asks several things at once, `Tab` moves between them and a Submit tab reviews everything before it goes back:
+## 验证与排障
 
-![Submit tab of a four-question dialog: a Review your answers list showing Feature Type set to Bug fix and Testing set to Unit tests plus Integration tests, a warning naming Design Tab and Release as still unanswered, a picker offering Submit answers or Cancel, and a dim bottom key-hint row including n to add a note](https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/submit-tab.jpg)
+按 [日常回归](docs/regression-cases.md) 检查问卷、控制草稿、滚动、取消、RPC 和缺少协作者的场景。自动验证命令与测试归属见该文档；这里不保存运行记录。
 
-## What you get
+UI 加载失败不代表用户拒答：模型应改用普通聊天提问。若运行期间依赖被替换，先修复安装，再重启 Pi。`Ctrl+]` 在当前键盘上打不出时，可以改 `collapseKey`；详见下列文档。
 
-- **Typed options instead of a wall of prose** — each question carries 2-4 authored choices, and every choice comes with a description of what it means or what it costs you.
-- **You can always answer in your own words**. A `Type something.` row is appended to every question. On multi-select questions, it keeps checked options and custom text in the same answer. The row widens to the full pane while you type, keeps its multiline draft visible while you browse, and supports Pi's `Shift+Enter` newline and `Ctrl+G` external-editor flows.
-- **Compare real artifacts, not just labels** — an option can carry a markdown `preview` (ASCII mockup, code, diagram, config) that renders in a bordered box beside the option list.
-- **One interruption, not five** — up to four questions arrive in a single tabbed dialog, and the Submit tab lists your answers and names anything still blank before you commit.
-- **Notes on any answer — or on all of them** — `n` opens a multiline note editor on any question tab, and on the Submit tab it opens one global note for the whole questionnaire. Per-question notes reach the model as `user notes: <text>`, the global note as `global note: <text>`; neither marks a question answered.
-- **Keep reading while you answer** — the question opens below the transcript, and `PageUp`/`PageDown` or the mouse wheel keep scrolling the conversation; `Ctrl+]` shrinks the dialog to one line when you want more room, then brings it back with your answers intact.
-- **Works outside the terminal too** — in RPC and ACP hosts such as the VS Code pendant or Zed the questionnaire walks through the host's native dialogs (notes are terminal-only and do not carry over), and in non-interactive runs the tool is removed from the model's tool list instead of failing every call.
+## 文档
 
-## Configuration
-
-Optional. Settings live in `~/.config/rpiv-ask-user-question/config.json`; the file is read, never written.
-
-| Setting | What it does | Default |
-| --- | --- | --- |
-| `collapseKey` | Key that collapses and expands the dialog. Accepts Pi keybinding ids such as `alt+o`; `"off"` disables the shortcut. | `"ctrl+]"` |
-| `notesKey` | Key that opens the notes editor. Any single character, including non-Latin ones such as `т`, or a Pi keybinding id such as `ctrl+n`. | `"n"` |
-| `guidance.description` | Full replacement for the tool description the model sees. A non-empty string replaces the built-in text entirely — no merging. | built-in description |
-| `guidance.promptSnippet` | One-line description of the tool in the system prompt — tune how eagerly the model asks. | built-in snippet |
-| `guidance.promptGuidelines` | Usage guidelines given to the model, as a list of strings. | 4 built-in guidelines |
-
-```json
-{ "collapseKey": "alt+o" }
-```
-
-Malformed JSON falls back to the defaults with a warning; an individual unusable value is silently dropped back to its default. Never an error.
-
-## Reference
-
-- [Tool schema](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/tool-schema.md) — parameters, limits, reserved labels, validation errors, the result envelope, and the `rpiv:ask-user:prompt` event.
-- [Keyboard and layout](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/keyboard.md) — every key, the rows the dialog appends, notes, collapse mode, and how previews and overflow adapt to terminal size.
-- [Configuration](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/configuration.md) — file lookup and `XDG_CONFIG_HOME`, the `collapseKey` grammar, the `guidance.*` prompt overrides, and how invalid values are handled.
-- [Hosts and runtime behavior](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/hosts.md) — terminal vs RPC vs non-interactive, what degrades in each, and the load-failure envelopes.
-- [Localization](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/localization.md) — the nine shipped languages, how the locale is chosen, and how to add one.
-
-## Requirements
-
-- Node.js 22 or newer.
-- Pi Agent, with an interactive terminal or an RPC/ACP host. Non-interactive runs never see the tool.
-- A terminal at least 100 columns wide for side-by-side previews; narrower terminals stack the preview under the options.
-
-No native dependencies, no compiler, no API keys — the extension makes no model calls of its own.
-
-## Troubleshooting
-
-**The model says the questionnaire UI failed to load and asks its questions as chat text.** The dialog's modules were replaced on disk while Pi was running, usually by a package-manager install touching the store. Repair the install if it is broken, then restart Pi; the failure is not recoverable inside the running process.
-
-**`Ctrl+]` does nothing.** On keyboard layouts where `]` sits on the shifted layer (Latin American among them) the default is unreachable. Set `collapseKey` to something you can type, for example `"alt+o"`.
-
-## Related
-
-- [`@juicesharp/rpiv-i18n`](https://www.npmjs.com/package/@juicesharp/rpiv-i18n) — optional; installing it renders the dialog chrome in your language and adds `/languages`.
-- [`@juicesharp/rpiv-pi`](https://www.npmjs.com/package/@juicesharp/rpiv-pi) — the umbrella package whose workflow skills use `ask_user_question` as their developer checkpoint. `/rpiv-setup` offers to install this extension.
+- [工具参数与结果](docs/tool-schema.md)：`context`、校验、`prepareArguments`、答案 envelope 与原生回执。
+- [键盘与布局](docs/keyboard.md)：digits、notes、Kitty、控制草稿、inline/overlay、折叠与预览。
+- [配置](docs/configuration.md)：XDG/legacy 查找、只读策略、快捷键、guidance 与生效时间。
+- [宿主与降级](docs/hosts.md)：TTY、RPC/ACP、无 UI、工具选择和失败边界。
+- [事件协议](docs/events.md)：legacy prompt/blocked/answer/answer-result 与信任边界。
+- [本地化](docs/localization.md)：optional SDK、共享 locale 与英文回退。
+- [加载与性能边界](docs/startup-performance.md)：禁 prewarm、cold load 合并和 strip-only。
+- [日常回归](docs/regression-cases.md)：维护时需要重复检查的场景，不是验收流水。
+- [本地 patch 意图](LOCAL_PATCHES.md)：维护 Fork 时需要保留的差异及取舍。
 
 ## License
 
-MIT — see [LICENSE](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/LICENSE).
+MIT，见 [LICENSE](LICENSE)。

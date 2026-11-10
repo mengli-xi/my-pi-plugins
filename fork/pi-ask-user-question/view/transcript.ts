@@ -18,7 +18,10 @@ type ToolResultView = { content: ReadonlyArray<{ type: string; text?: string }>;
 
 /** Lines laid out at render time, so wrapping and truncation follow the terminal width. */
 class WidthLines implements Component {
-	constructor(private readonly layout: (width: number) => string[]) {}
+	private readonly layout: (width: number) => string[];
+	constructor(layout: (width: number) => string[]) {
+		this.layout = layout;
+	}
 	render(width: number): string[] {
 		return this.layout(width);
 	}
@@ -51,6 +54,14 @@ export function renderAskResult(
 	if (!details) return new WidthLines(() => [theme.fg("success", "✓")]);
 	if (details.cancelled) {
 		return new WidthLines(() => [theme.fg("dim", `✗ ${t("transcript.no_answer", "no answer")}`)]);
+	}
+	const control = details.explain ?? details.chat;
+	if (control) {
+		return new WidthLines((width) => [
+			truncateToWidth(theme.fg("muted", `↪ ${details.explain ? "Explain More" : "Chat about this"}`), width, "…"),
+			...hanging(INDENT, theme.fg("dim", control.question), width),
+			...(control.notes ? hanging(INDENT, theme.fg("dim", `✎ ${control.notes}`), width) : []),
+		]);
 	}
 	const questions = args?.questions ?? [];
 	return new WidthLines((width) =>

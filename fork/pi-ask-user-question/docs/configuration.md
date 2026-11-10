@@ -1,136 +1,67 @@
-# Configuration
+# 配置
 
-Every setting the package reads, where the file lives, and what happens when a value is
-wrong.
+配置可选，缺省即可使用。本包只读配置，不创建目录、不写文件、不改权限；配置保留在官方 XDG/legacy 位置，不搬进 Pi 目录。
 
-## The config file
+## 查找顺序
 
-```
-~/.config/rpiv-ask-user-question/config.json
-```
+1. 用 `@juicesharp/rpiv-config` 的官方路径解析查找 `$XDG_CONFIG_HOME/rpiv-ask-user-question/config.json`。`XDG_CONFIG_HOME` 必须非空且为绝对路径；开头的 `~` 先展开，相对值忽略。无有效覆盖时使用当前用户 home 下的 `.config`。
+2. 只有首选文件不存在时，才检查 legacy `~/.config/rpiv-ask-user-question/config.json`。legacy 路径刻意不受 `XDG_CONFIG_HOME` 影响；不能硬编码某台机器的 home。
+3. 两处都不存在，使用默认值。
 
-The file is optional — with no config at all, every setting takes its default. This
-package only ever *reads* the file; it never creates, writes or chmods it, so its
-permissions are whatever you give it.
+首选文件存在但内容错误或不可读时，不再用 legacy 覆盖它。JSON 语法错误会警告并使用默认对象；合法 JSON 若不是对象（例如 `null`、数组或字符串），静默用默认对象。无法读取或不是普通文件时警告并降级，不让问卷被配置文件阻断。
 
-A complete example:
+读取器用路径和文件版本信号缓存结果；文件未变时不重复读取、解析或重复发同一内容的警告。切换路径或版本变化后重新读取。这个缓存不监听文件，也不让已经打开的问卷实时变更快捷键。这里只读普通文件，不把 FIFO/设备当配置流读取。
+
+## 设置
 
 ```json
 {
   "collapseKey": "alt+o",
+  "notesKey": "ctrl+n",
   "guidance": {
-    "description": "Ask the user structured questions whenever requirements are ambiguous.",
-    "promptSnippet": "Ask me before guessing on anything ambiguous",
+    "promptSnippet": "Ask me before guessing on a meaningful decision",
     "promptGuidelines": [
-      "Batch every clarifying question into one ask_user_question call.",
-      "Put your recommended option first and suffix it with (Recommended)."
+      "Batch clarifying questions into one ask_user_question call.",
+      "Ground context in the user's current task and a concrete example."
     ]
   }
 }
 ```
 
-### Where the file is looked up
-
-1. `$XDG_CONFIG_HOME/rpiv-ask-user-question/config.json`, if `XDG_CONFIG_HOME` is set,
-   non-empty and absolute. A leading `~` is expanded first; a relative value is ignored.
-   Unset or ignored, the directory falls back to `~/.config`.
-2. If that file does not exist, the legacy path `~/.config/rpiv-ask-user-question/config.json`
-   is read. This path deliberately ignores `XDG_CONFIG_HOME`, so an existing config keeps
-   working after you set the variable.
-3. Neither present: all defaults.
-
-If the XDG-path file exists, its result wins even when it is malformed — there is no
-second chance at the legacy path.
-
-### When the file is invalid
-
-Malformed JSON is not fatal. The loader warns on stderr and continues with defaults:
-
-```
-rpiv-config: invalid JSON at <path>, using default ({}) — <parser message>
-```
-
-Valid JSON that is not an object (a string, number, `null`, or an array) is rejected too,
-falling back to defaults — but silently, with no warning. Individual keys with the wrong
-type are likewise dropped back to their default without a warning.
-
-## Settings
-
-| Setting | What it does | Default |
+| 设置 | 含义 | 默认 |
 | --- | --- | --- |
-| `collapseKey` | Key that collapses and expands the dialog. | `"ctrl+]"` |
-| `notesKey` | Key that opens the notes editor. | `"n"` |
-| `guidance.description` | Full text of the tool description the model sees. Replaces the built-in default entirely — no merging. | built-in description |
-| `guidance.promptSnippet` | One-line snippet describing the tool in the system prompt. | built-in snippet |
-| `guidance.promptGuidelines` | List of usage guidelines given to the model. | 4 built-in guidelines |
+| `collapseKey` | 折叠/展开问卷 | `"ctrl+]"` |
+| `notesKey` | 打开逐题或全局 notes | `"n"` |
+| `guidance.description` | 完整替换模型所见 tool description，不合并 | 内置 description |
+| `guidance.promptSnippet` | system prompt 中的一行工具介绍 | 内置 snippet |
+| `guidance.promptGuidelines` | 模型使用工具的规则列表，整体替换 | 内置 guidelines |
+
+类型错误的字段不做字符串等隐式转换，分别回退默认；一个字段无效不影响其他有效字段。快捷键在新问卷创建时读取；guidance 在工具注册时读取，修改后重启 Pi。已打开问卷不受后续修改影响。
 
 ### `collapseKey`
 
-The value uses Pi's keybinding id format: zero or more distinct modifiers from `ctrl`,
-`shift`, `alt`, `super`, joined by `+`, followed by a base key. Values are trimmed and
-lowercased before matching.
+先去首尾空白、转小写，再按 Pi key spec 校验：零个或多个不重复的 `ctrl`、`shift`、`alt`、`super`，以 `+` 连接，最后是基础键。
 
-The base key is either a single printable character from
-`a-z 0-9 _ - ! @ # $ % ^ & * ( ) | ~ \` ' " : ; , . / < > ? [ ] { } = \`, or one of the
-named keys `escape`, `esc`, `enter`, `return`, `tab`, `space`, `backspace`, `delete`,
-`insert`, `clear`, `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`,
-`f1`–`f12`.
+基础键接受 ASCII 单个字母、数字或常见可打印标点（不含 `+`），以及 `escape`/`esc`、`enter`/`return`、`tab`、`space`、`backspace`、`delete`、`insert`、`clear`、`home`、`end`、`pageup`、`pagedown`、`up`、`down`、`left`、`right`、`f1`–`f12`。
 
-Examples that work: `"ctrl+]"`, `"alt+o"`, `"ctrl+shift+h"`, `"f9"`, `"ctrl+}"`.
+例如 `"ctrl+]"`、`"alt+o"`、`"ctrl+shift+h"`、`"f9"`、`"ctrl+}"`。`"off"` 不区分大小写，关闭快捷键且不注册 raw terminal listener；页脚、折叠行和通知都显示配置后的按键，off 时不再提示。
 
-Set `"off"` (any casing) to disable the collapse shortcut entirely — no raw terminal
-listener is registered in that case.
-
-A spec that does not match the grammar is rejected and the default is used. This is
-strict on purpose: Pi's parser takes the last `+`-separated part as the key and ignores
-unknown parts, so a typo like `"ctr+]"` would otherwise silently capture every bare `]`
-keypress at the terminal level.
-
-The footer hint inside the dialog names whatever key you configure (`Alt+O to collapse`
-for `"alt+o"`), as do the collapsed one-line footer and the one-shot notification shown
-when the dialog is first hidden. With `"off"` the collapse hint is dropped from the
-footer entirely, since no shortcut can fire.
+错误 modifier（例如 `"ctr+]"`）、重复 modifier、空片段等回退默认。不能把宽松 parser 误接受的值送进 raw listener，否则拼错修饰键可能捕获裸按键。
 
 ### `notesKey`
 
-A single character matches exactly as your keyboard types it, in any script. On a
-Cyrillic layout, for example, the key that types `n` on a Latin layout types `т`, so set
-`"т"`. Values are trimmed; a single character keeps its case.
+去掉首尾空白后，单个字符按实际输入匹配，保留大小写，支持非 Latin 字符，例如 `"т"`。更长字符串按上述 key spec 校验，例如 `"ctrl+n"`、`"alt+o"`。使用 Kitty keyboard protocol 时，带 modifier 的 spec 可以利用终端报告的 Latin 等价键。
 
-Anything longer is a key spec in the `collapseKey` format, such as `"ctrl+n"` or `"alt+o"`.
-In terminals that use the Kitty keyboard protocol, a modified spec like `"ctrl+n"` also
-works on non-Latin layouts, because the terminal reports the key's Latin equivalent.
+问卷已经用来导航的裸键（Space、Enter/Return、Tab、Esc/Escape、箭头）不能用来抢占 notes；无效值回退 `"n"`。配置为 digit 时 notes 优先于行号选择。提示显示实际配置值；文本编辑器内仍正常输入字符，不触发 notes。
 
-A spec that does not match the grammar, or that names a key the dialog already uses
-(`space`, `enter`, `return`, `tab`, `escape`, `esc`, and the arrow keys), is rejected and
-`"n"` is used. The notes hints in the dialog name whatever key you configure.
+### `guidance.*`
 
-### `guidance.description`, `guidance.promptSnippet` and `guidance.promptGuidelines`
+`description` 和 `promptSnippet` 只接受非空字符串；`promptGuidelines` 只接受非空数组，且每项都是非空字符串。其他值回退对应内置文本。有效值整项替换，不做自动合并。
 
-`guidance.description` replaces the entire built-in description Pi registers for the
-`ask_user_question` tool — the text the model reads when deciding how to use it. There is
-no merging: a valid value wins wholesale. It is used only when it is a non-empty string;
-anything else falls back to the built-in default. Like the other guidance fields it is read
-once, when the extension registers the tool, so changes take effect on the next Pi restart.
+覆盖 description/guidelines 会替换本地关于 `context`、讨论和解释的提示。定制者必须自行保留这些要求；覆盖提示不会改变 schema 的必填字段、保留 label 或运行时校验。
 
-These replace the text Pi puts in the system prompt about when to reach for
-`ask_user_question`. Use them to make the model ask more or less often, or to enforce a
-house style for options.
+## 环境与依赖
 
-`promptSnippet` is used only when it is a non-empty string. `promptGuidelines` is used
-only when it is a non-empty array whose entries are all non-empty strings. Anything else
-falls back to the built-in defaults. Both are read once, when the extension registers the
-tool, so changes take effect on the next Pi restart.
+`XDG_CONFIG_HOME` 只影响上述配置查找。语言配置由 optional i18n SDK 管理，见 [localization.md](localization.md)，不要在此包新增另一份 locale 文件或 Pi 专用路径。
 
-## Environment variables
-
-| Variable | Effect |
-| --- | --- |
-| `XDG_CONFIG_HOME` | Relocates the config directory, as described above. Must be absolute. |
-
-`LANG` and `LC_ALL` influence the dialog language, but they are read by
-[`@juicesharp/rpiv-i18n`](https://www.npmjs.com/package/@juicesharp/rpiv-i18n) rather than
-by this package — see [localization.md](./localization.md).
-
-No other environment variables are read. The package makes no model calls, so it needs no
-API keys or model settings of its own.
+运行时使用共享库 `@juicesharp/rpiv-config` `^2.15.0` 的公开路径和 guidance 接口；本包保持只读并处理自己的缓存与字段校验。无需 API key，也不读取其他插件的私有配置。

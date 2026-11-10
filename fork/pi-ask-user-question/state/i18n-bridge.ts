@@ -47,5 +47,7 @@ try {
 export const t: ScopeFn = scopeImpl;
 
 export function displayLabel(kind: SentinelKind): string {
+	// These local controls deliberately retain their canonical English labels.
+	if (kind === "chat" || kind === "explain") return ROW_INTENT_META[kind].label;
 	return t(`sentinel.${kind}`, ROW_INTENT_META[kind].label);
 }

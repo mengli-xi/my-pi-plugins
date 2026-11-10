@@ -1,3 +1,4 @@
+import type { Component } from "@earendil-works/pi-tui";
 import type { QuestionnaireResult } from "./tool/types.ts";
 
 /**
@@ -56,14 +57,18 @@ export const YIELD_TO_OVERLAY: QuestionnaireResult = Object.freeze({
  * takes keyboard focus, so the inline question stays focused and keeps the transcript
  * scrollable; yielding to it would mount a focused overlay, which in fullscreen Pi takes
  * the viewport's PageUp/PageDown (and, before Pi 1.2, the wheel) until answered (#313).
- * pi-tui's `getTopmostVisibleOverlay()` applies that rule but is private in its typings,
- * so it is duck-typed, with `hasOverlay()` as the fallback for hosts without it.
+ * Stock Pi's public component tree contains editor-slot focus owners, while capturing
+ * overlays own focus outside that tree. A passive overlay leaves focus in the tree.
+ * Hosts without the public focus reader/tree conservatively stack over any overlay.
  */
-export function mustYieldInlineSlot(tui: { terminal: object; hasOverlay?: () => boolean }): boolean {
-	if (hostAllocatesRows(tui.terminal)) return false;
-	const { getTopmostVisibleOverlay } = tui as { getTopmostVisibleOverlay?: () => unknown };
-	if (typeof getTopmostVisibleOverlay === "function") return getTopmostVisibleOverlay.call(tui) !== undefined;
-	return typeof tui.hasOverlay === "function" && tui.hasOverlay();
+export function mustYieldInlineSlot(tui: { terminal: object; hasOverlay?: () => boolean; children?: readonly Component[] }): boolean {
+	if (hostAllocatesRows(tui.terminal) || !tui.hasOverlay?.()) return false;
+	const reader = tui as typeof tui & { getFocusedComponent?: () => Component | null };
+	if (typeof reader.getFocusedComponent !== "function" || !Array.isArray(tui.children)) return true;
+	const focused = reader.getFocusedComponent();
+	const containsFocus = (components: readonly Component[]): boolean =>
+		components.some(component => component === focused || ("children" in component && Array.isArray(component.children) && containsFocus(component.children)));
+	return !containsFocus(tui.children);
 }
 
 export const inlineRowBudget: RowBudget = (terminalRows) =>

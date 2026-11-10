@@ -21,16 +21,19 @@ export class OpenQuestionnaire {
 	private result: QuestionnaireResult | undefined;
 	private deliver: ((result: QuestionnaireResult) => void) | undefined;
 	private resolveEarly!: (result: QuestionnaireResult) => void;
-	/** Resolves with an answer accepted while no dialog was mounted to take it. */
+	/** Settles the wait even while an import or a host's delayed mount is pending. */
 	readonly answeredEarly = new Promise<QuestionnaireResult>((resolve) => {
 		this.resolveEarly = resolve;
 	});
 
-	constructor(
-		readonly toolCallId: string,
-		readonly questions: readonly QuestionData[],
-		public host: AnswerHost,
-	) {}
+	readonly toolCallId: string;
+	readonly questions: readonly QuestionData[];
+	host: AnswerHost;
+	constructor(toolCallId: string, questions: readonly QuestionData[], host: AnswerHost) {
+		this.toolCallId = toolCallId;
+		this.questions = questions;
+		this.host = host;
+	}
 
 	/** The accepted result, once settled. */
 	get settled(): QuestionnaireResult | undefined {
@@ -46,8 +49,8 @@ export class OpenQuestionnaire {
 	settle(result: QuestionnaireResult): boolean {
 		if (this.result) return false;
 		this.result = result;
-		if (this.deliver) this.deliver(result);
-		else this.resolveEarly(result);
+		this.resolveEarly(result);
+		this.deliver?.(result);
 		return true;
 	}
 }

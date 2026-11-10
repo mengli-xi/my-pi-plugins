@@ -1,6 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, Container, type Editor, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { COLLAPSE_KEY_OFF, formatKeySpecForDisplay, formatNotesKeyForDisplay } from "../config.ts";
+import { normalizeQuestionContext, QUESTION_CONTEXT_HEADING } from "../context.ts";
 import { t } from "../state/i18n-bridge.ts";
 import { selectSavedNote } from "../state/selectors/derivations.ts";
 import { formatAnswerScalar } from "../tool/format-answer.ts";
@@ -12,6 +13,7 @@ import {
 	HINT_PART_CLEAR,
 	HINT_PART_COLLAPSE_TEMPLATE,
 	HINT_PART_ENTER,
+	HINT_PART_EXPLAIN,
 	HINT_PART_NAV,
 	HINT_PART_NEW_LINE,
 	HINT_PART_NOTES_TEMPLATE,
@@ -42,10 +44,12 @@ const SAVED_NOTE_LABEL = "Note for this answer:";
  * `…` on terminals too narrow to advertise it.
  */
 class OneLineClippedText implements Component {
-	constructor(
-		private readonly text: string,
-		private readonly paddingLeft: number = 0,
-	) {}
+	private readonly text: string;
+	private readonly paddingLeft: number;
+	constructor(text: string, paddingLeft: number = 0) {
+		this.text = text;
+		this.paddingLeft = paddingLeft;
+	}
 
 	render(width: number): string[] {
 		const pad = " ".repeat(this.paddingLeft);
@@ -88,6 +92,8 @@ export interface TabContentStrategy {
 
 export interface QuestionTabStrategyConfig {
 	theme: Theme;
+	context?: string;
+	explainInput: Editor;
 	questions: readonly QuestionData[];
 	getPreviewPane: () => StatefulView<PreviewPaneProps>;
 	tabsByIndex: ReadonlyArray<TabComponents>;
@@ -104,7 +110,10 @@ export class QuestionTabStrategy implements TabContentStrategy {
 	/** Spacer(1) + OneLineClippedText(hint, 1) = 2 rendered rows. */
 	readonly footerRowCount = 2;
 
-	constructor(private readonly config: QuestionTabStrategyConfig) {}
+	private readonly config: QuestionTabStrategyConfig;
+	constructor(config: QuestionTabStrategyConfig) {
+		this.config = config;
+	}
 
 	headingRows(state: DialogState): Component[] {
 		const out: Component[] = [];
@@ -112,6 +121,12 @@ export class QuestionTabStrategy implements TabContentStrategy {
 		// In multi-question mode the tab bar already shows the header; suppress the inline badge.
 		if (!this.config.isMulti && question?.header && question.header.length > 0) {
 			out.push(new Text(this.config.theme.bg("selectedBg", ` ${question.header} `), 1, 0));
+			out.push(new Spacer(1));
+		}
+		const context = normalizeQuestionContext(this.config.context);
+		if (context) {
+			out.push(new Text(this.config.theme.fg("muted", t("context.heading", QUESTION_CONTEXT_HEADING)), 1, 0));
+			out.push(new Text(context, 1, 0));
 			out.push(new Spacer(1));
 		}
 		if (question) {
@@ -133,6 +148,13 @@ export class QuestionTabStrategy implements TabContentStrategy {
 	}
 
 	midRows(state: DialogState): Component[] {
+		if (state.explainInputOpen) {
+			return [
+				new Text(this.config.theme.fg("customMessageLabel", t("explain.question_title", "What would you like explained? (optional)")), 1, 0),
+				this.config.explainInput,
+				new Spacer(1),
+			];
+		}
 		if (state.notesVisible) {
 			return [
 				new Text(this.config.theme.fg("muted", t("notes.header", NOTES_HEADER)), 1, 0),
@@ -170,6 +192,10 @@ export class QuestionTabStrategy implements TabContentStrategy {
 	}
 
 	focusedItemRowRange(width: number, state: DialogState): [number, number] | undefined {
+		if (state.explainInputOpen) {
+			const start = this.bodyHeight(width, state) + 1;
+			return [start, start + this.midRows(state).reduce((sum, row) => sum + row.render(width).length, 0)];
+		}
 		const question = this.config.questions[state.currentTab];
 		const mso = this.config.tabsByIndex[state.currentTab]?.multiSelect;
 		if (question?.multiSelect === true && mso) return mso.focusedItemRowRange(width);
@@ -191,7 +217,10 @@ export class SubmitTabStrategy implements TabContentStrategy {
 	/** Spacer(1) + Text(prompt, 1) + submitPicker(2) + OneLineClippedText(hint, 1) = 5 rendered rows. Fallback path lands at 5 via 2 Spacer(1)s in the picker slot. */
 	readonly footerRowCount = 5;
 
-	constructor(private readonly config: SubmitTabStrategyConfig) {}
+	private readonly config: SubmitTabStrategyConfig;
+	constructor(config: SubmitTabStrategyConfig) {
+		this.config = config;
+	}
 
 	headingRows(_state: DialogState): Component[] {
 		return [
@@ -317,11 +346,12 @@ export function buildHintText(
 	collapseKey: string,
 	notesKey: string,
 ): string {
+	if (state.explainInputOpen) return [t("hint.explain", HINT_PART_EXPLAIN), t("hint.newline", HINT_PART_NEW_LINE), t("hint.close", "Esc to close"), t("hint.clear", HINT_PART_CLEAR)].join(" · ");
 	const parts: string[] = [t("hint.enter", HINT_PART_ENTER), t("hint.navigate", HINT_PART_NAV)];
 	if (question?.multiSelect === true) parts.push(t("hint.toggle", HINT_PART_TOGGLE));
 	if (question && !state.notesVisible && !state.inputMode)
 		parts.push(notesHint("hint.notes", HINT_PART_NOTES_TEMPLATE, notesKey));
-	if (isMulti) parts.push(t("hint.tab", HINT_PART_TAB));
+	if (isMulti && !state.inputMode && !state.notesVisible) parts.push(t("hint.tab", HINT_PART_TAB));
 	parts.push(t("hint.cancel", HINT_PART_CANCEL));
 	if (collapseKey !== COLLAPSE_KEY_OFF) {
 		parts.push(

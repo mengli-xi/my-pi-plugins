@@ -3,6 +3,10 @@
 
   "sentinel.other": "Schreibe etwas.",
   "sentinel.next": "Weiter",
+  "context.heading": "Warum diese Entscheidung wichtig ist:",
+  "hint.explain": "Enter zum Erklären",
+  "hint.close": "Esc zum Schließen",
+  "explain.question_title": "Was soll genauer erklärt werden? (optional)",
 
   "submit.label": "Antworten senden",
   "submit.cancel": "Abbrechen",

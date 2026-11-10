@@ -1,199 +1,117 @@
-# Tool schema
+# 工具参数与结果
 
-The complete programmatic surface of `ask_user_question`: what the model sends, what
-validation rejects, what comes back, and the event other extensions can listen to.
+本页定义模型发送给 `ask_user_question` 的数据，以及模型和 Pi 得到的结果。宿主差异见 [hosts.md](hosts.md)，事件见 [events.md](events.md)。
 
-## Parameters
+## 参数
 
 ```ts
 ask_user_question({
+  context: string,
   questions: [
     {
-      question: string,            // full question text, ends with "?"
-      header: string,              // chip label, max 16 chars
+      question: string,
+      header: string,
       options: [
-        {
-          label: string,           // 1-5 words, max 60 chars
-          description: string,     // what the choice means / its trade-off
-          preview?: string,        // markdown rendered next to the options
-        },
-        // … 2-4 options total
+        { label: string, description: string, preview?: string },
+        // 每题 2–4 个选项
       ],
-      multiSelect?: boolean,       // default false
+      multiSelect?: boolean, // 默认 false
     },
-    // … 1-4 questions total
-  ]
+    // 每次 1–4 题
+  ],
 })
 ```
 
-### Limits
+`context` 是一个必填字符串，不再拆分字段。用 1–3 句简短的话，向没读过前文的用户说明：用户现在正在看什么或做什么、这个选择会改变什么，再给当前功能、数值或操作的具体例子。先讲用户能看到的影响，必要术语要解释成实际表现。不要写内部推理、复述题目/选项、未解释的名字/缩写/架构术语或文件路径。TUI 和原生 RPC 对话框将它放在 `Why this decision matters` 标题下。
 
-| Field | Constraint | Enforced by |
-| --- | --- | --- |
-| `questions` | 1-4 entries | TypeBox schema + `validateQuestionnaire` |
-| `questions[].header` | max 16 characters | TypeBox schema only |
-| `questions[].options` | 2-4 entries | TypeBox schema (both bounds) + `validateQuestionnaire` (minimum only) |
-| `options[].label` | max 60 characters | TypeBox schema only |
-| `options[].preview` | single-select questions only | tool description (multi-select tabs render checkbox rows) |
+`question` 写完整问题；`header` 是短标签。`label` 建议 1–5 个词；`description` 必须说明含义或取舍。推荐项放在最前，label 以 `(Recommended)` 结尾。`preview` 是用于比较的 Markdown（mockup、代码、图或配置），只给单选题。
 
-The two `maxLength` limits are checked by the parameter schema before `execute` runs;
-the runtime validator does not re-check them.
-
-### Reserved option labels
-
-Authoring any of `"Other"`, `"Type something."`, or `"Next"` as an option label is
-rejected with `reserved_label`. The last two are the runtime sentinel rows the dialog
-appends itself; `"Other"` is reserved because models are conditioned to reach for it.
-Reservation is unconditional — a single-select question rejects `"Next"` even though
-that row is never appended there.
-
-## Validation errors
-
-Every rejection returns `cancelled: true`, an empty `answers` array, and an `error`
-code. The `content[0].text` string is written for the model, not for a log.
-
-| `error` | Cause |
+| 字段 | 限制 |
 | --- | --- |
-| `no_questions` | `questions` was empty |
-| `too_many_questions` | more than 4 questions in one call |
-| `duplicate_question` | two questions with identical text |
-| `empty_options` | a question carried fewer than 2 options |
-| `reserved_label` | an option used a reserved label |
-| `duplicate_option_label` | two options in one question share a label |
-| `no_ui` | the run has no UI (`ctx.hasUI === false`) |
-| `no_custom_ui` | the host cannot render custom UI and exposes no `select`/`input` dialogs |
-| `session_load_failed` | the dialog module failed to import (dependencies changed on disk mid-session) |
-| `stale_module_cache` | the loader cached a broken module after an earlier failed import; needs a Pi restart |
+| `context` | 不得为空或只有空白 |
+| `questions` | 1–4 项 |
+| `header` | 最多 16 个字符 |
+| `options` | 2–4 项 |
+| `label` | 最多 60 个字符；同题不能重复 |
+| `question` | 同一问卷不能重复 |
 
-`reserved_label` short-circuits before `duplicate_option_label`.
+长度和选项上限由参数 schema 检查；执行时的问卷校验不重复所有 schema 限制。解释措辞等要求属于模型 guidance，不是自然语言语义校验器。
 
-## Result
+### 参数预处理
+
+Pi 的 `prepareArguments` 在 schema 校验前修复嵌套 JSON 字符串：`questions`/`options` 本应是数组，题目/选项本应是对象时，只在字符串能解析成对应形状时解码。普通参数保持原样，错误形状仍交给 schema 报错；这不是放宽必填字段。
+
+入口统一规范化文本换行：`\r\n` 变成 `\n`，单独的 `\r` 删除，不变成空格或新行。校验、TUI、RPC、结果和 prompt 事件使用同一份规范化文本。
+
+### 保留 label
+
+模型不得写 `Other`、`Type something.`、`Chat about this`、`Explain More`、`Next`。界面自动补上适用行；比较始终使用 canonical English，不随 UI locale 改变。即使某题不显示该控制行，label 仍保留。命中返回 `reserved_label`，优先于重复 label 错误。
+
+## 错误
+
+问卷校验或运行环境拒绝时，结果包含 `cancelled: true`、空 `answers` 和 `error`。schema 先拒绝的错误由 Pi 处理，不保证进入工具执行。
+
+| `error` | 含义 |
+| --- | --- |
+| `empty_context` | context 为空或只有空白 |
+| `no_questions` / `too_many_questions` | 没有题目 / 超过 4 题 |
+| `duplicate_question` | 题目文本重复 |
+| `empty_options` | 少于 2 个选项 |
+| `reserved_label` / `duplicate_option_label` | 使用保留 label / 同题 label 重复 |
+| `no_ui` | `ctx.hasUI === false` |
+| `no_custom_ui` | 没有可用 custom UI，也没有完整 `select`/`input` fallback |
+| `session_load_failed` | 问卷模块 import 失败 |
+| `stale_module_cache` | import 返回的 namespace 缺少预期 session class |
+
+UI 不可用或加载失败表示用户没有看到问题，不是用户拒绝。模型应读错误正文并改用普通聊天提问；修复方式见 [hosts.md](hosts.md)。
+
+## 结果
 
 ```ts
 {
-  content: [{ type: "text", text: string }], // envelope prose, or the decline message
+  content: [{ type: "text", text: string }],
   details: {
     answers: Array<{
       questionIndex: number,
       question: string,
       kind: "option" | "custom" | "multi",
-      answer: string | null,       // option label, custom text, or null
-      selected?: string[],         // chosen labels, multi-select only; can accompany answer
-      notes?: string,              // free-text note, when you wrote one
-      preview?: string,            // echoed back when the chosen option carried a preview
+      answer: string | null,
+      selected?: string[],
+      notes?: string,
+      preview?: string,
     }>,
     cancelled: boolean,
-    globalNote?: string,          // Submit-tab note; present even when cancelled is true
-    unanswered?: number[],        // indexes of questions left blank on a partial submit
-    error?: QuestionnaireError,    // one of the codes above
-  }
+    globalNote?: string,
+    unanswered?: number[],
+    chat?: { questionIndex: number, question: string, notes?: string },
+    explain?: { questionIndex: number, question: string, notes?: string },
+    error?: QuestionnaireError,
+  },
 }
 ```
 
-### Envelope text
+- 单选选项为 `kind: "option"`，`answer` 为 label；有 preview 时原文回传。
+- 自定义单选为 `kind: "custom"`，空白自定义输入不构成答案。
+- 多选为 `kind: "multi"`，勾选 label 放在 `selected`，自定义文本放在 `answer`，没有文本时为 `null`。两者能同时存在，不能相互覆盖。
+- 逐题 note 放在答案的 `notes`；note 本身不算回答了该题。Submit tab 的全局 note 放在 `globalNote`。
+- 允许部分提交；`unanswered` 列出未答题目的 0-based index，全答完时省略。多选显式提交空选择与完全没回答不是同一状态。
 
-On success the text reads `User has answered your questions: "<question>"="<answer>". …
-You can now continue with the user's answers in mind.` A chosen option's `preview` is
-appended as `selected preview: <markdown>`, a per-question note as `user notes: <text>`,
-and the Submit tab's global note as a trailing `global note: <text>` segment. A global
-note alone still yields the answered envelope — it counts as an answer even when every
-question is blank.
+### 给模型的 envelope
 
-Cancelling, and any result with neither answer segments nor a global note, both collapse
-to the single string `User declined to answer questions` so the model sees one canonical
-signal. Partial submission is allowed: the questions left blank are named in an
-`unanswered: "<question>", …` segment after the answers (before any global note), and their
-indexes are in `details.unanswered`. Both are absent when every question is answered.
-A cancelled result always reads as the decline in text; its note, if any, survives only
-in `details.globalNote`.
+正常提交使用 `User has answered your questions:` 开头，并以 `You can now continue with the user's answers in mind.` 结束。每个答案为 `"<question>"="<answer>"`，选中的 preview 跟在 `selected preview:` 后，逐题 note 跟在 `user notes:` 后。部分提交增加 `unanswered:` 题目列表；全局 note 作为最后的 `global note:` 段。
 
-## Event contract
+只有全局 note、没有逐题答案，也算正常提交。没有答案也没有全局 note，或用户取消时，正文统一为 `User declined to answer questions`。取消的正文始终是拒答；已有全局 note 可以保留在 `details.globalNote`，不能据此把取消当成同意。
 
-Everything here imports from the `/events` subpath.
+### 讨论与解释
 
-### Outbound
+选择 `Chat about this` 或 `Explain More` 后，当前调用以控制请求结束；`cancelled` 为 `false`，保留之前的答案，在 `chat` 或 `explain` 中记录目标题和可选文字。它们不伪造该题答案。
 
-`rpiv:ask-user:prompt` carries the questionnaire, emitted after validation passes and
-before the dialog is shown:
+`chat` 用于质疑假设、指出选项遗漏或讨论别的方向，模型可以先问用户想讨论什么。`explain` 要求模型立即用普通语言说明用户所处场景、解释陌生术语、比较选项差别并给当前任务的例子，不得先问「你哪里不懂」。控制 envelope 带上用户可见 context、目标题和已有答案；解释请求还带上选项 label/description，供模型逐项说明。可选输入只进入对应控制请求的 `notes`。
 
-```ts
-import { ASK_USER_PROMPT_EVENT, type AskUserPromptEventPayload } from "@juicesharp/rpiv-ask-user-question/events";
+输入和 Esc 的边界见 [keyboard.md](keyboard.md)；原生对话框的限制见 [hosts.md](hosts.md)。
 
-pi.events.on(ASK_USER_PROMPT_EVENT, (payload: AskUserPromptEventPayload) => {
-  // payload.toolCallId — names this questionnaire on the events below
-  // payload.questions[].{ question, header, multiSelect, options[] }
-  // payload.questions[].options[].{ label, description, hasPreview }
-});
-```
+## Pi 原生工具回执
 
-Preview *content* is deliberately not shipped in the payload — only `hasPreview: boolean` —
-so listeners forwarding the event across a process or network boundary stay cheap.
+历史中收起的 call 用 `Ask` 和题目 header 表示；result 显示答案摘要，多题按题排列，未答题标为 `not answered`，notes 用 `✎` 行。自定义答案带引号，展示 label 时去掉 `(Recommended)`。展开（`Ctrl+O`）可看题目全文和已选 preview；拒答显示 `✗ no answer`，错误显示首行。
 
-`rpiv:ask-user:blocked` brackets the wait for input: `{ active: true, toolCallId }` before the
-dialog opens, `{ active: false, toolCallId }` in a `finally` when it closes for any reason, so
-a listener can tell blocked-on-human apart from working. Several questionnaires can be open
-at once (Pi runs tool calls in parallel), so match `active: false` to its prompt by
-`toolCallId` — that is also how a remote mirror learns a question was answered elsewhere.
-
-### Inbound
-
-`rpiv:ask-user:answer` answers or cancels one open questionnaire without synthesizing
-keystrokes — for programs driving Pi from outside: a pane supervisor, a phone or web
-bridge, a test harness. Name the questionnaire by the `toolCallId` from its prompt event:
-
-```ts
-import {
-  ASK_USER_ANSWER_EVENT,
-  ASK_USER_ANSWER_RESULT_EVENT,
-  ASK_USER_PROMPT_EVENT,
-  type AskUserAnswerResultEventPayload,
-  type AskUserPromptEventPayload,
-} from "@juicesharp/rpiv-ask-user-question/events";
-
-pi.events.on(ASK_USER_PROMPT_EVENT, ({ toolCallId }: AskUserPromptEventPayload) => {
-  pi.events.emit(ASK_USER_ANSWER_EVENT, {
-    toolCallId,
-    requestId: "r1", // optional, echoed on the verdict
-    answers: [
-      { questionIndex: 0, optionIndexes: [1] },                 // single-select: one index…
-      { questionIndex: 1, text: "something else" },             // …or custom text
-      { questionIndex: 2, optionIndexes: [0, 2], text: "and" }, // multi-select: either or both
-    ],
-    globalNote: "optional, like the Submit tab's note",
-  });
-  // or decline, as Esc does: { toolCallId, cancel: true }
-});
-
-pi.events.on(ASK_USER_ANSWER_RESULT_EVENT, (v: AskUserAnswerResultEventPayload) => {
-  // { ok, code?, reason?, requestId?, toolCallId? }
-});
-```
-
-Indexes are 0-based into the prompt's `questions` and each question's `options`. Per-question
-`notes` are accepted too; notes are trimmed and dropped when blank, as in the dialog.
-
-- **When:** from the moment the prompt event is emitted — answering straight from the
-  prompt listener works, and no dialog is shown — until the questionnaire closes.
-- **First answer wins**, typed in the terminal or sent here. A later one is refused.
-- **All or nothing.** Every question must be answered once, indexes in range and distinct,
-  custom text not blank. Otherwise nothing is applied and the dialog stays open — a partly
-  applied answer would reach the model indistinguishable from one the user gave. Unknown
-  fields are ignored.
-- **One verdict per attempt** on `rpiv:ask-user:answer-result`. Branch on `code`; `reason`
-  is for logs and its wording may change:
-
-| `code` | Meaning |
-|---|---|
-| `not_found` | No open questionnaire has that `toolCallId` — never opened, or already answered or closed. |
-| `invalid_payload` | A field is missing or has the wrong type. |
-| `invalid_answer` | Well-formed, but does not fit the questions: a question unanswered or answered twice, an index out of range or repeated, blank text, two options or option plus text on single-select. |
-| `unsupported_host` | An RPC/ACP host shows the questions in its own dialogs ([Hosts and runtime behavior](./hosts.md)); those cannot be answered from here. |
-
-The bus is per session: questions asked inside a `/lanes` workflow child run on that child's
-own bus, so an emitter on the parent session's bus cannot see or answer them.
-
-### Stability
-
-Stability policy for the `rpiv:*` namespace: channel names are immutable, payload changes
-are append-only and always optional, payloads stay JSON-safe, and any breaking change ships
-as a new channel (e.g. `rpiv:ask-user:prompt.v2`) rather than a version field.
+这是展示层，不改变模型得到的 `content`/`details`，也不需要某个样式插件接管回执。消费方应读结构化字段，不解析显示文字。

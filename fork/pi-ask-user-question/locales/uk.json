@@ -3,6 +3,10 @@
 
   "sentinel.other": "Введіть щось.",
   "sentinel.next": "Далі",
+  "context.heading": "Чому це рішення важливе:",
+  "hint.explain": "Enter — пояснити",
+  "hint.close": "Esc — закрити",
+  "explain.question_title": "Що ви хочете уточнити? (необов’язково)",
 
   "submit.label": "Надіслати відповіді",
   "submit.cancel": "Скасувати",

@@ -1,4 +1,4 @@
-import { CURSOR_MARKER, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, renderFakeCursor, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 // Grapheme-aware extraction at the cursor: pi-tui's Editor reports UTF-16
 // line/column positions, so the cursor can land between code units of one cluster
@@ -48,7 +48,7 @@ function buildCursorRaw(buffer: string, offset: number): string {
 	const cursorAtLineEnd = rawAt === "\n";
 	const atCursor = rawAt === "" || rawAt === " " || cursorAtLineEnd ? "\xa0" : rawAt;
 	const after = buffer.slice(offset + (cursorAtLineEnd ? 0 : rawAt.length));
-	return `${before}${CURSOR_MARKER}\x1b[7m${atCursor}\x1b[27m${after}`;
+	return `${before}${CURSOR_MARKER}${renderFakeCursor(atCursor)}${after}`;
 }
 
 /**

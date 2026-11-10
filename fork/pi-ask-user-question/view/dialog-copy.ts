@@ -7,6 +7,7 @@ import {
 
 /** Leaf: imports nothing from `view/`, so `dialog-builder` and `tab-content-strategy` never form a runtime cycle (#208). */
 
+export const HINT_PART_EXPLAIN = "Enter to explain";
 export const HINT_PART_ENTER = "Enter to select";
 export const HINT_PART_NAV = "↑/↓ to navigate";
 export const HINT_PART_NEW_LINE = "Shift+Enter for newline";

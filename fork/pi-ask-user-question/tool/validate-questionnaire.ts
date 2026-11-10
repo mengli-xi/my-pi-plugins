@@ -1,5 +1,6 @@
 import { MAX_QUESTIONS, MIN_OPTIONS, type QuestionnaireError, type QuestionParams, RESERVED_LABELS } from "./types.ts";
 
+export const ERROR_EMPTY_CONTEXT = "Error: Context must explain why the user is being asked to decide";
 export const ERROR_NO_QUESTIONS = "Error: At least one question is required";
 export const ERROR_TOO_MANY_QUESTIONS = `Error: At most ${MAX_QUESTIONS} questions are allowed per invocation`;
 export const ERROR_DUPLICATE_QUESTION = "Error: Question text must be unique within an invocation";
@@ -17,6 +18,9 @@ export type ValidationResult = { ok: true } | { ok: false; error: QuestionnaireE
  * `reserved_label` MUST short-circuit before `duplicate_option_label`.
  */
 export function validateQuestionnaire(typed: QuestionParams): ValidationResult {
+	if (typeof typed.context !== "string" || typed.context.trim().length === 0) {
+		return { ok: false, error: "empty_context", message: ERROR_EMPTY_CONTEXT };
+	}
 	if (typed.questions.length === 0) {
 		return { ok: false, error: "no_questions", message: ERROR_NO_QUESTIONS };
 	}

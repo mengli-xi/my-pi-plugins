@@ -1,5 +1,15 @@
 import type { QuestionAnswer, QuestionData } from "../../tool/types.ts";
 import type { WrappingSelectItem } from "../../view/components/wrapping-select.ts";
+import type { QuestionnaireState } from "../state.ts";
+
+/** The custom row's draft, even while the shared editor belongs to Explain More. */
+export function customDraftValueFor(state: QuestionnaireState, tab: number): string {
+	const draft = state.customDraftsByTab.get(tab);
+	if (draft !== undefined) return draft;
+	const answer = state.answers.get(tab);
+	if (answer?.kind !== "custom" && answer?.kind !== "multi") return "";
+	return typeof answer.answer === "string" ? answer.answer : "";
+}
 
 /**
  * Which row in the active tab should be marked as "previously confirmed"? Drives the

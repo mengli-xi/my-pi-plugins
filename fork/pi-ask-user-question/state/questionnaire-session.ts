@@ -47,6 +47,8 @@ function initialState(): QuestionnaireState {
 		currentTab: 0,
 		optionIndex: 0,
 		inputMode: false,
+		explainInputOpen: false,
+		explainDraftsByTab: new Map(),
 		notesVisible: false,
 		answers: new Map(),
 		multiSelectChecked: new Set(),
@@ -80,6 +82,7 @@ export class QuestionnaireSession {
 	private readonly notesKey: string;
 	private readonly canReopenWhileHidden: boolean;
 	private inputEditorOpen = false;
+	private disposed = false;
 
 	/**
 	 * Overlay handle captured by `ctx.ui.custom`'s `onHandle` callback. Lets the session
@@ -107,6 +110,7 @@ export class QuestionnaireSession {
 		const built = buildQuestionnaire({
 			tui: this.tui,
 			theme: config.theme,
+			context: config.params.context,
 			questions: this.questions,
 			itemsByTab: this.itemsByTab,
 			isMulti: this.isMulti,
@@ -128,7 +132,7 @@ export class QuestionnaireSession {
 	private assembleComponent(built: QuestionnaireBuilt, theme: Theme): QuestionnaireSessionComponent {
 		const collapsedRender = this.buildCollapsedRender(theme);
 		return {
-			render: (width) => (this.state.collapsed ? collapsedRender(width) : built.render(width)),
+			render: (width) => this.disposed ? [] : (this.state.collapsed ? collapsedRender(width) : built.render(width)),
 			invalidate: built.invalidate,
 			handleInput: (data) => this.dispatch(data),
 		};
@@ -157,7 +161,7 @@ export class QuestionnaireSession {
 	}
 
 	dispatch(data: string): void {
-		if (this.inputEditorOpen) return;
+		if (this.disposed || this.inputEditorOpen) return;
 		const action = routeKey(data, this.state, this.runtime());
 		if (action.kind === "ignore") {
 			this.handleIgnoreInline(data);
@@ -167,9 +171,11 @@ export class QuestionnaireSession {
 	}
 
 	private commit(action: QuestionnaireAction): void {
+		if (this.disposed) return;
 		const result = reduce(this.state, action, this.applyContext());
 		this.state = result.state;
 		for (const effect of result.effects) this.runEffect(effect);
+		if (this.disposed) return;
 		this.state = this.mirrorNotesDraft(this.state);
 		this.viewAdapter.apply(this.state);
 	}
@@ -192,6 +198,9 @@ export class QuestionnaireSession {
 			case "open_input_editor":
 				this.openInputEditorAsync(effect.value);
 				return;
+			case "set_input_focused":
+				this.inlineInput.focused = effect.focused;
+				return;
 			case "set_notes_value":
 				this.notesInput.setText(effect.value);
 				return;
@@ -210,6 +219,7 @@ export class QuestionnaireSession {
 				if (this.canReopenWhileHidden) this.overlayHandle?.setHidden(effect.hidden);
 				return;
 			case "done":
+				this.dispose();
 				this.done(effect.result);
 				return;
 		}
@@ -238,7 +248,7 @@ export class QuestionnaireSession {
 	 * text/cursor state without a reducer round-trip.
 	 */
 	private handleIgnoreInline(data: string): void {
-		if (!this.state.inputMode) return;
+		if (this.state.collapsed || (!this.state.inputMode && !this.state.explainInputOpen)) return;
 		this.inlineInput.handleInput(data);
 		this.viewAdapter.apply(this.state);
 	}
@@ -278,7 +288,7 @@ export class QuestionnaireSession {
 	 * are no-ops — the session still tracks `state.collapsed` for the view layer.
 	 */
 	setOverlayHandle(handle: OverlayHandle): void {
-		this.overlayHandle = handle;
+		if (!this.disposed) this.overlayHandle = handle;
 	}
 
 	/**
@@ -289,7 +299,14 @@ export class QuestionnaireSession {
 	 * through `commit` so the transition stays in the reducer and the overlay hide
 	 * happens via the `set_overlay_hidden` effect like every other side effect.
 	 */
+	dispose(): void {
+		this.disposed = true;
+		this.inlineInput.focused = false;
+		this.notesInput.focused = false;
+		this.overlayHandle = undefined;
+	}
+
 	toggleCollapsedExternal(): void {
-		if (!this.inputEditorOpen) this.commit({ kind: "toggle_collapsed" });
+		if (!this.disposed && !this.inputEditorOpen) this.commit({ kind: "toggle_collapsed" });
 	}
 }

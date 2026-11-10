@@ -3,6 +3,10 @@
 
   "sentinel.other": "输入内容",
   "sentinel.next": "下一个",
+  "context.heading": "为什么现在需要你决定：",
+  "hint.explain": "回车开始解释",
+  "hint.close": "Esc 关闭",
+  "explain.question_title": "你希望进一步解释什么？（可选）",
 
   "submit.label": "提交答案",
   "submit.cancel": "取消",

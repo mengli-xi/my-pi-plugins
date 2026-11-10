@@ -4,6 +4,8 @@ import type { QuestionAnswer, QuestionnaireResult, QuestionParams } from "./type
 export const DECLINE_MESSAGE = "User declined to answer questions";
 export const ENVELOPE_PREFIX = "User has answered your questions:";
 export const ENVELOPE_SUFFIX = "You can now continue with the user's answers in mind.";
+export const CHAT_MESSAGE = 'The user chose "Chat about this" instead of answering the current question. They may disagree with an assumption, see a flaw in the proposed choices, or want to discuss a different direction. Ask what they want to discuss, then address that concern before asking again when appropriate.';
+export const EXPLAIN_MESSAGE = 'The user chose "Explain More" because the current question is not yet understandable enough to answer. Explain it immediately in plain language: describe the user-visible situation, define any unfamiliar terms, compare what each option would change, and give one concrete example using the current task. Do not first ask what they did not understand. After the explanation, ask the question again when appropriate.';
 
 /**
  * Map a `QuestionnaireResult` (or null/cancelled) to the LLM-facing tool envelope.
@@ -25,6 +27,18 @@ export function buildQuestionnaireResponse(result: QuestionnaireResult | null | 
 			cancelled: true,
 			...(result?.globalNote && result.globalNote.length > 0 ? { globalNote: result.globalNote } : {}),
 		});
+	}
+	const control = result.explain
+		? { request: result.explain, message: EXPLAIN_MESSAGE, label: "Question to explain" }
+		: result.chat ? { request: result.chat, message: CHAT_MESSAGE, label: "Question selected for discussion" } : undefined;
+	if (control) {
+		const parts = [control.message, `User-facing context: ${params.context.trim()}`, `${control.label}: "${control.request.question}".`];
+		const question = params.questions[control.request.questionIndex];
+		if (result.explain && question) parts.push(`Options to compare:\n${question.options.map(o => `- ${o.label}: ${o.description}`).join("\n")}`);
+		if (result.answers.length) parts.push(`Answers already provided: ${result.answers.map(buildAnswerSegment).join(" ")}`);
+		if (control.request.notes) parts.push(`User notes: ${control.request.notes}`);
+		if (result.globalNote) parts.push(`global note: ${result.globalNote}.`);
+		return buildToolResult(parts.join("\n"), result);
 	}
 	const segments: string[] = [];
 	const unanswered: number[] = [];

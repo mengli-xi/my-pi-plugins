@@ -15,7 +15,7 @@ export type RowKind = WrappingSelectItem["kind"];
  * derivation, and `LABELS_BY_KIND` consumers iterate this list.
  */
 export type SentinelKind = Exclude<RowKind, "option">;
-export const SENTINEL_KINDS: readonly SentinelKind[] = ["other", "next"];
+export const SENTINEL_KINDS: readonly SentinelKind[] = ["other", "chat", "explain", "next"];
 
 /**
  * Per-kind static metadata. Pure data — no closures, no per-kind handler
@@ -58,6 +58,7 @@ export interface RowIntentMeta {
 	reserved: boolean;
 	livesInMainList: boolean;
 	numbered: boolean;
+	leadingDivider?: boolean;
 	activatesInputMode: boolean;
 	blocksMultiToggle: boolean;
 	autoSubmitsInMulti: boolean;
@@ -88,6 +89,30 @@ export const ROW_INTENT_META: Record<RowKind, RowIntentMeta> = {
 		autoAppendOnSingleSelect: true,
 		autoAppendOnMultiSelect: true,
 	},
+	chat: {
+		label: "Chat about this",
+		reserved: true,
+		livesInMainList: true,
+		numbered: true,
+		leadingDivider: true,
+		activatesInputMode: false,
+		blocksMultiToggle: true,
+		autoSubmitsInMulti: false,
+		autoAppendOnSingleSelect: true,
+		autoAppendOnMultiSelect: false,
+	},
+	explain: {
+		label: "Explain More",
+		reserved: true,
+		livesInMainList: true,
+		numbered: true,
+		leadingDivider: false,
+		activatesInputMode: false,
+		blocksMultiToggle: true,
+		autoSubmitsInMulti: false,
+		autoAppendOnSingleSelect: true,
+		autoAppendOnMultiSelect: false,
+	},
 	next: {
 		label: "Next",
 		reserved: true,
@@ -107,6 +132,8 @@ export const ROW_INTENT_META: Record<RowKind, RowIntentMeta> = {
  */
 export const LABELS_BY_KIND: { readonly [K in SentinelKind]: string } = {
 	other: ROW_INTENT_META.other.label,
+	chat: ROW_INTENT_META.chat.label,
+	explain: ROW_INTENT_META.explain.label,
 	next: ROW_INTENT_META.next.label,
 };
 
@@ -114,6 +141,11 @@ export const LABELS_BY_KIND: { readonly [K in SentinelKind]: string } = {
  * Reserved-label set for runtime validation. Includes "Other" (a model-conditioned
  * label that has no runtime kind) plus every sentinel with `reserved: true`.
  */
+export function leadingDividerFor(kind: RowKind, width: number): string | undefined {
+	if (!ROW_INTENT_META[kind].leadingDivider) return undefined;
+	return "─".repeat(Math.max(1, Math.floor(width)));
+}
+
 export const RESERVED_LABEL_SET: ReadonlySet<string> = new Set<string>([
 	"Other",
 	...SENTINEL_KINDS.filter((k) => ROW_INTENT_META[k].reserved).map((k) => ROW_INTENT_META[k].label),

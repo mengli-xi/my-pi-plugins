@@ -1,83 +1,35 @@
-# Startup import resolution
+# 加载与性能边界
 
-Pi loads this package's published TypeScript sources directly through Jiti. On the
-entry point's eager import graph, relative specifiers should name the actual `.ts`
-files. A `.js` specifier whose target exists only as `.ts` still works, but makes
-Jiti perform fallback resolution even when its transform cache is warm.
+## 不做启动 prewarm
 
-This change only updates those static import/export specifiers and permits `.ts`
-imports in the repository's existing no-emit TypeScript check. It does not change
-registration order, the optional i18n contract, or the questionnaire UI's lazy
-loading/prewarm behavior. The import-graph test guards the eager graph without
-placing a machine-dependent timing threshold in CI.
+工具注册只准备参数、guidance、事件和宿主协调，不 import 问卷 session/render graph。空闲等待也不安排 prewarm timer。首次真正需要 TUI 时才加载；RPC 原生 dialogs 和无 UI 路径不加载这张渲染图。
 
-The same rule now applies repo-wide: every package names the real `.ts` file in
-relative imports, enforced by `scripts/check-ts-import-specifiers.mjs`
-(`npm run check:ts-specifiers`).
+这样避免启动后突然在主线程同步求值渲染图，但首次打开问卷会有一次加载等待。这里不承诺固定毫秒数；机器、Pi loader、依赖和 cache 都会改变耗时。
 
-## Reproduce
+## 合并并发 cold load
 
-From the repository root, with npm, Git, tar, and a Pi CLI supporting `PI_TIMING=1`:
+首次加载尚未结束时，其他 TUI 调用复用同一个进行中的 promise，等待模块完成求值，而不是把暂时不完整的 namespace 当成旧 cache。成功或失败后都释放该 promise；不永久记住失败。后续调用仍遵循宿主 module cache 的行为，不能靠合并保证坏 cache 在进程内恢复。
 
-```sh
-node scripts/benchmark-ask-user-question-startup.mjs --baseline 1ffa165c --runs 15 > before-after.json
-node scripts/benchmark-ask-user-question-startup.mjs --baseline 1ffa165c --runs 15 --with-i18n > before-after-i18n.json
-```
+保留 `session_load_failed` 与 `stale_module_cache` 两类 envelope，见 [hosts.md](hosts.md)。本包不通过 timer 提前掩盖失败，也不让模型把加载失败读成用户拒答。
 
-Use `--pi /path/to/pi` to select a different Pi installation. The default baseline
-is `HEAD`, useful when comparing uncommitted edits; after committing the fix,
-explicitly select its parent or the original upstream commit instead.
+## TypeScript 源码边界
 
-The script:
+Pi 直接通过 loader 加载已发布的 `.ts`。相对 import/export 指向实际存在的 `.ts`，不依赖先尝试不存在的 `.js` 再 fallback。首次使用才需要的外部编辑器等模块继续在调用时加载。
 
-- Packs the baseline Git revision and current working tree with `npm pack
-  --ignore-scripts`, then extracts their published files into equal-depth paths.
-- Gives both packages identical packed `rpiv-config` sources from the current
-  checkout, and optionally identical `rpiv-i18n` sources. Host-provided libraries
-  remain supplied by Pi. It installs nothing and does not run package scripts.
-- Uses an isolated home, agent directory, and working directory, with discovery
-  and startup network operations disabled. It does not read the user's Pi
-  settings or credentials and does not make model calls.
-- Starts a fresh process per sample; discards two warm-ups per variant and then
-  alternates execution order. Run on an otherwise idle machine.
-- Fails on load errors or missing module/factory timings, emits raw samples and
-  summary statistics as JSON, and removes its temporary package trees.
+Node strip-only 不支持 constructor parameter property。构造函数先声明字段，再接收普通参数并赋值；保留可见性、readonly 和默认值，不改为 transform-types 来绕过源代码约束。本包不生成或提交 `dist/`。
 
-`importMs` is Pi's extension-import timing, including shared loader setup because
-this extension loads first. `wallMs` measures the complete empty print-mode
-process, **not** time until an interactive editor is ready. Neither measures
-first-ever/cold-cache installation or first-question rendering.
+## 怎样回归
 
-## Example measurements
+在隔离环境用新 process 检查以下边界，不用 `/reload` 或旧模块 cache 代替：
 
-Pi 1.2.0, Node v26.0.0, macOS arm64; baseline
-`1ffa165c224b5489fb5774a6652ef2e1c3bc6b2a`; 15 measured fresh processes per variant,
-following two warm-ups each:
+- 工具注册和空闲期间不加载 questionnaire graph，也没有 prewarm timer。
+- 首次真实 TUI 调用可到达 custom UI；RPC/无 UI 仍不触发该加载。
+- 并发 cold call 等待一次完整求值，不误报缺少 session class。
+- import 抛错和缺少 session class 仍分别分类，失败后不留下未释放的 in-flight promise。
+- strip-only 能加载整个 view graph；相对 import 指向真实文件。
 
-| Optional i18n | Metric | Baseline median | Patched median |
-| --- | --- | ---: | ---: |
-| Absent | Extension import | 97 ms | 23 ms |
-| Absent | Whole process | 327.74 ms | 252.84 ms |
-| Present | Extension import | 99 ms | 25 ms |
-| Present | Whole process | 330.06 ms | 254.88 ms |
+包内测试只测本包，跨插件和缺协作者联测放根 `integration/`。日常交互步骤见 [regression-cases.md](regression-cases.md)。需要记录性能时保留当时的宿主/Node、场景、原始样本和 cache 条件到外部工作记录，不在本页沉淀一次性 benchmark、通过数或历史延迟结论。
 
-The improvement is approximately **74 ms of import time** and **75 ms of
-whole-process time** in both configurations. Factory time stayed at 0–1 ms.
-Import ranges were 96–104 vs 22–24 ms without i18n, and 98–110 vs 24–27 ms with it.
-The same 15-sample benchmark also improves startup on the two Node majors used
-by CI (same Pi version and machine):
+## 更新依赖
 
-| Node | Optional i18n | Import median, before → after | Whole-process median, before → after |
-| --- | --- | ---: | ---: |
-| 22.23.3 | Absent | 82 → 22 ms | 250.94 → 189.46 ms |
-| 22.23.3 | Present | 84 → 22 ms | 253.30 → 190.52 ms |
-| 24.21.0 | Absent | 85 → 20 ms | 262.31 → 190.02 ms |
-| 24.21.0 | Present | 85 → 22 ms | 252.85 → 190.17 ms |
-
-The package suite passes all 787 tests on both Node 22 and 24, including the new
-startup-import regression test and the existing real-TUI factory, RPC, locale,
-and lazy-load tests. The full monorepo suite passes 6,906 tests on Node 26 and
-on Node 24 with coverage enabled; all repository coverage thresholds pass.
-
-Results depend on the host, loader version, filesystem, and caches; they are not a
-universal latency guarantee.
+先退出相关 Pi process，再更新依赖并重启。运行中的依赖目录被替换可能污染 loader cache；禁 prewarm 并不消除这个风险，也不把原地替换依赖变成受支持的热升级方式。

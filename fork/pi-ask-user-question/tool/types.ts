@@ -1,4 +1,5 @@
 import { type Static, Type } from "typebox";
+import { QUESTION_CONTEXT_GUIDANCE } from "../context.ts";
 import { LABELS_BY_KIND, ROW_INTENT_META } from "../state/row-intent.ts";
 
 export const MAX_QUESTIONS = 4;
@@ -34,7 +35,7 @@ export type SentinelLabel = (typeof SENTINEL_LABELS)[SentinelKind];
  * `["Other", other, next]` literal so consumers using
  * `RESERVED_LABELS[i]` indexing or `Set` membership see no behavior change.
  */
-export const RESERVED_LABELS = ["Other", ROW_INTENT_META.other.label, ROW_INTENT_META.next.label] as const;
+export const RESERVED_LABELS = ["Other", ROW_INTENT_META.other.label, ROW_INTENT_META.next.label, ROW_INTENT_META.chat.label, ROW_INTENT_META.explain.label] as const;
 export type ReservedLabel = (typeof RESERVED_LABELS)[number];
 
 export const OptionSchema = Type.Object({
@@ -85,6 +86,7 @@ export const QuestionsSchema = Type.Array(QuestionSchema, {
 });
 
 export const QuestionParamsSchema = Type.Object({
+	context: Type.String({ description: QUESTION_CONTEXT_GUIDANCE }),
 	questions: QuestionsSchema,
 });
 
@@ -121,7 +123,14 @@ export interface QuestionAnswer {
 	preview?: string;
 }
 
+export interface QuestionControlRequest {
+	questionIndex: number;
+	question: string;
+	notes?: string;
+}
+
 export type QuestionnaireError =
+	| "empty_context"
 	| "no_ui"
 	| "no_custom_ui"
 	| "no_questions"
@@ -136,6 +145,8 @@ export type QuestionnaireError =
 export interface QuestionnaireResult {
 	answers: QuestionAnswer[];
 	cancelled: boolean;
+	chat?: QuestionControlRequest;
+	explain?: QuestionControlRequest;
 	/**
 	 * Global note authored on the Submit tab: `n` opens the shared notes editor there,
 	 * and the committed text lives at the `notesByTab[questions.length]` pseudo-index

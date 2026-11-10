@@ -35,6 +35,7 @@ import type { QuestionnaireState } from "./state.ts";
 export interface QuestionnaireBuildConfig {
 	tui: TUI;
 	theme: Theme;
+	context?: string;
 	questions: readonly QuestionData[];
 	itemsByTab: ReadonlyArray<readonly WrappingSelectItem[]>;
 	isMulti: boolean;
@@ -119,6 +120,7 @@ export function buildQuestionnaire(config: QuestionnaireBuildConfig): Questionna
 class QuestionnaireBuilder {
 	private readonly tui: QuestionnaireBuildConfig["tui"];
 	private readonly theme: Theme;
+	private readonly context: string | undefined;
 	private readonly questions: readonly QuestionData[];
 	private readonly itemsByTab: ReadonlyArray<readonly WrappingSelectItem[]>;
 	private readonly isMulti: boolean;
@@ -138,6 +140,7 @@ class QuestionnaireBuilder {
 	constructor(config: QuestionnaireBuildConfig) {
 		this.tui = config.tui;
 		this.theme = config.theme;
+		this.context = config.context;
 		this.questions = config.questions;
 		this.itemsByTab = config.itemsByTab;
 		this.isMulti = config.isMulti;
@@ -272,6 +275,8 @@ class QuestionnaireBuilder {
 		return new DialogView(
 			{
 				theme: this.theme,
+				context: this.context,
+				explainInput: this.inlineInput,
 				questions: this.questions,
 				tabBar,
 				notesInput: this.notesInput,
@@ -332,7 +337,7 @@ class QuestionnaireBuilder {
 			inlineInput: this.inlineInput,
 			globalBindings,
 			perTabBindings,
-			extraInvalidatables: [this.notesInput],
+			extraInvalidatables: [this.notesInput, this.inlineInput],
 		});
 	}
 
