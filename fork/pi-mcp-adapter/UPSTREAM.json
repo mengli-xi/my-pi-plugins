@@ -1,0 +1,12 @@
+{
+  "type": "npm",
+  "package": "pi-mcp-adapter",
+  "version": "7.0.1",
+  "registry": "https://registry.npmjs.org/",
+  "tarball": "https://registry.npmjs.org/pi-mcp-adapter/-/pi-mcp-adapter-7.0.1.tgz",
+  "integrity": "sha512-hLmB6v2NxzZLUcgnVP4EKxWPBQGPXK5DRvL48UP1lZeyfjzhZbB+3zcawOdIIxHujxE9eqrVNapx6Hh5YmDFrA==",
+  "exclude": [
+    "dist/",
+    "CHANGELOG.md"
+  ]
+}
