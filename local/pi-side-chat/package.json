@@ -1,0 +1,39 @@
+{
+  "name": "pi-side-chat",
+  "version": "0.1.0",
+  "description": "Ephemeral in-process Pi side sessions with native interactive views",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "files": ["*.ts", "compat", "docs", "README.md"],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "side-chat",
+    "ephemeral-session"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
+    "check-internals": "node scripts/check-internals.mjs",
+    "test:ui": "bun test/btw-e2e.ts && bun test/btw-browser-e2e.ts",
+    "check": "npm run typecheck && npm test && npm run check-internals && npm run test:ui"
+  },
+  "dependencies": {
+    "pi-li-uikit": "*",
+    "pi-runtime-contracts": "*",
+    "pi-session-runtime": "*"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "^1.5.0",
+    "@earendil-works/pi-ai": "^1.5.0",
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0"
+  },
+  "engines": { "node": ">=22.19" }
+}

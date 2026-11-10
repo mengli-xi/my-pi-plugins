@@ -40,6 +40,8 @@ Working、typewriter、goal、preload、expiry 共用 runtime scheduler，4ms �
 
 Pi baseline 是 1.5.0，catalog 保留历史文件名 `src/compat/pi-1.3.ts`。25 个 private contracts（16 eager、9 live）与 probe 集合一一对应；公开 renderer API 由 typecheck/常规测试覆盖。health 先更新内存，再异步 atomic writer 合并落盘，shutdown flush；render/input 禁同步健康文件写入。prototype realm identity 必须与最终 host 一致，不添加 structural fallback 掩盖错误 class。
 
+`pi.claude-style.internals.v1` 是可选的进程内诊断贡献协议，不是执行或 UI ownership 授权。CC 发布 `globalThis[Symbol.for(key)]`：`probes` 为按稳定 id 索引的 Map，条目包含 `id/needs/breaks` 和可选 `check(): boolean`；可选 `health` 含 Pi `version` 与按 id 保存的 `state/detail`，state 为 ok/missing/broken/unexercised。Side Chat 经此登记、更新自己的两项 instance probe，不 import CC 源码或读健康文件。缺 CC 时贡献无人接收，Side 仍执行自己的本地检查；producer 不持有 registry 的文件路径或 writer。
+
 通知、版本和 package 更新走 Pi 原生。保留公开 `showError` 窄包装的理由是把最终 retry-failed 通知吸收到既有重复错误行，其余全部原样交还；info/warning 切断聚合。Working retry 四项 probe 只用于事件/indicator 与 session/view 恢复，失配保留原生重试或当前视图，不改 retry policy。provider activity 只读通用协议，不重引专用品牌 API。
 
 ## Build 与 native child

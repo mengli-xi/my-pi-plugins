@@ -58,6 +58,7 @@ pi -e "$PWD/local/pi-todo"
 | [pi-session-inject](local/pi-session-inject/README.md) | 共享库 | 持久信箱、安全投递和 ACK |
 | [pi-session-naming](local/pi-session-naming/README.md) | 插件 | settled 后自动生成会话标题 |
 | [pi-session-runtime](local/pi-session-runtime/README.md) | 共享库 | 有效请求、SDK 装配与原生子视图 |
+| [pi-side-chat](local/pi-side-chat/README.md) | 插件 | 同进程临时 Side 对话与提交即开的 BTW 面板 |
 | [pi-skills](local/pi-skills/README.md) | 插件 | 显式技能补全、规则注入、完整读取记录与压缩恢复 |
 | [pi-subagents](local/pi-subagents/README.md) | 插件 | 持久后台 Agent、Task 和完成投递 |
 | [pi-terminal-focus](local/pi-terminal-focus/README.md) | 插件 | 终端失焦时隐藏主编辑器虚拟光标 |
@@ -84,9 +85,9 @@ pi -e "$PWD/local/pi-todo"
 | `pi-session-compact:collect-materials-v1` | [Compact](local/pi-session-compact/README.md) 发收集，[Skills](local/pi-skills/README.md#压缩材料与恢复协议) 等可选 owner 回复 | Compact | 技能材料为空，不读私有 binding |
 | `pi-skills:compact-restore-request-v1`、`pi-skills:compact-restore-response-v1` | [Skills](local/pi-skills/README.md#旧独立恢复通道) | 外部旧恢复调用方 | 当前 Compact 不依赖旧回复；旧调用方不能假定规则已恢复 |
 | `ui-pack.user-message-render-transforms.v1` | [Skills](local/pi-skills/README.md#消息装饰协议) 注册 transform；CC 提供 host，Skills 提供原生 fallback | CC/Skills 消息 renderer | 装饰不可用时保留原生显示，技能加载不变 |
-| `statusline:row`、`statusline:refresh` | [CC Style](local/pi-claude-style/README.md) 状态栏 host | Effort、Memory、Compact、Subagents；CC 自有 Goal/Todo/Processes/Capacity 行 | 贡献无人接收不报错，不影响业务；Goal 可退 widget/setStatus |
-| `child-capabilities-v1`（存储 key `pi.child-capability-registry.v2`） | [Runtime Contracts](local/pi-runtime-contracts/README.md)；Timeout/CC/Processes/外部 factory 注册 | Subagents、SDK provider loader | 无声明不复制 extension 工具；注册不等于执行授权 |
-| `presentation/claude-style-v1` | [CC Style](local/pi-claude-style/README.md)，具名 `dist/child.ts` factory | Subagents，外部 SDK 消费者 | child 使用 Pi 原生渲染，输入/历史/返回不变 |
+| `statusline:row`、`statusline:refresh` | [CC Style](local/pi-claude-style/README.md) 状态栏 host | Effort、Memory、Compact、Subagents、Side Chat；CC 自有 Goal/Todo/Processes/Capacity 行 | 贡献无人接收不报错，不影响业务；Goal 可退 widget/setStatus |
+| `child-capabilities-v1`（存储 key `pi.child-capability-registry.v2`） | [Runtime Contracts](local/pi-runtime-contracts/README.md)；Timeout/CC/Processes/外部 factory 注册 | Subagents、Side Chat、SDK provider loader | 无声明不复制 extension 工具；注册不等于执行授权 |
+| `presentation/claude-style-v1` | [CC Style](local/pi-claude-style/README.md)，具名 `dist/child.ts` factory | Subagents、Side Chat，外部 SDK 消费者 | child 使用 Pi 原生渲染，输入/历史/返回不变 |
 | `pi.claude-style.custom-entry-presentations.v1` | [CC Style](local/pi-claude-style/README.md) | Subagents completion、Skills Loaded 行、Processes lifecycle；外部 entry renderer | 各 producer 保留自己的 fallback，不改变正文或投递 proof |
 | `pi.claude-style.editor-image-source.v2` | [CC Style](local/pi-claude-style/README.md) | Rewind | 整体退为无路径 `[Image]`，不暴露临时文件路径 |
 | `pi.pinned-layout.editor-slot-geometry.v1` | [CC fullscreen](local/pi-claude-style/README.md) | UIKit editor-overlay | 原生布局估算，仍保持安全关闭 |
@@ -96,8 +97,9 @@ pi -e "$PWD/local/pi-todo"
 | `goal-continuation-obligation-v1` / `pi.goal.continuation-obligation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md)，外部 Goal 注册 reader | Subagents、Processes fallback | 无 reader 返回 none；unknown 保留 pending，不抢 continuation |
 | `pi.subagents.producer-continuation-proof.v1` | [Subagents](local/pi-subagents/README.md) | 外部 Goal claimant | 无兼容 registry 时不 claim Subagents，producer 自行唤醒 |
 | `pi-session-inject/mailbox-v1` | [Session Inject](local/pi-session-inject/README.md) | Subagents、Processes、Compact 只读过滤及外部 producer | 这是共享库硬依赖；无 active owner 保留 pending，不私发 fallback |
-| `pi.session-runtime.effective-context.v1`、`pi.session-runtime.session-assembly-realm.v1`、`pi.session-runtime.factory-loader-realms.v1` | [Session Runtime](local/pi-session-runtime/README.md) | Subagents、Compact、外部 SDK owner | 无 capture 按合同拒绝/重建；realm 冲突拒绝，不拿错 SDK 执行 |
+| `pi.session-runtime.effective-context.v1`、`pi.session-runtime.session-assembly-realm.v1`、`pi.session-runtime.factory-loader-realms.v1` | [Session Runtime](local/pi-session-runtime/README.md) | Subagents、Side Chat、Compact、外部 SDK owner | 无 capture 按合同拒绝/重建；realm 冲突拒绝，不拿错 SDK 执行 |
 | `pi.session-runtime.terminal-owner.v1`、`pi.session-runtime.terminal-gate.v1` | [Session Runtime](local/pi-session-runtime/README.md) | managed child view | 无 lease 不交接，保留 Main，不影响 headless |
+| `pi.claude-style.internals.v1` | [CC Style 诊断 registry](local/pi-claude-style/docs/maintenance.md#调度观测与兼容) | Side Chat probe 贡献 | 无 CC 仅不汇总诊断；Side 自行验证，不授予执行或视图权限 |
 | `pi.theme-watch.file-version.v1` | [可选 host patch](host-patches/pi/v1.5.0/README.md) | Session Runtime | 双面缺失允许原版配色降级并首次提示；单面/未知拒绝视图 |
 | `pi.perf.ui-metrics.v3`、`pi.perf.telemetry.v1` | 外部 pi-perf；[消费约束](local/pi-claude-style/docs/spec.md) | CC Style、Session Naming（仅 telemetry） | 不采集，不另加全局 wrapper/timer |
 | `permissions:ui_prompt`、`permissions:decision`（外部旧事件） | 外部权限 UI；[消费约束](local/pi-claude-style/docs/spec.md) | CC Working | 不暂停额外 modal 动画，不影响权限判定 |
