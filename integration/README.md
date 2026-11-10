@@ -53,22 +53,51 @@ PI_TEST_EXECUTABLE=/path/to/stock-pi-1.5.0 npm run test:integration:side-chat
 
 `integration/side-chat/sdk-view-e2e.mjs` 还保留显式 `PI_S2_BASH_TIMEOUT=1`、probe drift 和 shutdown/input 矩阵。它们不默认发现日常 profile；测试 provider/grant fixture 在同目录 `fixtures/`，没有真实认证或 provider 请求。单包的两个 BTW PTY 用例留在 `local/pi-side-chat/test/`，因为不加载其他插件。
 
-## 完整协作矩阵
+## Goal 协作矩阵
 
-Processes 与 Goal 的显式矩阵不随默认门禁运行。先提供确实存在的 Goal extension entry，并构建所需包：
+[Goal](../fork/pi-goal/extensions/pi-goal/README.md) 已纳入根 workspace。包内只保留本包 domain/合同测试和独立 faux e2e；真实 Goal + Processes/Subagents 的 mailbox 矩阵在 [integration/goal](goal/mailbox-a1-matrix.mjs)，不借默认降级门禁声称完整矩阵通过。
+
+先在仓库根显式构建三个生产入口，再指定 stock Pi 1.5.0 binary 和仓库外的证据目录：
 
 ```sh
-PI_PROCESSES_TEST_GOAL_ENTRY=/absolute/path/to/goal/dist/index.js \
-PI_PROCESSES_TEST_PI=/absolute/path/to/pi \
+npm run build -w @narumitw/pi-goal
+npm run build -w pi-processes
+npm run build -w pi-subagents
+PI_GOAL_TEST_BINARY=/absolute/path/to/stock-pi-1.5.0 \
+node integration/goal/mailbox-a1-matrix.mjs /absolute/path/to/evidence
+# 同一矩阵反向加载顺序；用另一个证据目录
+GOAL_JOINT_REVERSE=1 PI_GOAL_TEST_BINARY=/absolute/path/to/stock-pi-1.5.0 \
+node integration/goal/mailbox-a1-matrix.mjs /absolute/path/to/reverse-evidence
+```
+
+矩阵可在证据目录后指定 case：`joint-b`、`joint-bd`、`joint-grant`、`joint-paused`、`joint-paused-split`。使用真实 mailbox engine/store 和生产编译入口，测试侧只控制公开 receive/release gate，不换 transport；断言 exact Main/child/request/carrier 数量、sealed member set、独立 cutoff 与 final pending 清空。暂停结果路径允许记录结果，不恢复 Goal、不调用 terminal tools。process 和 Task deadline 各自独立，Goal pause 不取消后台任务，巡检也不延长期限。fixture 使用临时 profile/session 与 faux provider；没有运行就不报告通过。
+
+Processes 自己保留更广的显式 Goal 矩阵，不随默认门禁运行：
+
+```sh
+PI_PROCESSES_TEST_GOAL_ENTRY="$PWD/fork/pi-goal/extensions/pi-goal/dist/index.js" \
+PI_PROCESSES_TEST_PI=/absolute/path/to/stock-pi-1.5.0 \
 node integration/processes/goal-process.mjs
 ```
 
-入口拒绝缺失的显式路径；不能据此推断 Goal 已包含在当前 workspace，或把未运行的 Goal 矩阵算作通过。
+入口拒绝缺失的显式路径；先完成所需构建，不自动发现日常 profile。Goal 本包 stock runtime/mailbox smoke 与这里的联合矩阵分别验收，边界见 [Goal 维护说明](../fork/pi-goal/extensions/pi-goal/docs/maintenance.md)。
+
+Goal 与真实 CC 的 TUI 协作使用独立入口，显式提供两个实际产物：
+
+```sh
+PI_GOAL_TEST_BINARY=/absolute/path/to/stock-pi-1.5.0 \
+PI_GOAL_TEST_CC_ENTRY="$PWD/local/pi-claude-style/dist/index.ts" \
+npm run test:integration:goal-ui
+```
+
+此入口共用原生 Goal 的真实 PTY 场景，并额外检查 CC 画面的 Goal 行和暂停后的时钟冻结；包内 `test:ui` 不加载 CC。虚拟 PTY 不是人工 IME/物理终端验收。
+
+## 完整协作矩阵
 
 `npm run test:integration:subagents` 运行 `integration/subagents/real` 下的 Node 联测。
 包括直接加载其他插件的文件，以及通过 `fresh-host` 默认加载 Processes 的文件。
-设置 `PI_REAL_BINARY`，先显式安装/构建这些测试原先依赖的 pi-processes、Goal、native-search 等协作方；
-仓库不提供这些插件的仿制实现。缺协作方或宿主时应失败，不能把默认降级门禁通过当成完整协作矩阵通过。
+设置 `PI_REAL_BINARY`，先显式构建本仓的 Processes、Goal 及这些测试所需的其他协作方；native-search 等外部插件仍须提供。
+仓库不提供外部插件的仿制实现。缺协作方或宿主时应失败，不能把默认降级门禁通过当成完整协作矩阵通过。
 原有全 profile 环境变量仍只用于显式矩阵；日常默认门禁不发现用户 profile。
 
 Subagents 的三套 Bun PTY runner 在 `subagents/real/sdk-{child-view,statusline,initialization}.mjs`，

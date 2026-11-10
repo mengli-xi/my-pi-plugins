@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "local/*"
+    "local/*",
+    "fork/pi-goal/extensions/pi-goal"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces && tsc -p integration/tsconfig.json",
@@ -12,7 +13,9 @@
     "test:integration:side-chat": "npm run build -w pi-claude-style && node scripts/isolated-agent.mjs bun integration/side-chat/sdk-view-e2e.mjs && PI_S2_NATIVE_PRESENTATION=1 node scripts/isolated-agent.mjs bun integration/side-chat/sdk-view-e2e.mjs",
     "test:integration:stock-host": "npm run build -w pi-subagents && bun integration/subagent-no-presentation.mjs",
     "test:integration:patched-host": "node integration/run-patched-host.mjs",
-    "test:integration:subagents": "npm run build -w pi-subagents && node integration/run-subagents.mjs"
+    "test:integration:subagents": "npm run build -w pi-subagents && node integration/run-subagents.mjs",
+    "check:goal": "node scripts/isolated-agent.mjs npm --prefix fork/pi-goal run check",
+    "test:integration:goal-ui": "npm run build -w @narumitw/pi-goal && npm run build -w pi-claude-style && node scripts/isolated-agent.mjs bun integration/goal/ui-e2e.mjs"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.5.0",
@@ -25,6 +28,7 @@
     "entities": "^6.0.1",
     "github-slugger": "^2.0.0",
     "marked": "^18.0.11",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "@biomejs/biome": "2.5.6"
   }
 }

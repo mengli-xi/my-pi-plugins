@@ -4,17 +4,19 @@
 
 ## 安装与加载
 
-需要 Node.js 22.19+、npm 和 Pi 1.5.0；构建 CC Style、Session Naming、Subagents、Processes 时还需 Bun。Node 直接运行 TypeScript 的测试建议使用 Node 24。将下面的仓库地址占位符换成实际地址：
+需要 Node.js 22.19+、npm 和 Pi 1.5.0；构建 CC Style、Session Naming、Subagents、Processes、Goal 时还需 Bun。Node 直接运行 TypeScript 的测试建议使用 Node 24。将下面的仓库地址占位符换成实际地址：
 
 ```sh
-git clone <仓库地址> pi-packages
+git clone --recurse-submodules <仓库地址> pi-packages
 cd pi-packages
+# 已有 checkout 先运行 git submodule update --init --recursive
 npm ci
 # 仅这些包需要生成产物；使用前显式构建
 npm run build -w pi-claude-style
 npm run build -w pi-session-naming
 npm run build -w pi-subagents
 npm run build -w pi-processes
+npm run build -w @narumitw/pi-goal
 
 # 从本地路径安装一个插件；Pi 直接加载，不复制、不安装本地包依赖
 pi install "$PWD/local/pi-todo"
@@ -37,6 +39,8 @@ pi -e "$PWD/local/pi-todo"
 
 **插件**注册 extension，可逐个启用；**共享库**只被 import，不加入 Pi packages。四个共享库由 npm workspace 依赖解析，不能把包目录单独拷走后假定相邻依赖仍可用。全仓只在根 `npm ci`，不在各包重复安装或创建 lockfile。编译消费者更新后先重建并启动新 Pi 进程，不以 `/reload` 代替构建验证。
 
+`fork/` 保留独立上游谱系，由根仓库的 submodule pin 固定本地补丁；活动 Fork package 也纳入同一根 workspace/lock，不在子仓库重复安装。Goal 的入口是 [fork/pi-goal/extensions/pi-goal](fork/pi-goal/extensions/pi-goal/README.md)，其 retained 上游源码不等于全部启用。
+
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。扩展在宿主进程中运行，安装前审阅源码；同进程能力校验不是 OS 沙箱。测试不读日常配置，不发真实模型请求。
 
 ## 包索引
@@ -47,6 +51,7 @@ pi -e "$PWD/local/pi-todo"
 | [pi-cc-memory](local/pi-cc-memory/README.md) | 插件 | 项目记忆与冻结索引 |
 | [pi-claude-style](local/pi-claude-style/README.md) | 插件 | 工具、Thinking、编辑器和默认状态栏展示 |
 | [pi-effort](local/pi-effort/README.md) | 插件 | 推理档位滑杆与受控 ultra 提示 |
+| [pi-goal](fork/pi-goal/extensions/pi-goal/README.md) | Fork 插件 | 持续推进目标、完成审计、预算与 durable 续跑 |
 | [pi-li-uikit](local/pi-li-uikit/README.md) | 共享库 | 面板、选择器、鼠标和剪贴板组件 |
 | [pi-model-capacity](local/pi-model-capacity/README.md) | 插件 | 容量、订阅窗口和余额观测 |
 | [pi-model-prompts](local/pi-model-prompts/README.md) | 插件 | 模型规则、命名提示词与片段汇总 |
@@ -73,7 +78,8 @@ pi -e "$PWD/local/pi-todo"
 | `prompt:fragments-v1` | [Model Prompts](local/pi-model-prompts/README.md) 发同步收集；Effort 贡献 | Model Prompts 汇总，Effort 接收请求 | 只有文件规则；缺汇总方时 Effort 只改真实档位 |
 | `todo:snapshot-v1`、`todo:request:snapshot-v1` | [Todo](local/pi-todo/README.md) | CC Style | 不显示托管列表，Todo 内联与 /todos 不受影响 |
 | `todo:changed`（旧兼容） | [Todo](local/pi-todo/README.md) | CC Style | 以版本化 snapshot 为主，不要求旧事件 |
-| `goal:snapshot-v1`、`goal:request:snapshot-v1` | 外部 Goal；[消费约束](local/pi-claude-style/docs/spec.md) | CC Style、Compact | 无 Goal 状态/材料，不启动 Goal |
+| `goal:snapshot-v1`、`goal:request:snapshot-v1` | [Goal](fork/pi-goal/extensions/pi-goal/docs/protocols.md#goal-snapshot-v1) | CC Style、Compact | 无 Goal 状态/材料，不启动 Goal；不从 phase 猜 clock/freeze |
+| `pi-goal:start`、`pi-goal:cancel`、`pi-goal:event:${runId}`（无版本旧兼容，默认 OFF） | [Goal](fork/pi-goal/extensions/pi-goal/docs/protocols.md#managed-rpc-旧兼容) | 可选可信 managed-run 调用方 | 无 owner 不假定接受；开关关闭拒绝新 start，不影响手动 Goal |
 | `statusline:processes-snapshot-v2`、`processes:snapshot-request-v2`、`processes:open-request-v2` | [Processes](local/pi-processes/README.md#可选协作与降级) | CC Style | 无 processes 行/打开动作，不读私有存储 |
 | `processes:managed-snapshot-v1`、`processes:managed-snapshot-request-v1` | [Processes](local/pi-processes/docs/MANAGED_EXECUTION.md#只读-managed-snapshot-v1) | 外部只读监管方 | 无消费者不影响执行；快照本身不授予控制或 ownership |
 | `provider:activity-v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义 DTO；provider adapter 发布 | CC Style、Compact、SDK observer | 无队列/负载展示，压缩时钟正常计时 |
@@ -91,12 +97,12 @@ pi -e "$PWD/local/pi-todo"
 | `pi.claude-style.custom-entry-presentations.v1` | [CC Style](local/pi-claude-style/README.md) | Subagents completion、Skills Loaded 行、Processes lifecycle；外部 entry renderer | 各 producer 保留自己的 fallback，不改变正文或投递 proof |
 | `pi.claude-style.editor-image-source.v2` | [CC Style](local/pi-claude-style/README.md) | Rewind | 整体退为无路径 `[Image]`，不暴露临时文件路径 |
 | `pi.pinned-layout.editor-slot-geometry.v1` | [CC fullscreen](local/pi-claude-style/README.md) | UIKit editor-overlay | 原生布局估算，仍保持安全关闭 |
-| `continuation-v1` / `pi.runtime-contracts.continuation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) | Subagents、Processes，外部 producer/Goal | 无 Wake consumer 时 producer fallback；共享库本身不调模型 |
+| `continuation-v1` / `pi.runtime-contracts.continuation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) | Subagents、Processes、[Goal](fork/pi-goal/extensions/pi-goal/docs/protocols.md#continuation-与-obligation)，外部 producer | 无 Wake consumer 时 producer fallback；共享库本身不调模型 |
 | `process-wait-bridge-v2` / `pi.subagents.process-wait-bridge.v2` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义，Subagents 注册 | 批准的 Processes child factory | 无合法 Task/grant 则 record-only，不恢复已取消任务 |
 | `process-wait-bridge-v1` / `pi.subagents.process-wait-bridge.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 保留旧 API | 外部旧进程消费者 | 无 bridge 无协作 continuation；不与 V2 混用 |
-| `goal-continuation-obligation-v1` / `pi.goal.continuation-obligation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md)，外部 Goal 注册 reader | Subagents、Processes fallback | 无 reader 返回 none；unknown 保留 pending，不抢 continuation |
-| `pi.subagents.producer-continuation-proof.v1` | [Subagents](local/pi-subagents/README.md) | 外部 Goal claimant | 无兼容 registry 时不 claim Subagents，producer 自行唤醒 |
-| `pi-session-inject/mailbox-v1` | [Session Inject](local/pi-session-inject/README.md) | Subagents、Processes、Compact 只读过滤及外部 producer | 这是共享库硬依赖；无 active owner 保留 pending，不私发 fallback |
+| `goal-continuation-obligation-v1` / `pi.goal.continuation-obligation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义，[Goal](fork/pi-goal/extensions/pi-goal/docs/protocols.md#continuation-与-obligation) 注册 reader | Subagents、Processes fallback | 无 reader 返回 none；unknown 保留 pending，不抢 continuation |
+| `pi.subagents.producer-continuation-proof.v1` | [Subagents](local/pi-subagents/README.md) | Goal claimant | 无兼容 registry 时不 claim Subagents，producer 自行唤醒 |
+| `pi-session-inject/mailbox-v1` | [Session Inject](local/pi-session-inject/README.md) | Goal、Subagents、Processes、Compact 只读过滤及外部 producer | 这是共享库硬依赖；无 active owner 保留 pending，不私发 fallback |
 | `pi.session-runtime.effective-context.v1`、`pi.session-runtime.session-assembly-realm.v1`、`pi.session-runtime.factory-loader-realms.v1` | [Session Runtime](local/pi-session-runtime/README.md) | Subagents、Side Chat、Compact、外部 SDK owner | 无 capture 按合同拒绝/重建；realm 冲突拒绝，不拿错 SDK 执行 |
 | `pi.session-runtime.terminal-owner.v1`、`pi.session-runtime.terminal-gate.v1` | [Session Runtime](local/pi-session-runtime/README.md) | managed child view | 无 lease 不交接，保留 Main，不影响 headless |
 | `pi.claude-style.internals.v1` | [CC Style 诊断 registry](local/pi-claude-style/docs/maintenance.md#调度观测与兼容) | Side Chat probe 贡献 | 无 CC 仅不汇总诊断；Side 自行验证，不授予执行或视图权限 |
@@ -114,11 +120,12 @@ Main 和普通插件不要求宿主补丁。原版 Pi 1.5.0 也能打开 Subagen
 npm ci
 npm run typecheck
 npm test                         # 文档链接/可达性 + 各包离线测试
+npm run check:goal               # Goal retained Fork 检查；不把 Biome 扩到全仓
 npm run test:integration          # 跨插件及缺失协作方降级
 npm run test:integration:stock-host # Bun PTY；原版无 CC child 视图
 ```
 
-`npm test` 包含所有已跟踪 Markdown 的相对链接目标、Markdown 标题锚点和从根 README 的可达性检查，排除 node_modules。锚点按 GitHub 标题 slug 校验，含中文、重复标题后缀、同页及跨文件链接；检查脚本自身有断链、锚点和孤儿回归。
+`npm test` 包含根仓库已跟踪 Markdown 以及活动 Fork package README/docs/LOCAL_PATCHES 的相对链接目标、Markdown 标题锚点和从根 README 的可达性检查，排除 node_modules；Fork 文档从各自初始化的 Git repository 枚举，不要求扫描上游未启用包。锚点按 GitHub 标题 slug 校验，含中文、重复标题后缀、同页及跨文件链接；检查脚本自身有断链、锚点和孤儿回归。
 
 补丁宿主入口须显式指定匹配产物：
 

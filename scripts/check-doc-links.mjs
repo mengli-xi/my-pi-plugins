@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, globSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { marked } from "marked";
@@ -75,10 +75,47 @@ export function headingAnchors(markdown) {
   return anchors;
 }
 
-export function checkDocs(root, tracked) {
-  const files = tracked.filter(file => file.endsWith(".md") && !excluded(file));
-  const graph = new Map();
+function workspaceDocs(root) {
+  const files = new Set();
   const errors = [];
+  const manifest = path.join(root, "package.json");
+  if (!existsSync(manifest)) return { files, errors };
+  const { workspaces = [] } = JSON.parse(readFileSync(manifest, "utf8"));
+  for (const pattern of workspaces.filter(name => name.startsWith("fork/"))) {
+    const packages = globSync(pattern, { cwd: root });
+    if (!packages.length) errors.push(`${pattern}: active Fork workspace 不存在`);
+    for (const workspace of packages) {
+      const owner = workspace.split("/").slice(0, 2).join("/");
+      const directory = path.join(root, owner);
+      if (!existsSync(path.join(root, workspace, "package.json"))) {
+        errors.push(`${workspace}: active Fork workspace 缺少 package.json`);
+        continue;
+      }
+      try {
+        const git = args => execFileSync("git", ["-c", "core.fsmonitor=false", ...args], { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+        if (!existsSync(path.join(directory, ".git")) || realpathSync(git(["rev-parse", "--show-toplevel"]).trim()) !== realpathSync(directory)) {
+          errors.push(`${owner}: active Fork 的 Git repository 未初始化`);
+          continue;
+        }
+        const relative = path.posix.relative(owner, workspace);
+        const readme = path.posix.join(relative, "README.md");
+        const docs = path.posix.join(relative, "docs");
+        // 只纳入 active package 的文档与 Fork patch 合同；不扫描上游其余包。
+        const candidates = git(["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", readme, docs, "LOCAL_PATCHES.md"]).split("\0").filter(Boolean);
+        for (const file of [readme, "LOCAL_PATCHES.md", ...candidates]) files.add(path.posix.join(owner, file));
+      } catch (error) {
+        errors.push(`${owner}: 无法枚举 active Fork 文档: ${error.message}`);
+      }
+    }
+  }
+  return { files, errors };
+}
+
+export function checkDocs(root, tracked) {
+  const workspace = workspaceDocs(root);
+  const files = [...new Set([...tracked, ...workspace.files])].filter(file => file.endsWith(".md") && !excluded(file));
+  const graph = new Map();
+  const errors = [...workspace.errors];
   const anchorsByFile = new Map();
   for (const file of files) {
     const absolute = path.resolve(root, file);

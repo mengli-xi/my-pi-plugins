@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,7 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const pkg = join(repo, "local/pi-processes");
 const binary = process.env.PI_PROCESSES_TEST_PI ?? join(repo, "node_modules/@earendil-works/pi-coding-agent/dist/cli.js");
 const goal = process.env.PI_PROCESSES_TEST_GOAL_ENTRY;
-assert.ok(goal && existsSync(goal), "Set PI_PROCESSES_TEST_GOAL_ENTRY to the built entry of an actual external pi-goal package; Goal is not included here.");
+assert.ok(goal && existsSync(goal), "Set PI_PROCESSES_TEST_GOAL_ENTRY to the built entry of an actual pi-goal package.");
 const artifact = process.env.PI_PROCESSES_TEST_OUTPUT ?? mkdtempSync(join(tmpdir(), "goal-process-joint-"));
 mkdirSync(artifact, { recursive: true });
 const withChild = process.env.PI_PROCESSES_GOAL_WITH_SUBAGENTS === "1";
@@ -32,14 +32,23 @@ for (const scenario of scenarios) {
     extensions.push(join(subagents, "test/fixtures/faux-subagent-provider.ts"));
   }
   const child = spawn(binary, ["--mode", "rpc", "--offline", "--approve", "-ne", "--no-mcp", "-ns", "-np", "-nc", "--no-themes", ...extensions.flatMap(path => ["-e", path]), "--provider", "goal-process-faux", "--model", "fixture", "--thinking", "off", "--tools", (withChild ? "process,spawn_agent,goal_complete,goal_blocked" : "process,goal_complete,goal_blocked")], {
-    cwd: join(root, "cwd"), env: { PATH: process.env.PATH, HOME: join(root, "home"), PI_CODING_AGENT_DIR: join(root, "agent"), TMPDIR: join(root, "tmp"), PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_PROCESS_GOAL_ROOT: root, PI_PROCESS_GOAL_SCENARIO: scenario, PI_PROCESS_GOAL_CHILD: withChild ? "1" : "0", NODE_OPTIONS: process.env.NODE_OPTIONS }, stdio: ["pipe", "pipe", "pipe"],
+    cwd: join(root, "cwd"), env: { PATH: process.env.PATH, HOME: join(root, "home"), PI_CODING_AGENT_DIR: join(root, "agent"), TMPDIR: root, PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_PROCESS_GOAL_ROOT: root, PI_PROCESS_GOAL_SCENARIO: scenario, PI_PROCESS_GOAL_CHILD: withChild ? "1" : "0", NODE_OPTIONS: process.env.NODE_OPTIONS }, stdio: ["pipe", "pipe", "pipe"],
   });
   let stdout = "", stderr = "", buffer = "";
   const rpc = [];
   child.stdout.on("data", chunk => { stdout += chunk; buffer += chunk; for (let at; (at = buffer.indexOf("\n")) >= 0;) { const line = buffer.slice(0, at); buffer = buffer.slice(at + 1); try { rpc.push(JSON.parse(line)); } catch {} } });
   child.stderr.on("data", chunk => stderr += chunk);
   const closed = new Promise(resolve => child.once("close", (code, signal) => resolve({ code, signal })));
-  const rows = () => readFileSync(join(root, "events.jsonl"), "utf8").split("\n").filter(Boolean).map(JSON.parse);
+  let rowVersion, cachedRows = [];
+  const rows = () => {
+    const path = join(root, "events.jsonl"), stat = statSync(path, { bigint: true });
+    const version = [stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+    if (version !== rowVersion) {
+      cachedRows = readFileSync(path, "utf8").split("\n").filter(Boolean).map(JSON.parse);
+      rowVersion = version;
+    }
+    return cachedRows;
+  };
   const until = async (predicate, label) => { const end = Date.now() + 25000; while (!predicate()) { if (Date.now() > end || child.exitCode !== null) throw Error(scenario + ": " + label + "; " + stderr + "; " + JSON.stringify(rpc.filter(r => r.type === "extension_error")).slice(-1500)); await delay(20); } };
   const send = (id, message) => child.stdin.write(JSON.stringify({ id, type: "prompt", message }) + "\n");
   try {
