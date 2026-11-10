@@ -19,7 +19,7 @@
 
 `npm run test:integration` 会先用 Bun 构建 CC、Subagents 和 Processes，再运行联测；单独运行 Skills/CC 测试文件时须先执行 `npm run build -w pi-claude-style`，不以源码 mock 代替 `dist/index.ts`。这些用例使用根依赖中的 stock Pi 1.5.0 公共 SDK，不加载 patched SDK 或真实 provider。
 
-无 pi-claude-style 的 Subagents child 视图可在 `bun install --frozen-lockfile` 安装的原版 Pi 1.5.0 上验证：
+无 pi-claude-style 的 Subagents child 视图可在按[根安装说明](../README.md#安装与加载)安装的原版 Pi 1.5.0 上验证：
 
 ```sh
 npm run test:integration:stock-host

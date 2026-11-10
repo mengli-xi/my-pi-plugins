@@ -4,7 +4,7 @@
 
 ## 安装与加载
 
-开发本仓库需要 Node.js 22.19+、Bun 1.3+ 和 Pi 1.5.0。Bun 是开发前提：依赖安装和 6 个包的构建都用它，`node_modules` 由 bun 从全局缓存按写时复制生成，多份 clone 不重复占盘；日常 `npm run` 脚本不变，用 Node 自带的 npm 即可。Node 直接运行 TypeScript 的测试建议使用 Node 24。**插件使用者不需要 Bun，也不需要安装本仓库依赖**：Pi 从本地路径直接加载插件，不读根 lock。将下面的仓库地址占位符换成实际地址：
+开发本仓库需要 Node.js 22.19+、Bun 1.3+ 和 Pi 1.5.0。Bun 是开发前提：依赖安装和 6 个包的构建都用它，多份 clone 共用 bun 全局缓存、不重复占盘；日常 `npm run` 脚本不变，用 Node 自带的 npm 即可。Node 直接运行 TypeScript 的测试建议使用 Node 24。**没有构建产物的插件不需要 Bun，也不需要安装本仓库依赖**（Pi 从本地路径直接加载，不读根 lock）；CC Style、Session Naming、Subagents、Processes、Goal、MCP Adapter 这 6 个包要先在仓库根用 bun 安装依赖并构建，使用它们需要 Bun。将下面的仓库地址占位符换成实际地址：
 
 ```sh
 git clone <仓库地址> pi-packages

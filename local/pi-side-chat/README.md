@@ -4,10 +4,9 @@
 
 ## 加载
 
-需要原版 Pi 1.5.0，在仓库根安装 workspace 依赖后直接加载 TypeScript：
+需要原版 Pi 1.5.0，按[根安装说明](../../README.md#安装与加载)安装依赖后直接加载 TypeScript：
 
 ```sh
-bun install --frozen-lockfile
 pi -e "$PWD/local/pi-side-chat"
 ```
 

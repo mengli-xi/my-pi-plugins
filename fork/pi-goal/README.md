@@ -16,10 +16,9 @@ Goal 为当前 Pi session 提供 `/goal`、`goal_complete` 和 `goal_blocked`。
 
 本 Fork 面向 stock Pi **1.5.0**，使用根 workspace 和唯一根 `bun.lock`；bun 同时用于安装和构建。只安装信任的 extension，它与宿主具有同等进程权限。
 
-从仓库根运行：
+按[根安装说明](../../README.md#安装与加载)在仓库根安装依赖，再构建并加载本包：
 
 ```sh
-bun install --frozen-lockfile
 npm run build -w @narumitw/pi-goal
 pi -e "$PWD/fork/pi-goal"
 # 持久启用：

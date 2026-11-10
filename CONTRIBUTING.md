@@ -31,6 +31,7 @@
 ## 依赖与构建
 
 - 根 `package.json` 用 workspaces 管理 `local/*` 和 `fork/*`，全仓只有一份根 `bun.lock`。安装用 `bun install --frozen-lockfile`；根 `bunfig.toml` 固定 `linker = "hoisted"`，让 node_modules 布局与 npm 一致，不用 bun 1.3 的 isolated 默认。
+- bun 默认不执行依赖包的 install/postinstall 脚本；确实需要脚本的依赖，显式加进根 `package.json` 的 `trustedDependencies`。
 - `typescript`、`@types/node`、Pi peer 的开发版本统一在根声明。
 - 共享库用 workspace 内部依赖引用，不用 `file:../` 相对路径。
 - 共享的测试加载器等工具只留一份，放根目录。

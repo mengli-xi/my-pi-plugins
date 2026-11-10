@@ -4,10 +4,9 @@
 
 ## 加载与构建
 
-需要 stock Pi 1.5.0。先在仓库根目录安装 workspace 依赖，再构建本包：
+需要 stock Pi 1.5.0。按[根安装说明](../../README.md#安装与加载)安装依赖，再构建本包：
 
 ```sh
-bun install --frozen-lockfile
 npm run build -w pi-processes
 pi -e "$PWD/local/pi-processes"
 ```
