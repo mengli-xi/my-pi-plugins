@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import test from "node:test";
 import { freshHost, delay } from "../fixtures/fresh-host.ts";
-const goal = resolve(import.meta.dirname, "../../../fork/pi-goal/extensions/pi-goal/dist/index.js");
+const goal = resolve(import.meta.dirname, "../../../fork/pi-goal/dist/index.js");
 for (const order of ["default", "reverse"] as const) test(`stock B child / C Goal / D completion has four Root requests (${order})`, { timeout: 45_000 }, async t => {
   const prior = process.env.PI_MAILBOX_JOINT; process.env.PI_MAILBOX_JOINT = "1";
   t.after(() => { if (prior === undefined) delete process.env.PI_MAILBOX_JOINT; else process.env.PI_MAILBOX_JOINT = prior; });

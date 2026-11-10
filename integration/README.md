@@ -55,7 +55,7 @@ PI_TEST_EXECUTABLE=/path/to/stock-pi-1.5.0 npm run test:integration:side-chat
 
 ## Goal 协作矩阵
 
-[Goal](../fork/pi-goal/extensions/pi-goal/README.md) 已纳入根 workspace。包内只保留本包 domain/合同测试和独立 faux e2e；真实 Goal + Processes/Subagents 的 mailbox 矩阵在 [integration/goal](goal/mailbox-a1-matrix.mjs)，不借默认降级门禁声称完整矩阵通过。
+[Goal](../fork/pi-goal/README.md) 已纳入根 workspace。包内只保留本包 domain/合同测试和独立 faux e2e；真实 Goal + Processes/Subagents 的 mailbox 矩阵在 [integration/goal](goal/mailbox-a1-matrix.mjs)，不借默认降级门禁声称完整矩阵通过。
 
 先在仓库根显式构建三个生产入口，再指定 stock Pi 1.5.0 binary 和仓库外的证据目录：
 
@@ -75,12 +75,12 @@ node integration/goal/mailbox-a1-matrix.mjs /absolute/path/to/reverse-evidence
 Processes 自己保留更广的显式 Goal 矩阵，不随默认门禁运行：
 
 ```sh
-PI_PROCESSES_TEST_GOAL_ENTRY="$PWD/fork/pi-goal/extensions/pi-goal/dist/index.js" \
+PI_PROCESSES_TEST_GOAL_ENTRY="$PWD/fork/pi-goal/dist/index.js" \
 PI_PROCESSES_TEST_PI=/absolute/path/to/stock-pi-1.5.0 \
 node integration/processes/goal-process.mjs
 ```
 
-入口拒绝缺失的显式路径；先完成所需构建，不自动发现日常 profile。Goal 本包 stock runtime/mailbox smoke 与这里的联合矩阵分别验收，边界见 [Goal 维护说明](../fork/pi-goal/extensions/pi-goal/docs/maintenance.md)。
+入口拒绝缺失的显式路径；先完成所需构建，不自动发现日常 profile。Goal 本包 stock runtime/mailbox smoke 与这里的联合矩阵分别验收，边界见 [Goal 维护说明](../fork/pi-goal/docs/maintenance.md)。
 
 Goal 与真实 CC 的 TUI 协作使用独立入口，显式提供两个实际产物：
 

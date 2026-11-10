@@ -121,7 +121,7 @@ export function componentProducer() {
 export async function collaborators() {
   const [{ default: cc }, { default: goal }] = await Promise.all([
     import(new URL("../../local/pi-claude-style/dist/index.ts", import.meta.url).href),
-    import(new URL("../../fork/pi-goal/extensions/pi-goal/dist/index.js", import.meta.url).href),
+    import(new URL("../../fork/pi-goal/dist/index.js", import.meta.url).href),
   ]) as Array<{ default: ExtensionFactory }>;
   return [cc, goal];
 }

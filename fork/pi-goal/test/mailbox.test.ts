@@ -9,7 +9,6 @@ import type {
 	ProducerEndpoint,
 	ProducerRegistration,
 } from "pi-session-inject/mailbox-v1";
-import { createMockContext, createMockPi } from "../../../test/support.js";
 import { GoalCommandController } from "../src/commands.js";
 import { GoalMailbox, goalIntentMail, goalMailKey, proveGoalMail } from "../src/mailbox.js";
 import {
@@ -24,6 +23,7 @@ import {
 } from "../src/persistence.js";
 import { buildContinuePrompt } from "../src/prompts.js";
 import { createGoal, GoalRuntime, transitionGoal } from "../src/runtime.js";
+import { createMockContext, createMockPi } from "./support.js";
 
 function fixture() {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });

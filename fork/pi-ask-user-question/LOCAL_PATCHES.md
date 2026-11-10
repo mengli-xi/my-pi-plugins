@@ -27,3 +27,7 @@ Pi 直接加载 `.ts`。保留真实 `.ts` 相对 import，避免不必要的 fa
 工具需要用户参与，保持 `exposure: "model-only"`：模型可以直接调用，codemode/script 不应在执行到一半时打开阻塞问卷。无 UI 时只隐藏工具，绝不自动重新加入：公开 API 没有 selection revision，UI 恢复不能证明执行授权仍有效。同一 SDK session 切回 UI 需 Host/用户显式 `setActiveTools`；新 session 按初始 selection 初始化。不能改动兄弟工具。快捷键校验、只读配置和配置缓存都在本包边界处理，不靠别的插件补齐。合同见 [宿主](docs/hosts.md) 和 [配置](docs/configuration.md)。
 
 上游 inline、滚动预算、overlay fallback、digits/Kitty、notes、原生回执、参数预处理、组合多选、未答提示和外部 answer/verdict 是本包的基础能力，不应被旧 overlay 实现或旧结果格式覆盖。已有无版本事件名按 [legacy 兼容合同](docs/events.md) 保留；新协作不能借兼容之名添加插件硬依赖。
+
+## 上游维护
+
+来源与完整性见 [UPSTREAM.json](UPSTREAM.json)，原版保存在主仓库 `vendor/upstream` 分支的同路径。升级使用根 [贡献规范](../../CONTRIBUTING.md#fork-维护规则) 的脚本与复查流程；原版发布记录留在 vendor，本目录文档只描述当前合同。

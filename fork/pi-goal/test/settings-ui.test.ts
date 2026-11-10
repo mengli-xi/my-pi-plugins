@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { createMockContext, createMockPi } from "../../../test/support.js";
 import { GoalCommandController } from "../src/commands.js";
 import { buildGoalSnapshotPayload, type GoalSnapshotPayloadV1 } from "../src/goal-snapshot.js";
 import { createGoal, GoalRuntime } from "../src/runtime.js";
@@ -14,6 +13,7 @@ import {
 	showGoalSettings,
 } from "../src/settings-ui.js";
 import { attachTestMailbox } from "./mailbox-support.js";
+import { createMockContext, createMockPi } from "./support.js";
 import { createTuiHarness } from "./tui-harness.js";
 
 initTheme("dark", false);

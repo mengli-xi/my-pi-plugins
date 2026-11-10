@@ -30,7 +30,7 @@
 
 ## 依赖与构建
 
-- 根 `package.json` 用 npm workspaces 管理 `local/*`，全仓只有一份根 `package-lock.json`。
+- 根 `package.json` 用 npm workspaces 管理 `local/*` 和 `fork/*`，全仓只有一份根 `package-lock.json`。
 - `typescript`、`@types/node`、Pi peer 的开发版本统一在根声明。
 - 共享库用 workspace 内部依赖引用，不用 `file:../` 相对路径。
 - 共享的测试加载器等工具只留一份，放根目录。
@@ -45,3 +45,12 @@
 - 同一件事只在一处写全，别处只放链接。
 - 文档写当前状态。不写迁移流水、审批状态、测试通过数、commit hash、「本轮/上一轮/未迁入」。保留数据格式兼容与升级规则、备份恢复说明、复现所需的上游固定版本，以及仍在解释当前设计的 ADR；已被推翻的 ADR 删掉。
 - 文档用中文；代码标识符、命令、协议名保留原文。改代码时，同一个 commit 里更新受影响的文档。
+
+## Fork 维护规则
+
+- `fork/<name>/` 只放一个上游包，源码直接纳入主仓库，与 `local/*` 共用唯一根 lock；不另建仓库或子模块。
+- 原版只通过 `node scripts/fork-upgrade.mjs <fork> <版本或tag>` 导入 `vendor/upstream`，不在 vendor 分支手改。vendor 与主分支使用相同目录；git 来源仅展开指定子目录，npm 仅展开 tarball 的 `package/`。
+- 每包必须有 `UPSTREAM.json` 和 `LOCAL_PATCHES.md`。后者说明每个本地补丁为什么存在、升级时必须保留什么。Fork 插件同样遵守上面插件之间关系的全部规则。
+- `UPSTREAM.json` 为 JSON 对象。git 来源记录 `type: "git"`、`repository`、`tag`、完整 `commit`、`subdirectory`，脚本下载 GitHub codeload 时补充 tarball 的 `sha256`。npm 来源记录 `type: "npm"`、`package`、`version`、`registry`、`tarball` 和 registry 元数据的 SRI `integrity`；下载必须通过完整性校验。来源记录不是上游发布内容，逐字节自检比较时单独排除它。
+- 先保证工作区干净，并在主工作分支运行脚本。普通 clone 只取得当前分支时，先从克隆来源取得 `vendor/upstream` 分支（例如 `git fetch origin vendor/upstream:vendor/upstream`）。脚本不配置 remote、不切换工作区，用临时 index 在 vendor 上提交并 merge 到当前分支；来源记录随 merge 同时更新双方。`--dry-run` 只下载、校验、展开并报告相对 vendor 的文件差异，不提交；脚本也支持 `file:` registry/tarball 以便离线验证。
+- 升级流程：跑脚本 → 手工解冲突并 `git add` / `git commit` → 逐项按 `LOCAL_PATCHES.md` 复查 → 跑 `npm run typecheck`、`npm test`、`npm run check:goal`、`npm run test:integration`。冲突时脚本停止并列出文件，不自动选择任何一边；`git merge --abort` 只撤销当前 merge，已导入的 vendor 原版保留，可重新合并。

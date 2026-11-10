@@ -385,7 +385,7 @@ export default async function (pi: ExtensionAPI) {
 						: "goal";
 	});
 	const module = await import(
-		process.env.GOAL_JOINT_BUNDLE ?? new URL("../../fork/pi-goal/extensions/pi-goal/dist/index.js", import.meta.url).href
+		process.env.GOAL_JOINT_BUNDLE ?? new URL("../../fork/pi-goal/dist/index.js", import.meta.url).href
 	);
 	module.default(pi);
 	pi.on("session_start", (_event, ctx) => {

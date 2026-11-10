@@ -3,7 +3,6 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createMockContext, createMockPi } from "../../../test/support.js";
 import {
 	GOAL_SNAPSHOT_CHANNEL,
 	GOAL_SNAPSHOT_REQUEST_CHANNEL,
@@ -11,6 +10,7 @@ import {
 } from "../src/goal-snapshot.js";
 import type { ActiveGoal, GoalStateEntryData } from "../src/persistence.js";
 import { goalWithTestMailbox as goal } from "./mailbox-support.js";
+import { createMockContext, createMockPi } from "./support.js";
 
 const settingsDirectory = mkdtempSync(join(tmpdir(), "pi-goal-queue-settings-"));
 const enabledSettingsPath = join(settingsDirectory, "enabled.json");

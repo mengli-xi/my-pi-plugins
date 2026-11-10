@@ -10,7 +10,7 @@ import { sdkProviderApprovalV1 } from "pi-session-runtime/sdk-provider";
 import {
 	isolatedEnvironment,
 	stockHost,
-} from "../../fork/pi-goal/extensions/pi-goal/test/runtime-test-env.mjs";
+} from "../../fork/pi-goal/test/runtime-test-env.mjs";
 
 const output = resolve(process.argv[2] ?? (await mkdtemp(join(tmpdir(), "goal-joint-matrix-"))));
 const allowedCases = ["joint-b", "joint-bd", "joint-grant", "joint-paused", "joint-paused-split"];
@@ -20,7 +20,7 @@ assert.ok(cases.every((name) => allowedCases.includes(name)), "Unknown Goal join
 const { binary } = stockHost(isolatedEnvironment(join(output, "host")));
 const fixture = fileURLToPath(new URL("./mailbox-a1-native.ts", import.meta.url));
 const bundle = fileURLToPath(
-	new URL("../../fork/pi-goal/extensions/pi-goal/dist/index.js", import.meta.url),
+	new URL("../../fork/pi-goal/dist/index.js", import.meta.url),
 );
 const workspace = fileURLToPath(new URL("../../", import.meta.url));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));

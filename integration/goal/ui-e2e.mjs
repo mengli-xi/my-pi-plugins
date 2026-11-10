@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { realpathSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
-import { runGoalUiE2e } from "../../fork/pi-goal/extensions/pi-goal/test/goal-ui-e2e.mjs";
+import { runGoalUiE2e } from "../../fork/pi-goal/test/goal-ui-e2e.mjs";
 
 // Cross-plugin loading belongs to this root integration entry, never the
 // package's default native PTY run. The caller must supply a real built CC entry.

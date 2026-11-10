@@ -11,11 +11,11 @@ import {
 	type MailboxBinding,
 	parseMailboxSnapshot,
 } from "pi-session-inject/mailbox-v1";
-import { createMockContext, createMockPi } from "../../../test/support.js";
 import { GoalMailbox, goalIntentMail, goalMailKey } from "../src/mailbox.js";
 import type { GoalRunIntent } from "../src/mailbox-state.js";
 import { loadGoalStateFromSession } from "../src/persistence.js";
 import { createGoal, GoalRuntime, transitionGoal } from "../src/runtime.js";
+import { createMockContext, createMockPi } from "./support.js";
 
 /** Real A1 store/binding/SessionManager; the event source controls only tree and
  * source-work timing. Provider behavior is separately tested with stock Pi. */

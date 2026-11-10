@@ -19,7 +19,7 @@ export async function freshHost(t: TestContext, message = "Reply exactly SUBAGEN
   const capture = fullProfile && process.env.PI_MAILBOX_JOINT_EVIDENCE ? join(process.env.PI_MAILBOX_JOINT_EVIDENCE, sessionId) : undefined;
   if (capture) mkdirSync(capture, { recursive: true });
   const extra = fullSettings && !fullProfile ? ["-e", resolve(pkg, "../pi-claude-style/dist/index.ts"), "--tools", "read,bash,edit,write,grep,find,ls"] : [];
-  const owners = fullProfile ? [join(pkg, "test/fixtures/test-commands.ts"), ...extensions.filter(path => !path.includes("/fork/pi-goal/extensions/pi-goal/dist/") && !path.includes("/local/pi-claude-style/dist/"))] : [join(pkg, "test/fixtures/test-commands.ts"), resolve(pkg, "../pi-processes/dist/index.js"), ...extensions];
+  const owners = fullProfile ? [join(pkg, "test/fixtures/test-commands.ts"), ...extensions.filter(path => !path.includes("/fork/pi-goal/dist/") && !path.includes("/local/pi-claude-style/dist/"))] : [join(pkg, "test/fixtures/test-commands.ts"), resolve(pkg, "../pi-processes/dist/index.js"), ...extensions];
   if (order === "reverse") owners.reverse();
   const main = spawn(piBinary, ["--offline", "--mode", "rpc", "--session", session, ...(fullProfile ? [] : ["--no-extensions"]), ...(process.env.PI_MAILBOX_JOINT === "1" ? ["-e", join(pkg, "test/fixtures/mailbox-joint-cutoff.ts")] : []), "-e", join(pkg, "test/fixtures/faux-subagent-provider.ts"), ...owners.flatMap(path => ["-e", path]), "-e", join(pkg, "test/fixtures/sdk-host-control.ts"),
     ...extra, ...(fullProfile ? [] : ["--no-skills", "--no-prompt-templates", "--no-context-files"]), "--provider", "fixture", "--model", "faux-1", "--thinking", "off", "--approve"], {

@@ -1,38 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { checkDocs, headingAnchors, relativeLinks } from "./check-doc-links.mjs";
-
-function forkFixture() {
-  const root = mkdtempSync(path.join(os.tmpdir(), "pi-doc-workspace-"));
-  const owner = "fork/upstream";
-  const workspace = `${owner}/extensions/feature`;
-  const put = (name, text) => {
-    mkdirSync(path.dirname(path.join(root, name)), { recursive: true });
-    writeFileSync(path.join(root, name), text);
-  };
-  const git = (directory, ...args) => execFileSync("git", ["-c", "core.fsmonitor=false", ...args], {
-    cwd: path.join(root, directory), encoding: "utf8",
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull },
-  }).split("\0").filter(Boolean);
-  put("package.json", JSON.stringify({ workspaces: ["local/*", workspace] }));
-  put("README.md", `[包](${workspace}/README.md)\n[本地](local/demo/README.md)\n`);
-  put("local/demo/README.md", "# 本地\n");
-  put(`${workspace}/package.json`, "{}");
-  put(`${workspace}/README.md`, "# 包\n[合同](docs/contract.md#中文-api)\n[补丁](../../LOCAL_PATCHES.md)\n");
-  put(`${workspace}/docs/contract.md`, "# 中文 API\n");
-  put(`${owner}/LOCAL_PATCHES.md`, "# 本地补丁\n");
-  git("", "init", "--quiet");
-  git(owner, "init", "--quiet");
-  git(owner, "add", ".");
-  git("", "add", "README.md", "package.json", "local");
-  // gitlink 不要求 fixture 创建 commit；nested index 同样可以没有 HEAD。
-  git("", "update-index", "--add", "--cacheinfo", `160000,${"1".repeat(40)},${owner}`);
-  return { root, owner, workspace, put, git, tracked: () => git("", "ls-files", "-z") };
-}
 
 test("解析实际相对目标，忽略代码、注释与外部 URL", () => {
   const links = relativeLinks(`
@@ -105,83 +77,33 @@ test("同页和跨文件锚点必须存在，百分号编码与查询串不绕�
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("active Fork 的 gitlink 覆盖包内 tracked/current 文档，不扫描 pristine 或 inactive 包", () => {
-  const { root, owner, workspace, put, tracked } = forkFixture();
+test("Fork 文档统一由主仓库 ls-files 枚举，未跟踪不检查，断链和孤儿受门禁约束", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "pi-doc-fork-"));
+  const put = (name, text) => {
+    mkdirSync(path.dirname(path.join(root, name)), { recursive: true });
+    writeFileSync(path.join(root, name), text);
+  };
+  const git = (...args) => execFileSync("git", ["-c", "core.fsmonitor=false", ...args], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
   try {
-    assert.ok(tracked().includes(owner));
-    assert.ok(!tracked().includes(`${workspace}/README.md`));
-    put(`${workspace}/docs/current.md`, "# 新合同\n[返回](../README.md)\n");
-    put(`${workspace}/README.md`, "# 包\n[合同](docs/contract.md#中文-api)\n[新合同](docs/current.md)\n[补丁](../../LOCAL_PATCHES.md)\n");
-    put(`${owner}/README.md`, "[上游坏链](missing.md)\n");
-    put(`${owner}/docs/pristine.md`, "[上游坏链](missing.md)\n");
-    put(`${owner}/extensions/inactive/README.md`, "[inactive 坏链](missing.md)\n");
-    put("local/demo/untracked.md", "[本地未跟踪](missing.md)\n");
+    put("README.md", "[Fork](fork/demo/README.md)\n");
+    put("fork/demo/README.md", "[合同](docs/contract.md#中文-api)\n[补丁](LOCAL_PATCHES.md)\n");
+    put("fork/demo/docs/contract.md", "# 中文 API\n");
+    put("fork/demo/LOCAL_PATCHES.md", "# 补丁\n");
+    git("init", "--quiet"); git("add", ".");
+    const tracked = () => git("ls-files", "-z");
+    assert.ok(tracked().includes("fork/demo/README.md"));
     assert.deepEqual(checkDocs(root, tracked()), []);
-    put("local/demo/orphan.md", "# 本地孤儿\n");
-    assert.match(checkDocs(root, [...tracked(), "local/demo/orphan.md"]).join("\n"), /local\/demo\/orphan.md: 无法从根/);
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-test("active Fork 的 Git file checkout 与未 commit 的 nested index 同样可枚举", () => {
-  const { root, owner, git, tracked } = forkFixture();
-  try {
-    mkdirSync(path.join(root, ".git/modules"));
-    git(owner, "init", "--quiet", "--separate-git-dir", path.join(root, ".git/modules/upstream"));
-    assert.match(readFileSync(path.join(root, owner, ".git"), "utf8"), /^gitdir:/);
+    put("fork/demo/untracked.md", "[坏链](missing.md)\n");
     assert.deepEqual(checkDocs(root, tracked()), []);
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-test("Fork 的 anchors、坏链、current 孤儿、缺失 tracked 文档与补丁可达性仍是负门禁", () => {
-  const { root, owner, workspace, put, tracked } = forkFixture();
-  try {
-    put(`${workspace}/docs/current.md`, "[坏链](missing.md)\n[错误锚点](contract.md#旧章节)\n");
-    let errors = checkDocs(root, tracked()).join("\n");
-    assert.match(errors, /docs\/current.md:1: 链接目标不存在 missing.md/);
-    assert.match(errors, /docs\/current.md:2: 链接锚点不存在 contract.md#旧章节/);
-    assert.match(errors, /docs\/current.md: 无法从根/);
-    rmSync(path.join(root, workspace, "docs/contract.md"));
-    errors = checkDocs(root, tracked()).join("\n");
-    assert.ok(errors.includes(`${workspace}/docs/contract.md: 已跟踪文档不存在`));
-    put(`${workspace}/docs/contract.md`, "# 中文 API\n");
-    put(`${workspace}/README.md`, "# 包\n[合同](docs/contract.md#中文-api)\n");
-    assert.ok(checkDocs(root, tracked()).includes(`${owner}/LOCAL_PATCHES.md: 无法从根 README.md 沿链接到达`));
-    put("README.md", "[本地](local/demo/README.md)\n");
-    assert.ok(checkDocs(root, tracked()).includes(`${workspace}/README.md: 无法从根 README.md 沿链接到达`));
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-test("Fork workspace glob 只激活匹配的包，多个包共用 owning Fork 的补丁文档", () => {
-  const { root, owner, workspace, put, git, tracked } = forkFixture();
-  try {
-    const sibling = `${owner}/extensions/second`;
-    put("package.json", JSON.stringify({ workspaces: [`${owner}/extensions/*`] }));
-    put(`${sibling}/package.json`, "{}");
-    put(`${sibling}/README.md`, "# 第二个包\n[补丁](../../LOCAL_PATCHES.md)\n");
-    put(`${owner}/other/README.md`, "[不启用](missing.md)\n");
-    git(owner, "add", ".");
-    put("README.md", `[包](${workspace}/README.md)\n[第二个包](${sibling}/README.md)\n[本地](local/demo/README.md)\n`);
-    assert.deepEqual(checkDocs(root, tracked()), []);
-    put(`${sibling}/docs/orphan.md`, "# 新孤儿\n");
-    assert.ok(checkDocs(root, tracked()).includes(`${sibling}/docs/orphan.md: 无法从根 README.md 沿链接到达`));
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-test("缺少 active Fork、package、Git checkout 或必要文档时明确失败", () => {
-  const { root, owner, workspace, put, tracked } = forkFixture();
-  try {
-    rmSync(path.join(root, owner, "LOCAL_PATCHES.md"));
-    assert.ok(checkDocs(root, tracked()).includes(`${owner}/LOCAL_PATCHES.md: 已跟踪文档不存在`));
-    rmSync(path.join(root, workspace, "README.md"));
-    assert.ok(checkDocs(root, tracked()).includes(`${workspace}/README.md: 已跟踪文档不存在`));
-    rmSync(path.join(root, owner, ".git"), { recursive: true });
-    assert.ok(checkDocs(root, tracked()).includes(`${owner}: active Fork 的 Git repository 未初始化`));
-    rmSync(path.join(root, workspace, "package.json"));
-    assert.ok(checkDocs(root, tracked()).includes(`${workspace}: active Fork workspace 缺少 package.json`));
-    rmSync(path.join(root, owner), { recursive: true });
-    assert.ok(checkDocs(root, tracked()).includes(`${workspace}: active Fork workspace 不存在`));
-    put("package.json", JSON.stringify({ workspaces: ["fork/*/extensions/*"] }));
-    assert.ok(checkDocs(root, tracked()).includes("fork/*/extensions/*: active Fork workspace 不存在"));
+    git("add", ".");
+    assert.match(checkDocs(root, tracked()).join("\n"), /untracked.md:1: 链接目标不存在/);
+    assert.match(checkDocs(root, tracked()).join("\n"), /untracked.md: 无法从根/);
+    rmSync(path.join(root, "fork/demo/docs/contract.md"));
+    assert.match(checkDocs(root, tracked()).join("\n"), /contract.md: 已跟踪文档不存在/);
+    put("fork/demo/docs/contract.md", "# 旧标题\n");
+    assert.match(checkDocs(root, tracked()).join("\n"), /链接锚点不存在 docs\/contract.md#中文-api/);
+    put("README.md", "# 根\n");
+    assert.match(checkDocs(root, tracked()).join("\n"), /fork\/demo\/README.md: 无法从根/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

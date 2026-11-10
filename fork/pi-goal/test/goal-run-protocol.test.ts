@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
-import { createMockContext, createMockPi } from "../../../test/support.js";
 import { goalWithTestMailbox as goal } from "./mailbox-support.js";
+import { createMockContext, createMockPi } from "./support.js";
 
 const START_CHANNEL = "pi-goal:start";
 const CANCEL_CHANNEL = "pi-goal:cancel";

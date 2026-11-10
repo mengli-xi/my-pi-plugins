@@ -47,3 +47,7 @@ Adapter 已有 URL-bound credentials 不变。移除 Pi 内建 MCP 的私有登�
 本包保留 completion、cold-loading、mailbox、UI action 四份 Vitest gate，并覆盖新增路径/cache/OAuth/Task 回归、public export 与 stock-host 加载。包内只测本包；真实 CC/Inject/SDK 组合和可选协作方缺失/加载顺序测试属于根 `integration/`。
 
 npm release 缺失的上游 OAuth/conformance fixtures 不代表测试已通过，不能由本地替身 gate 推断其全套覆盖。验证方法见[README](README.md#验证)，本文不保存验收计数、hash、流水或个人目录。
+
+## 上游维护
+
+来源与完整性见 [UPSTREAM.json](UPSTREAM.json)，原版保存在主仓库 `vendor/upstream` 分支的同路径。升级使用根 [贡献规范](../../CONTRIBUTING.md#fork-维护规则) 的脚本与复查流程；原版发布记录留在 vendor，本目录文档只描述当前合同。

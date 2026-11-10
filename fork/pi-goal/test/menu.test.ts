@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { createMockContext } from "../../../test/support.js";
 import {
 	buildGoalMenuState,
 	GOAL_MENU_ACTIONS,
@@ -11,6 +10,7 @@ import {
 import type { ActiveGoal, PendingQueueAction } from "../src/persistence.js";
 import { createGoal, transitionGoal } from "../src/runtime.js";
 import { DEFAULT_GOAL_SETTINGS } from "../src/settings.js";
+import { createMockContext } from "./support.js";
 import { createTuiHarness } from "./tui-harness.js";
 
 function runtime(goal?: ActiveGoal) {

@@ -7,11 +7,6 @@ import { join } from "node:path";
 import test, { after } from "node:test";
 import { getContinuationRegistryV1 } from "pi-runtime-contracts/continuation-v1";
 import {
-	createCustomSelectorHarness,
-	createMockContext,
-	createMockPi,
-} from "../../../test/support.js";
-import {
 	assistantUsageTokens,
 	buildGoalSystemPrompt,
 	completeGoalArguments,
@@ -36,6 +31,7 @@ import {
 	normalizeVisibleAssistantOutput,
 } from "../src/safety.js";
 import { goalWithTestMailbox as goal } from "./mailbox-support.js";
+import { createCustomSelectorHarness, createMockContext, createMockPi } from "./support.js";
 
 // This suite stays in one file because it exercises one module-scoped extension
 // state machine across commands, lifecycle hooks, tools, persistence, prompts,

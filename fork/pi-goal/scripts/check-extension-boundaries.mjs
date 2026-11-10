@@ -43,12 +43,14 @@ const resolvedLibraryCache = new Map();
 const libraryCheckCache = new Map();
 const rootDirectory = process.cwd();
 const libraryPackages = [];
-const activePackages = [{
- directory: rootDirectory,
- name: readJson(path.join(rootDirectory, "package.json")).name,
- packageJson: readJson(path.join(rootDirectory, "package.json")),
- packagePath: path.join(rootDirectory, "package.json"),
-}];
+const activePackages = [
+	{
+		directory: rootDirectory,
+		name: readJson(path.join(rootDirectory, "package.json")).name,
+		packageJson: readJson(path.join(rootDirectory, "package.json")),
+		packagePath: path.join(rootDirectory, "package.json"),
+	},
+];
 const experimentalPackageCount = 0;
 const libraryPackageNames = new Set(libraryPackages.map(({ name }) => name));
 const failures = [];

@@ -38,3 +38,7 @@ Main 独占命令、持久化、状态展示和 capability owner；child 只提�
 - 本包 source-only，无 `dist/` 或 build；host 提供的 Pi API 与 `typebox` 按 peer 使用，避免重复 schema 身份。
 - `/search` 的 parser 与补全共用公开子命令；无交互 UI 时用文本反馈，不让设置面板阻塞 RPC/非交互调用。
 - 输出截断只限制 HTTP 抓取返回的正文，不承诺下载量、独立超时或 SSRF 防护。fallback 也不承诺无额外请求或费用。
+
+## 上游维护
+
+来源与完整性见 [UPSTREAM.json](UPSTREAM.json)，原版保存在主仓库 `vendor/upstream` 分支的同路径。升级使用根 [贡献规范](../../CONTRIBUTING.md#fork-维护规则) 的脚本与复查流程；原版发布记录留在 vendor，本目录文档只描述当前合同。
