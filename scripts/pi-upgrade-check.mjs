@@ -33,8 +33,8 @@ export function updatePiVersions(manifest, version, { peers = false } = {}) {
 }
 
 // 原始日志始终保留；摘要提取 npm workspace、TS 位置及失败用例，不替代报错。
-export function diagnostics(output) {
-  let current = "仓库";
+export function diagnostics(output, defaultPackage = "仓库") {
+  let current = defaultPackage;
   const failures = [];
   for (const raw of output.split("\n")) {
     const line = raw.replace(/\x1b\[[0-9;]*m/g, "");
@@ -102,7 +102,7 @@ export async function main(args) {
   const source = git(process.cwd(), "rev-parse", "--show-toplevel");
   if (git(source, "status", "--porcelain")) throw new Error("请先提交或收起当前改动；检查只 clone 当前已提交快照。");
   const head = git(source, "rev-parse", "HEAD");
-  const manifest = readJson(join(source, "package.json"));
+  const manifest = JSON.parse(git(source, "show", `${head}:package.json`));
   const dependencies = Object.keys(manifest.devDependencies ?? {}).filter(isPiDependency);
   if (!dependencies.length) throw new Error("根 devDependencies 没有 Pi 依赖");
   const directory = await mkdtemp(join(tmpdir(), "pi-upgrade-"));
@@ -111,7 +111,7 @@ export async function main(args) {
   const env = checkEnvironment(environment);
   const report = {
     target: options.version, from: [...new Set(dependencies.map(name => manifest.devDependencies[name]))],
-    directory, steps: [], notices: [
+    source, commit: head, directory, steps: [], notices: [
       "未覆盖：真实 provider、人工终端与输入法、没有探针的私有行为。",
       "补丁宿主检查不纳入原版升级门禁；test:patched-host 与补丁联测须用匹配的真实构建另跑。",
       "host-patches/ 的补丁固定上游版本；Pi 版本变更必须按 host-patches/pi/v1.5.0/README.md 重新 pin、重新构建和验证，不能直接套用旧补丁。",
@@ -122,7 +122,7 @@ export async function main(args) {
     const log = join(directory, `${String(report.steps.length + 1).padStart(2, "0")}-${stage.replace(/[^\w\u3400-\u9fff-]/g, "-")}.log`);
     console.log(`检查：${pkg} · ${stage} · ${item}`);
     const { output, stdout, ...result } = await runCommand(command, commandArgs, { cwd, env: { ...env, ...extraEnv }, log });
-    const entry = { stage, package: pkg, item, ...result, log, failures: result.status === "failed" ? diagnostics(output) : [] };
+    const entry = { stage, package: pkg, item, ...result, log, failures: result.status === "failed" ? diagnostics(output, pkg) : [] };
     if (result.status === "failed" && !entry.failures.length) entry.failures.push({ package: pkg, item: output.trim().slice(-4000) || result.reason || `退出码 ${result.code}，信号 ${result.signal}` });
     report.steps.push(entry);
     if (result.reason?.startsWith("收到 SIG")) throw new Error(result.reason);
@@ -151,6 +151,7 @@ export async function main(args) {
     } else {
       const cloned = await step("临时副本", "仓库", "clone", "git", ["clone", "--no-hardlinks", "--no-local", "--quiet", source, checkout], source);
       if (cloned.status === "passed") {
+        git(checkout, "checkout", "--quiet", "--detach", head);
         await saveManifest(join(checkout, "package.json"), updatePiVersions(manifest, options.version));
         const installed = await step("安装", "仓库", "bun install", "bun", ["install"], checkout);
         const checks = discoverChecks(checkout);
@@ -196,7 +197,13 @@ export async function main(args) {
   } catch (error) {
     report.steps.push({ stage: "流程", package: "仓库", item: "异常", status: "failed", reason: String(error.stack ?? error) });
   } finally {
-    if (!options.keep) await rm(checkout, { recursive: true, force: true });
+    if (!options.keep) {
+      try {
+        await Promise.all([checkout, environment].map(path => rm(path, { recursive: true, force: true })));
+      } catch (error) {
+        report.steps.push({ stage: "清理", package: "仓库", item: "临时副本与隔离环境", status: "failed", reason: String(error) });
+      }
+    }
     report.passed = report.steps.length > 0 && report.steps.every(entry => entry.status === "passed");
     await writeFile(join(directory, "report.json"), JSON.stringify(report, null, 2) + "\n");
     console.log("\n" + renderReport(report));

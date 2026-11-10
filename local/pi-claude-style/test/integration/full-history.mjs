@@ -28,7 +28,7 @@ writeFileSync(session, rows.map(row => JSON.stringify(row)).join("\n") + "\n");
 writeFileSync(join(root, "home/agent/settings.json"), JSON.stringify({ quietStartup: true, terminal: { showImages: false }, compaction: { enabled: false, keepRecentTokens: 1000 } }));
 const result = join(root, "events.jsonl");
 const term = new xterm.Terminal({ cols, rows: 40, allowProposedApi: true });
-const child = Bun.spawn({ cmd: [binary, "--offline", "--session", session, "--approve", "--no-extensions", "--no-skills", "--no-context-files", "--no-themes", "--no-prompt-templates", "--tui-mode", "fullscreen", "--provider", "history-test", "--model", "offline", "--api-key", "offline", "--extension", join(packageRoot, "dist/index.ts"), "--extension", join(packageRoot, "test/integration/full-history-extension.mjs")],
+const child = Bun.spawn({ cmd: [binary, "--offline", "--session", session, "--approve", "--no-extensions", "--no-skills", "--no-context-files", "--no-themes", "--no-prompt-templates", "--tui-mode", "fullscreen", "--provider", "history-test", "--model", "offline", "--api-key", "offline", "--extension", join(packageRoot, "dist/index.ts"), "--extension", join(packageRoot, "test/integration/full-history-extension.mts")],
   cwd: join(root, "work"), env: { ...process.env, HOME: join(root, "home"), XDG_CONFIG_HOME: join(root, "home/.config"), PI_CODING_AGENT_DIR: join(root, "home/agent"), PI_OFFLINE: "1", TERM: "xterm-256color", CC_FULL_HISTORY_RESULT: result, CC_FULL_HISTORY_SESSION: session },
   stdin: "ignore", stderr: "pipe", terminal: { cols, rows: 40, data(_pty, data) { term.write(data); } } });
 const stderr = new Response(child.stderr).text();

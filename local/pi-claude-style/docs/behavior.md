@@ -522,7 +522,7 @@ import 边界不变；`dist/config-storage.cjs` 不导入任何 Pi class，刻�
   分别指向 `index.ts` / `child.ts`，继续校验 canonical path 和 hash。
 - Subagents/Side 的生产 catalog 若校验固定 basename，必须同步为 `child.ts`；SDK fixture 和诊断 consumer
   必须同步引用 `dist/index.ts`、`dist/child.ts`、`dist/src/internals.ts`、`dist/src/probes.ts`。不能放宽校验或添加旧 `.js` shim。
-- 真实 CLI fixture 同样用 `.mts` / `.ts` 入口保持 host 绑定，例如 `host-fixtures-extension.mts` 和临时 child wrapper。
+- 真实 CLI fixture 同样用 `.mts` / `.ts` 入口保持 host 绑定，例如 `host-fixtures-extension.mts`、`full-history-extension.mts` 和临时 child wrapper。
 
 `scripts/check-internals-host.mjs` 同时断言最终 CLI 的 component identity 与 compact patch 安装状态，不能仅凭 prototype probe 判断 realm 正确。
 `PI_BIN=/path/to/pi-1.5.0 npm run check:host` 是可重复门禁；根 `integration/claude-style/child-ui.mjs` 另验证 Main/child 的真实
@@ -668,7 +668,7 @@ managed child factory 必须在 execution 装配时安装，不等首次 view。
 
 新增私有边界 `history.renderEntries` 行为校验 `renderSessionEntries` 及现有 compaction dispatch 两个分支的同步 clear/render，真实 dispatch 也检查同步次数；读取 mode 的 `session/sessionManager/renderer`。`session` 只用于通过公开 `AgentSession.extensionRunner` 和已注册 Markdown transformer 识别 `/reload` 重画早于 `session_start` 的归属。`history.selectionAnchors` 校验补载涉及的 `selectionAnchor/selectionFocus/selectionInitialRange/lastClick` 内容坐标。复用已登记的 `chatContainer/addMessageToChat`、`handleEvent` 和 fullscreen frame/scroll metadata；两项均进入 `check:host`。安装后运行中失配同样完整回退：取消补载、撤掉窗口和加载行，在 idle 且原生 dispatch 完成后，先恢复选区方法，再按 `buildContextEntries()` 同步 GroupStore/Activity 两份 projection 并调用原生 renderer；`/internals` 记录失配，regular 不受影响。
 
-`bun test/integration/full-history.mjs /path/to/pi-1.5.0` 用合成会话和 faux provider 检查完整历史、补载选区/视口、两类现场压缩、reload、settings rebuild、tree、fork、new、resume、输入历史与运行中回退；另用 2800 余条记录检验卸载、双向重载、折叠状态、选区保护和多次压缩。
+`PI_BIN=/path/to/pi-1.5.0 bun test/integration/full-history.mjs` 用合成会话和 faux provider 检查完整历史、补载选区/视口、两类现场压缩、reload、settings rebuild、tree、fork、new、resume、输入历史与运行中回退；另用 2800 余条记录检验卸载、双向重载、折叠状态、选区保护和多次压缩。
 
 `src/host/fullscreen/` 提供精确 editor geometry、面板外部点击关闭、每帧钩子、浮动补全、置顶问题与主题选区色。置顶问题直接合入帧，不建立 Pi overlay，所以滚动中的 transcript 选区仍跟随内容。深路径 layout import 失败时几何退回 UIKit 估算；选区 probe 失配退回原生反色。Main 与 child view 共用实现，detach 释放各自 owner。
 

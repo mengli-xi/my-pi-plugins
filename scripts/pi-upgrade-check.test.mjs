@@ -139,7 +139,7 @@ test("版本不存在时在安装前失败、写报告且不改源仓库", async
   }
 });
 
-for (const scenario of ["只报告", "失败后继续", "应用"]) {
+for (const scenario of ["只报告", "失败后继续", "应用", "工作区变动"]) {
   test(`离线流程：${scenario}`, async () => {
     const f = fixture();
     const previous = process.cwd(), path = process.env.PATH;
@@ -150,13 +150,15 @@ for (const scenario of ["只报告", "失败后继续", "应用"]) {
       json(join(f.root, "package.json"), { workspaces: ["local/*"], devDependencies: { "@earendil-works/pi-ai": "1.5.0" } });
       json(join(f.root, "local/new-owner/package.json"), { name: "new-owner", scripts: { "check:internals": "probe", "check:host": "host", "test:patched-host": "excluded" }, peerDependencies: { "@earendil-works/pi-ai": "^1.5.0" } });
       writeFileSync(join(f.root, "bun.lock"), "original lock\n");
+      writeFileSync(join(f.root, "guard.txt"), "original\n");
       if (scenario === "失败后继续") writeFileSync(join(f.root, "FAIL_TYPECHECK"), "");
       execFileSync("git", ["-C", f.root, "add", "."]);
       execFileSync("git", ["-C", f.root, "-c", "user.name=测试", "-c", "user.email=test@example.invalid", "commit", "-qm", "离线流程夹具"]);
       const before = readFileSync(join(f.root, "package.json"), "utf8");
       mkdirSync(join(f.root, "bin"));
       writeFileSync(join(f.root, ".git/info/exclude"), "bin/\n");
-      writeFileSync(join(f.root, "bin/npm"), '#!/bin/sh\nif [ "$1" = view ]; then printf \'"%s"\\n\' "${2##*@}"; exit 0; fi\nprintf "%s\\n" "$*"\nif [ "$2" = typecheck ] && [ -f FAIL_TYPECHECK ]; then echo "local/new-owner/file.ts(1,1): error TS2322: fixture mismatch"; exit 1; fi\n', { mode: 0o755 });
+      const concurrentEdit = scenario === "工作区变动" ? `if [ "$2" = typecheck ]; then echo changed >> "${join(f.root, "guard.txt")}"; fi\n` : "";
+      writeFileSync(join(f.root, "bin/npm"), '#!/bin/sh\nif [ "$1" = view ]; then echo registry-notice >&2; printf \'"%s"\\n\' "${2##*@}"; exit 0; fi\nprintf "%s\\n" "$*"\nif [ "$2" = typecheck ] && [ -f FAIL_TYPECHECK ]; then echo "local/new-owner/file.ts(1,1): error TS2322: fixture mismatch"; exit 1; fi\n' + concurrentEdit, { mode: 0o755 });
       writeFileSync(join(f.root, "bin/bun"), '#!/bin/sh\nprintf "target lock\\n" > bun.lock\n', { mode: 0o755 });
       process.env.PATH = `${join(f.root, "bin")}:${path}`;
       process.chdir(f.root);
@@ -167,7 +169,7 @@ for (const scenario of ["只报告", "失败后继续", "应用"]) {
       finally { console.log = originalLog; }
       reportDirectory = lines.join("\n").match(/报告：(.*)\/report.json/)[1];
       const report = JSON.parse(readFileSync(join(reportDirectory, "report.json")));
-      assert.equal(result, scenario === "失败后继续" ? 1 : 0);
+      assert.equal(result, ["失败后继续", "工作区变动"].includes(scenario) ? 1 : 0);
       for (const item of ["typecheck", "test", "test:integration", "check:internals", "check:host"]) assert.ok(report.steps.some(step => step.item === item), item);
       assert.equal(report.steps.some(step => step.item === "test:patched-host"), false);
       assert.equal(report.steps.find(step => step.item === "check:host").status, "passed");
@@ -178,6 +180,10 @@ for (const scenario of ["只报告", "失败后继续", "应用"]) {
       } else {
         assert.equal(readFileSync(join(f.root, "package.json"), "utf8"), before);
         assert.equal(readFileSync(join(f.root, "bun.lock"), "utf8"), "original lock\n");
+      }
+      if (scenario === "工作区变动") {
+        assert.equal(report.steps.at(-1).status, "failed");
+        assert.match(report.steps.at(-1).reason, /拒绝 --apply/);
       }
       if (scenario === "失败后继续") {
         assert.equal(report.steps.at(-1).status, "skipped");
