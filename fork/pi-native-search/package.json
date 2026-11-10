@@ -2,15 +2,13 @@
   "name": "pi-native-search",
   "version": "0.1.0",
   "private": false,
-  "description": "Pi extension that adds web_search and web_fetch tools using each provider's native search backend (ZAI MCP, Anthropic, Google, OpenAI, xAI, Claude Code subscription via claude-bridge), with DuckDuckGo as a universal fallback.",
+  "description": "Pi web_search and web_fetch tools with public native providers, optional registered backends and DuckDuckGo fallback.",
   "keywords": [
     "pi-package",
     "pi",
     "extension",
     "web-search",
     "web-fetch",
-    "claude",
-    "claude-code",
     "glm",
     "duckduckgo"
   ],
@@ -28,20 +26,24 @@
     "node": ">=20"
   },
   "type": "module",
+  "scripts": {
+    "test": "node ../../scripts/isolated-agent.mjs node --import ../../ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
   "files": [
     "extensions",
     "README.md",
+    "LOCAL_PATCHES.md",
+    "docs",
     "LICENSE"
   ],
-  "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*",
-    "@sinclair/typebox": "*"
+  "dependencies": {
+    "pi-runtime-contracts": "^0.1.0"
   },
-  "peerDependenciesMeta": {
-    "pi-claude-bridge": {
-      "optional": true
-    }
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0",
+    "typebox": "*"
   },
   "pi": {
     "extensions": [

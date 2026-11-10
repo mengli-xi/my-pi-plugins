@@ -1,168 +1,84 @@
 # pi-native-search
 
-[![npm version](https://img.shields.io/npm/v/pi-native-search)](https://www.npmjs.com/package/pi-native-search)
-[![license](https://img.shields.io/npm/l/pi-native-search)](LICENSE)
+给 Pi 增加 `web_search` 和 `web_fetch`。搜索优先使用当前 provider 的公共原生 API；不可用时走 DuckDuckGo。抓取直接用 HTTP，不适配 Claude 订阅的搜索或抓取，也不借用 `pi-claude-bridge` 的 SDK。
 
-A [pi](https://github.com/badlogic/pi-mono) extension that adds `web_search` and `web_fetch` tools, routing each call through the **active provider's own native search backend** when available, and falling back to DuckDuckGo HTML scraping otherwise.
+## 路由与凭据
 
-The headline feature: when you're using your **Claude Code subscription via [pi-claude-bridge](https://www.npmjs.com/package/pi-claude-bridge)**, search and fetch are delegated to Claude Code's actual `WebSearch` and `WebFetch` tools — the same ones you get in Zed, Claude Desktop, or the Claude Code CLI. No separate API key required.
+| 当前 provider | 原生搜索 |
+| --- | --- |
+| `zai` | ZAI MCP `web_search_prime`（不是独立的付费 Web Search API） |
+| `anthropic` | Messages API 的 `web_search_20250305` server tool |
+| `google` | Gemini `google_search` grounding |
+| `openai` | Responses API `web_search` |
+| `xai` | Responses API `web_search` |
+| `claude-bridge`、其他或未知 provider | DuckDuckGo；可选 backend 可通过显式协议提供路由 |
 
-## Why
+原生搜索每次调用都向当前 session 的 Pi model registry 获取有效凭据。本包不解析 OAuth 存储、不缓存 token、不读其他插件的私有配置或凭据。Anthropic 的直接请求只支持 API key；有效凭据是 OAuth token 时走 DuckDuckGo，不把 token 放进 `x-api-key`。
 
-Pi ships with provider plumbing but no built-in search. Most extensions either (a) hard-code DuckDuckGo, or (b) require you to wire up your own paid search API. This extension uses what each provider already gives you for free.
+原生或可选 backend 执行失败后可回退 DuckDuckGo：回退成功会附上原生失败提示，两边都失败则保留两边的错误。发现协议无效或有冲突会直接报错，不偷偷选一个 backend。调用已取消时不再发起 fallback。降级不保证没有额外请求或费用，原生请求可能已被服务方处理。
 
-| Provider | Native backend | Auth source |
-|---|---|---|
-| **claude-bridge** (Claude Code subscription) | Claude Code's `WebSearch` / `WebFetch` (via `@anthropic-ai/claude-agent-sdk`) | Your `claude` CLI login |
-| **zai** (GLM) | ZAI MCP `web_search_prime` (included in Coding Plans, *not* the separate paid Web Search API) | `ZAI_API_KEY` |
-| **anthropic** | `web_search_20250305` server tool | `ANTHROPIC_API_KEY` |
-| **google** (Gemini) | `google_search` grounding tool | `GEMINI_API_KEY` |
-| **openai** | Responses API `web_search` tool | `OPENAI_API_KEY` |
-| **xai** (Grok) | Responses API `web_search` tool | `XAI_API_KEY` |
-| All other providers | DuckDuckGo HTML fallback | none |
+## 加载与构建
 
-`web_fetch` uses the same routing — currently only `claude-bridge` has a native backend; everything else uses a built-in HTTP fetcher.
+当前基线是原版 Pi 1.5.0。把本包目录的绝对路径加入 Pi `settings.json` 的 `packages`，由 manifest 加载 `extensions/index.ts`。`extensions/child.ts` 只供 Host 显式组装 SDK child，不作为普通 extension 加载。
 
-## Install
+这是 source-only package，没有 `dist/`，不需要 build。依赖由工作区管理；修改后运行检查，再启动新的 Pi process，不用 `/reload` 代替验证。
 
-```bash
-pi install npm:pi-native-search
-```
+## 工具与命令
 
-The extension auto-detects your active provider via pi's `ctx.model.provider` and picks the right backend on every call.
+- `web_search { "query": "..." }`：搜索并把格式化结果交给模型。
+- `web_fetch { "url": "https://..." }`：获取网页文本。HTML 会去掉脚本、样式和标签；JSON 会格式化。返回正文最多 50 KB / 2000 lines，超出会截断。
 
-## Usage
+Main 注册以下命令；参数补全和 parser 使用同一组公开子命令，未知参数显示用法而不打开设置或修改配置。
 
-Once installed, two tools become available to the model:
+| 命令 | 用途 |
+| --- | --- |
+| `/search` | 打开设置面板，列出已配置或当前使用的内置 provider |
+| `/search providers` | 查看内置 provider 与原生搜索能力 |
+| `/search config` | 查看当前配置、provider 和路由信息 |
+| `/search on` | 打开总开关、搜索和抓取 |
+| `/search off` | 关闭总开关 |
 
-- `web_search { query }` — searches the web and returns ranked results.
-- `web_fetch { url }` — fetches and returns a page's text content (truncated to 50 KB / 2000 lines).
+没有交互 UI 时不打开面板，命令降级为文本反馈；工具本身不依赖设置面板。状态栏只是路由能力提示，凭据和实际路由仍以每次执行为准。
 
-The model decides when to use them; you don't need to do anything else. To configure or inspect the extension, use the `/search` slash command:
+配置文件是 `<agentDir>/search-config.json`。默认入口通过 Pi `getAgentDir()` 取目录；显式 Main 安装由 Host 传入目录，不猜用户 home。文件不存在时默认开启搜索和抓取；损坏配置或读取失败不会被当作“配置不存在”而默认启用。字段、版本缓存、写入和 SDK snapshot 规则见[配置与运行合同](docs/runtime-contract.md)。
 
-```
-/search           # open the settings panel (configured providers only)
-/search providers # show ALL providers and their capabilities
-/search config    # print current config (active provider, native vs. ddg, etc.)
-/search on        # enable both tools
-/search off       # disable the extension entirely
-```
+## 可选协作与降级
 
-The bottom status bar shows the active backend per call, e.g.:
+- 其他 extension 可通过 `native-search:backends-request-v1` 注册搜索 backend。没人响应时保留公共原生搜索与 DuckDuckGo，不探测陌生 provider 的配置、凭据或模块。backend 的协议、选择规则与撤销语义见 [backend 合同](docs/backends.md)。
+- Main 可通过共享 child capability registry 声明 `web_search`、`web_fetch`。没有 child Host 消费该能力也不影响 Main；SDK child 由 Host 显式传入配置 snapshot 和可选的 Main discovery emitter。child 不注册命令、写配置、呈现状态或修改 Host active-tool allowlist。详见[配置与运行合同](docs/runtime-contract.md)。
+- 本包不依赖、import 或自动安装另一个插件。私有服务和默认 provider 映射由独立集成负责。
 
-```
-search[search:native:cc-sdk,fetch:cc-sdk]    # claude-bridge route
-search[search:native:mcp,fetch]               # ZAI route
-search[search:ddg,fetch]                      # DDG fallback
-```
+## 数据与信任边界
 
-Configuration persists in `~/.pi/agent/search-config.json`.
+搜索 query 会发给所选原生服务、可选 backend 或 DuckDuckGo；HTTP 抓取会把 URL 发给目标站点。返回内容会成为工具结果进入模型上下文，可能由当前模型服务处理。不要把秘密放进 query 或 URL；网页内容不应当作可信指令。
 
-## How it works
+可选 backend 是同进程运行的可信代码，不是沙箱。发现协议不直接携带凭据，但 backend 会收到执行 session 的公开 context；安装前应审查它会访问什么、向哪里发请求。
 
-The dispatcher in `doSearch` (and the `web_fetch` handler) reads the active provider from the extension context and selects a backend:
+50 KB / 2000 lines 只限制 HTTP 抓取返回给模型的正文，不限制下载量。HTTP 抓取不提供独立超时或 SSRF 防护承诺，不能把它当作网络隔离边界。
 
-```ts
-async function doSearch(query, provider, model, baseUrl, signal) {
-  const cap = PROVIDERS[provider];
-  if (cap?.nativeSearch && hasAuth) {
-    switch (provider) {
-      case "zai":           return zaiSearch(query, apiKey, signal);
-      case "google":        return googleSearch(query, model, apiKey, signal);
-      case "openai":        return openaiSearch(query, model, apiKey, signal);
-      case "xai":           return xaiSearch(query, model, apiKey, signal);
-      case "anthropic":     return anthropicSearch(query, model, apiKey, baseUrl, signal);
-      case "claude-bridge": return claudeBridgeSearch(query, signal);
-    }
-  }
-  return ddgSearch(query, signal); // fallback
-}
-```
+## 验证与使用回归
 
-If the native call throws, the result is silently swapped for the DDG fallback with a `> Native failed (...)` prefix so you can see what went wrong without losing the search result.
-
-### claude-bridge specifics
-
-When the active provider is `claude-bridge`, the extension dynamically locates `@anthropic-ai/claude-agent-sdk` (shipped inside `pi-claude-bridge`'s own `node_modules`) and spawns a one-shot `query()` with `allowedTools: ["WebSearch"]` (or `["WebFetch"]`). The result text is captured and returned as the tool output. This means:
-
-- No extra dependency to install — reuses what `pi-claude-bridge` already brought in.
-- Auth comes from your `claude` CLI login, not an API key.
-- It uses your subscription, not API credits.
-
-## Adding a new provider
-
-The extension is structured so that adding a backend is a self-contained change. To add provider `foo`:
-
-**1. Add an entry to the `PROVIDERS` map** at the top of `extensions/index.ts`:
-
-```ts
-foo: {
-  name: "Foo Provider",
-  nativeSearch: true,
-  nativeFetch: false,
-  envKey: "FOO_API_KEY",
-},
-```
-
-**2. Implement the search function**:
-
-```ts
-async function fooSearch(
-  query: string,
-  model: string,
-  apiKey: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const res = await fetch("https://api.foo.com/search", {
-    method: "POST",
-    signal,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ query, model }),
-  });
-  if (!res.ok)
-    throw new Error(`Foo ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = (await res.json()) as any;
-  // Format as numbered list with title, url, snippet
-  return data.results
-    .map(
-      (r: any, i: number) =>
-        `${i + 1}. **${r.title}**\n   ${r.url}\n   ${r.snippet}`,
-    )
-    .join("\n\n");
-}
-```
-
-**3. Add a case to `doSearch`**:
-
-```ts
-case "foo":
-  return { text: await fooSearch(query, model, apiKey, signal) };
-```
-
-That's it. The settings UI, status line, and fallback handling all pick it up automatically from the `PROVIDERS` map.
-
-If the provider doesn't use a standard `Bearer` API key (e.g. OAuth, MCP session, or an SDK that handles auth itself like `claude-bridge`), see `claudeBridgeSearch` for how to special-case the auth check in `hasCredentials` and the `hasAuth` gate in `doSearch`.
-
-## Development
+在已准备依赖的工作区中运行：
 
 ```bash
-git clone https://github.com/smalibary/pi-native-search.git
-cd pi-native-search
-# Edit extensions/index.ts, then test by symlinking into pi:
-cp extensions/index.ts ~/.pi/agent/extensions/pi-native-search/index.ts
-# In pi: /reload
+cd fork/pi-native-search
+npm run typecheck
+npm test
 ```
 
-The extension is a single TypeScript file (`extensions/index.ts`) that pi loads via `tsx` at runtime — no build step required.
+包内检查使用离线 HTTP fixture 和 faux provider，覆盖本包工具、配置、凭据、backend 协议及 Main/SDK child 合同；不需要真实 provider 请求。跨插件协作与缺失协作方的联测放在仓库 `integration/`，不能用本包测试替代。
 
-## License
+启动新的 Pi process 后，按需检查这些使用路径；真实搜索和抓取会外传数据并可能计费，先确认目标和授权：
 
-MIT — see [LICENSE](LICENSE). PRs welcome, especially for new provider backends.
+1. 查看 `/search config`、`/search providers`，检查空 prefix、部分 prefix 和未知参数的补全与命令反馈。
+2. 用 `/search off`、`/search on` 验证工具开关；切换 provider 后核对配置与路由。
+3. 检查公共原生搜索、无凭据或未知 provider 的 DuckDuckGo 路由，以及 HTTP 抓取与截断提示。
+4. 在受控 fixture 中检查 native 失败、双重失败和取消；取消后不得继续 fallback。
+5. 如使用 SDK child，检查独立 snapshot、Host 工具白名单不变，以及可选 backend 缺失、撤销后的降级。
 
-## Acknowledgements
+## 文档
 
-- [pi](https://github.com/badlogic/pi-mono) by Mario Zechner — the host TUI agent
-- [pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge) by Eli Dickinson — provides the Claude Agent SDK that `claude-bridge` mode reuses
+- [配置与运行合同](docs/runtime-contract.md)：配置格式、读取与写入、Main/SDK child 生命周期。
+- [backend 合同](docs/backends.md)：版本化发现协议、路由、校验、生命周期和 SDK emitter。
+- [LOCAL_PATCHES.md](LOCAL_PATCHES.md)：Fork 保留这些差异的原因与当前兼容边界。
+- [LICENSE](LICENSE)：MIT。

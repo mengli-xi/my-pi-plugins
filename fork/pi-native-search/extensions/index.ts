@@ -13,21 +13,18 @@
  *   /search config    - Show current config
  *   /search on|off    - Quick toggle
  *
- * Config persists in ~/.pi/agent/search-config.json
+ * Config persists in the explicitly supplied agent directory (getAgentDir by default).
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   getAgentDir,
   truncateHead,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
-} from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+} from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import {
   Container,
   type SettingItem,
@@ -35,17 +32,23 @@ import {
   Text,
   type SelectItem,
   SelectList,
-} from "@mariozechner/pi-tui";
-import { getSettingsListTheme } from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-tui";
+import { getSettingsListTheme } from "@earendil-works/pi-coding-agent";
+import { installNativeSearchChildCapability } from "./subagent-capability.ts";
 
-interface SearchConfig {
-  enabled: boolean;
-  searchEnabled: boolean;
-  fetchEnabled: boolean;
-  providerOverrides: Record<
-    string,
-    { searchEnabled?: boolean; fetchEnabled?: boolean }
-  >;
+import { discoverSearchBackends, type SearchBackendEvents, type SearchBackendV1 } from "./backends.ts";
+export { SEARCH_BACKENDS_REQUEST_V1 } from "./backends.ts";
+export type { SearchBackendEvents, SearchBackendV1 } from "./backends.ts";
+
+import { loadSearchConfig, saveSearchConfig, type SearchConfig, type SearchBackendOverride } from "./config.ts";
+export { loadSearchConfig } from "./config.ts";
+export type { SearchConfig, SearchBackendOverride } from "./config.ts";
+
+const SEARCH_COMMANDS = ["on", "off", "providers", "config"] as const;
+const SEARCH_USAGE = "Usage: /search [on|off|providers|config]";
+function parseSearchCommand(args: string): "" | typeof SEARCH_COMMANDS[number] | undefined {
+  const sub = args.trim().toLowerCase();
+  return sub === "" ? "" : SEARCH_COMMANDS.find(command => command === sub);
 }
 
 const PROVIDERS: Record<
@@ -86,12 +89,6 @@ const PROVIDERS: Record<
     nativeSearch: true,
     nativeFetch: false,
     envKey: "ANTHROPIC_API_KEY",
-  },
-  "claude-bridge": {
-    name: "Claude Code (subscription)",
-    nativeSearch: true,
-    nativeFetch: true,
-    envKey: "",
   },
   openrouter: {
     name: "OpenRouter",
@@ -185,63 +182,27 @@ const PROVIDERS: Record<
   },
 };
 
-// ─── Config ──────────────────────────────────────────────────────────────────
+// ─── Credential status ────────────────────────────────────────────────────────
 
-function getConfigPath() {
-  return join(getAgentDir(), "search-config.json");
-}
-
-function loadConfig(): SearchConfig {
+/** Pi owns API-key, OAuth, command-backed, and provider-config credentials. */
+function hasCredentials(ctx: ExtensionContext, provider: string): boolean {
+  if (!PROVIDERS[provider]) return false;
   try {
-    const path = getConfigPath();
-    if (existsSync(path)) return JSON.parse(readFileSync(path, "utf-8"));
-  } catch {}
-  return {
-    enabled: true,
-    searchEnabled: true,
-    fetchEnabled: true,
-    providerOverrides: {},
-  };
+    const status = ctx.modelRegistry.getProviderAuthStatus(provider);
+    return status.configured || status.source !== undefined;
+  } catch {
+    return false;
+  }
 }
 
-function saveConfig(config: SearchConfig) {
-  const dir = getAgentDir();
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(getConfigPath(), JSON.stringify(config, null, 2), "utf-8");
-}
-
-// ─── API Key ──────────────────────────────────────────────────────────────────
-
-function getApiKey(provider: string): string | undefined {
-  const cap = PROVIDERS[provider];
-  if (!cap?.envKey) return undefined;
-  const key = process.env[cap.envKey];
-  if (key) return key;
-  try {
-    const authPath = join(getAgentDir(), "auth.json");
-    if (existsSync(authPath)) {
-      const entry = JSON.parse(readFileSync(authPath, "utf-8"))[provider];
-      if (entry?.type === "api_key" && entry.key && !entry.key.startsWith("!"))
-        return entry.key;
-    }
-  } catch {}
-  return undefined;
-}
-
-/** Check if a provider has credentials configured */
-function hasCredentials(provider: string): boolean {
-  // claude-bridge uses the `claude` CLI's own subscription auth — assume it's
-  // available if the user has selected this provider in pi.
-  if (provider === "claude-bridge") return true;
-  if (getApiKey(provider)) return true;
-  try {
-    const authPath = join(getAgentDir(), "auth.json");
-    if (existsSync(authPath)) {
-      const entry = JSON.parse(readFileSync(authPath, "utf-8"))[provider];
-      if (entry?.type === "oauth" && entry.refresh) return true;
-    }
-  } catch {}
-  return false;
+function nativeCredentialCompatible(
+  provider: string,
+  credential: string | undefined,
+): boolean {
+  // Match Pi 0.85.1's effective Anthropic credential classifier. Checking the
+  // resolved token preserves precedence: a CLI API-key override must win over
+  // stored OAuth, while an OAuth token must never be sent as x-api-key.
+  return provider !== "anthropic" || !credential?.includes("sk-ant-oat");
 }
 
 // ─── ZAI MCP Web Search ──────────────────────────────────────────────────────
@@ -524,160 +485,6 @@ async function xaiSearch(
   return parts.join("\n") || "No results found.";
 }
 
-// ─── Claude Code (via claude-agent-sdk) ─────────────────────────────────────
-//
-// Delegates web_search to a one-shot Claude Code query with WebSearch enabled.
-// Reuses the SDK that ships inside pi-claude-bridge so we don't need a separate
-// install. Auth comes from the `claude` CLI's own subscription credentials.
-
-let cachedSdkModule: any = null;
-
-async function loadClaudeAgentSdk(): Promise<any> {
-  if (cachedSdkModule) return cachedSdkModule;
-  const candidates = [
-    // Windows global npm
-    join(
-      homedir(),
-      "AppData",
-      "Roaming",
-      "npm",
-      "node_modules",
-      "pi-claude-bridge",
-      "package.json",
-    ),
-    // Unix global npm
-    "/usr/local/lib/node_modules/pi-claude-bridge/package.json",
-    "/usr/lib/node_modules/pi-claude-bridge/package.json",
-    join(
-      homedir(),
-      ".npm-global",
-      "lib",
-      "node_modules",
-      "pi-claude-bridge",
-      "package.json",
-    ),
-    // Pi's own extensions dir if user installed locally
-    join(getAgentDir(), "extensions", "pi-claude-bridge", "package.json"),
-  ];
-  for (const cand of candidates) {
-    if (!existsSync(cand)) continue;
-    try {
-      const req = createRequire(cand);
-      const sdkPath = req.resolve("@anthropic-ai/claude-agent-sdk");
-      cachedSdkModule = await import(pathToFileURL(sdkPath).href);
-      return cachedSdkModule;
-    } catch {}
-  }
-  throw new Error(
-    "Could not locate @anthropic-ai/claude-agent-sdk. Is pi-claude-bridge installed?",
-  );
-}
-
-async function claudeBridgeSearch(
-  query: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const sdk = await loadClaudeAgentSdk();
-  const sdkQuery = sdk.query({
-    prompt:
-      `Search the web for: ${query}\n\n` +
-      "Use the WebSearch tool. Report results as a numbered list with title, " +
-      "URL, and a brief snippet from each result. Do not add commentary beyond " +
-      "what the search returned.",
-    options: {
-      cwd: process.cwd(),
-      permissionMode: "bypassPermissions",
-      allowedTools: ["WebSearch"],
-      systemPrompt: { type: "preset", preset: "claude_code" },
-      settingSources: [],
-    },
-  });
-
-  const onAbort = () => {
-    sdkQuery.interrupt().catch(() => {});
-    try {
-      sdkQuery.close();
-    } catch {}
-  };
-  if (signal?.aborted) {
-    onAbort();
-    throw new Error("Aborted");
-  }
-  signal?.addEventListener("abort", onAbort, { once: true });
-
-  let responseText = "";
-  try {
-    for await (const message of sdkQuery) {
-      if (signal?.aborted) break;
-      if (
-        message.type === "result" &&
-        message.subtype === "success" &&
-        message.result
-      ) {
-        responseText = message.result;
-      }
-    }
-    return responseText || "No results found.";
-  } finally {
-    signal?.removeEventListener("abort", onAbort);
-    try {
-      sdkQuery.close();
-    } catch {}
-  }
-}
-
-async function claudeBridgeFetch(
-  url: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const sdk = await loadClaudeAgentSdk();
-  const sdkQuery = sdk.query({
-    prompt:
-      `Fetch this URL: ${url}\n\n` +
-      "Use the WebFetch tool. Return the page's main content as plain " +
-      "text or markdown. Do not summarise. Do not add commentary.",
-    options: {
-      cwd: process.cwd(),
-      permissionMode: "bypassPermissions",
-      allowedTools: ["WebFetch"],
-      systemPrompt: { type: "preset", preset: "claude_code" },
-      settingSources: [],
-    },
-  });
-
-  const onAbort = () => {
-    sdkQuery.interrupt().catch(() => {});
-    try {
-      sdkQuery.close();
-    } catch {}
-  };
-  if (signal?.aborted) {
-    onAbort();
-    throw new Error("Aborted");
-  }
-  signal?.addEventListener("abort", onAbort, { once: true });
-
-  let responseText = "";
-  try {
-    for await (const message of sdkQuery) {
-      if (signal?.aborted) break;
-      if (
-        message.type === "result" &&
-        message.subtype === "success" &&
-        message.result
-      ) {
-        responseText = message.result;
-      }
-    }
-    return responseText || "No content returned.";
-  } finally {
-    signal?.removeEventListener("abort", onAbort);
-    try {
-      sdkQuery.close();
-    } catch {}
-  }
-}
-
 // ─── DuckDuckGo Fallback ─────────────────────────────────────────────────────
 
 function extractDdgUrl(raw: string): string {
@@ -756,41 +563,71 @@ async function httpFetch(url: string, signal?: AbortSignal): Promise<string> {
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
+async function checkedResult<T>(result: Promise<T>, signal?: AbortSignal): Promise<T> {
+  const value = await result;
+  signal?.throwIfAborted();
+  return value;
+}
+
+/** Unknown backend IDs keep the provider default; discovery conflicts never select an arbitrary owner. */
+function searchRoute(config: SearchConfigSnapshot, provider: string, backends: readonly SearchBackendV1[]): "native" | "ddg" | SearchBackendV1 {
+  const override = config.providerOverrides[provider]?.searchBackend;
+  if (override === "ddg") return "ddg";
+  return backends.find(backend => backend.id === override) ??
+    backends.find(backend => backend.defaultProviders.includes(provider)) ?? "native";
+}
+
 async function doSearch(
   query: string,
   provider: string,
   model: string,
   baseUrl: string,
+  apiKey: string | undefined,
+  useNative: boolean,
+  route: "native" | "ddg" | SearchBackendV1,
+  ctx: ExtensionContext,
   signal?: AbortSignal,
 ): Promise<{ text: string; nativeError?: string }> {
-  const apiKey = getApiKey(provider);
-  const cap = PROVIDERS[provider];
-  // claude-bridge uses the `claude` CLI's own subscription auth, so it doesn't
-  // need an api_key in pi's auth.json.
-  const hasAuth = !!apiKey || provider === "claude-bridge";
-  if (cap?.nativeSearch && hasAuth) {
+  signal?.throwIfAborted();
+  if (useNative) {
     try {
+      if (typeof route === "object") {
+        const text = await checkedResult(route.search({ query, ctx, signal }), signal);
+        if (typeof text !== "string") throw new Error(`Search backend ${route.id}: invalid text result`);
+        return { text };
+      }
       switch (provider) {
         case "zai":
-          return { text: await zaiSearch(query, apiKey!, signal) };
+          return { text: await checkedResult(zaiSearch(query, apiKey!, signal), signal) };
         case "google":
-          return { text: await googleSearch(query, model, apiKey!, signal) };
+          return { text: await checkedResult(googleSearch(query, model, apiKey!, signal), signal) };
         case "openai":
-          return { text: await openaiSearch(query, model, apiKey!, signal) };
+          return { text: await checkedResult(openaiSearch(query, model, apiKey!, signal), signal) };
         case "xai":
-          return { text: await xaiSearch(query, model, apiKey!, signal) };
+          return { text: await checkedResult(xaiSearch(query, model, apiKey!, signal), signal) };
         case "anthropic":
           return {
-            text: await anthropicSearch(query, model, apiKey!, baseUrl, signal),
+            text: await checkedResult(anthropicSearch(query, model, apiKey!, baseUrl, signal), signal),
           };
-        case "claude-bridge":
-          return { text: await claudeBridgeSearch(query, signal) };
       }
-    } catch (err: any) {
-      return { text: await ddgSearch(query, signal), nativeError: err.message };
+    } catch (nativeError) {
+      if (signal?.aborted) throw nativeError;
+      try {
+        return {
+          text: await checkedResult(ddgSearch(query, signal), signal),
+          nativeError: nativeError instanceof Error ? nativeError.message : String(nativeError),
+        };
+      } catch (fallbackError) {
+        const nativeMessage = nativeError instanceof Error ? nativeError.message : String(nativeError);
+        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        throw new Error(
+          `Native ${provider} search failed: ${nativeMessage}; DuckDuckGo fallback failed: ${fallbackMessage}`,
+          { cause: fallbackError },
+        );
+      }
     }
   }
-  return { text: await ddgSearch(query, signal) };
+  return { text: await checkedResult(ddgSearch(query, signal), signal) };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -817,14 +654,50 @@ function isFetchAvailable(ctx: ExtensionContext, config: SearchConfig) {
 
 // ─── Extension ───────────────────────────────────────────────────────────────
 
-export default function searchExtension(pi: ExtensionAPI) {
-  let config = loadConfig();
+export type SearchConfigSnapshot = Readonly<Omit<SearchConfig, "providerOverrides">> & {
+  readonly providerOverrides: Readonly<Record<string, Readonly<{ searchEnabled?: boolean; fetchEnabled?: boolean; searchBackend?: SearchBackendOverride }>>>;
+};
+
+export interface SearchBackendOptions {
+  /** SDK children explicitly receive the approved Main discovery bus, never a module path. */
+  readonly backendEvents?: SearchBackendEvents;
+}
+type SearchInstallOptions = SearchBackendOptions & (
+  | { readonly child: true; readonly config: SearchConfigSnapshot }
+  | { readonly child: false; readonly config: SearchConfigSnapshot; readonly agentDir: string });
+
+export function createSearchChildFactory(config: SearchConfigSnapshot, options: SearchBackendOptions = {}) {
+  const snapshot = structuredClone(config);
+  const backendEvents = options.backendEvents;
+  return (pi: ExtensionAPI): void => installSearch(pi, { child: true, config: snapshot, backendEvents });
+}
+
+/** Each install owns its config; only Main may reload or persist the agent config. */
+export function installSearch(pi: ExtensionAPI, options: SearchInstallOptions) {
+  const child = options.child;
+  const backendEvents = options.backendEvents ?? pi.events;
+  const capability = child ? undefined : installNativeSearchChildCapability(dirname(fileURLToPath(import.meta.url)));
+  let config: SearchConfig = structuredClone(options.config);
+  const persistConfig = (next: SearchConfig) => {
+    // Publish the candidate only after persistence succeeds; failed writes keep execution guards unchanged.
+    if (!options.child) saveSearchConfig(next, options.agentDir);
+    config = next;
+  };
+  const reloadConfig = () => {
+    if (!options.child) {
+      try { config = loadSearchConfig(options.agentDir); }
+      catch (error) {
+        config = { enabled: false, searchEnabled: false, fetchEnabled: false, providerOverrides: {} };
+        throw error;
+      }
+    }
+  };
 
   pi.registerTool({
     name: "web_search",
     label: "Web Search",
     description:
-      "Search the web. Uses native provider search (ZAI MCP, Anthropic, Google, OpenAI, xAI) or DuckDuckGo fallback.",
+      "Search the web. Uses native provider search (ZAI MCP, Anthropic, Google, OpenAI, xAI), optional registered backends or DuckDuckGo fallback.",
     parameters: Type.Object({ query: Type.String({ description: "Search query" }) }),
     async execute(_id, params, signal, onUpdate, ctx) {
       if (!isSearchAvailable(ctx, config))
@@ -837,20 +710,36 @@ export default function searchExtension(pi: ExtensionAPI) {
           ],
           details: { error: "disabled" },
         };
+      signal?.throwIfAborted();
       const provider = getCurrentProvider(ctx) ?? "";
       const model = getCurrentModel(ctx);
       const baseUrl = getCurrentBaseUrl(ctx);
       const cap = PROVIDERS[provider];
-      const hasNative =
+      const route = searchRoute(config, provider, discoverSearchBackends(backendEvents));
+      // Optional backends resolve their own credentials inside the fallback
+      // boundary. Unknown providers never trigger credential or config probes.
+      const apiKey = !cap?.nativeSearch || route !== "native"
+        ? undefined
+        : await ctx.modelRegistry.getApiKeyForProvider(provider);
+      // Anthropic's OAuth transport requires Claude Code identity and beta
+      // headers; this extension's direct Messages request is API-key-only.
+      // Fall back instead of sending an OAuth bearer token as x-api-key.
+      // The resolved credential is authoritative for execution. Synchronous
+      // auth status is presentation-only and intentionally does not gate CLI,
+      // environment, or command-backed credentials.
+      const hasNative = typeof route === "object" || (
+        route === "native" &&
         !!cap?.nativeSearch &&
-        (!!getApiKey(provider) || provider === "claude-bridge");
+        nativeCredentialCompatible(provider, apiKey) &&
+        !!apiKey);
       onUpdate?.({
         content: [
           {
             type: "text" as const,
-            text: `Searching${hasNative ? ` (native: ${provider})` : " (DuckDuckGo)"}: "${params.query}"...`,
+            text: `Searching${hasNative ? (typeof route === "object" ? ` (${route.label})` : ` (native: ${provider})`) : " (DuckDuckGo)"}: "${params.query}"...`,
           },
         ],
+        details: {},
       });
       try {
         const { text, nativeError } = await doSearch(
@@ -858,6 +747,10 @@ export default function searchExtension(pi: ExtensionAPI) {
           provider,
           model,
           baseUrl,
+          apiKey,
+          hasNative,
+          route,
+          ctx,
           signal,
         );
         const out = nativeError
@@ -871,13 +764,9 @@ export default function searchExtension(pi: ExtensionAPI) {
             method: hasNative && !nativeError ? "native" : "ddg",
           },
         };
-      } catch (err: any) {
-        if (signal?.aborted)
-          return { content: [{ type: "text" as const, text: "Cancelled." }] };
-        return {
-          content: [{ type: "text" as const, text: `Error: ${err.message}` }],
-          isError: true,
-        };
+      } catch (error) {
+        if (signal?.aborted) throw new Error("Web search cancelled", { cause: error });
+        throw error;
       }
     },
     renderCall(a, t) {
@@ -887,10 +776,16 @@ export default function searchExtension(pi: ExtensionAPI) {
         0,
       );
     },
-    renderResult(r, { expanded, isPartial }, t) {
+    renderResult(r, { expanded, isPartial }, t, context) {
       if (isPartial) return new Text(t.fg("warning", "Searching..."), 0, 0);
-      const text = r.content[0]?.text ?? "",
+      const first = r.content[0];
+      const text = first?.type === "text" ? first.text : "",
         lines = text.split("\n").length;
+      if (context.isError) {
+        return expanded
+          ? new Text(text, 0, 0)
+          : new Text(t.fg("error", "Search failed"), 0, 0);
+      }
       return expanded
         ? new Text(text, 0, 0)
         : new Text(
@@ -908,49 +803,34 @@ export default function searchExtension(pi: ExtensionAPI) {
     parameters: Type.Object({ url: Type.String({ description: "URL" }) }),
     async execute(_id, params, signal, onUpdate, ctx) {
       if (!isFetchAvailable(ctx, config))
-        return { content: [{ type: "text" as const, text: "Web fetch disabled." }] };
+        return {
+          content: [{ type: "text" as const, text: "Web fetch disabled." }],
+          details: { error: "disabled" },
+        };
+      signal?.throwIfAborted();
       const provider = getCurrentProvider(ctx) ?? "";
-      const cap = PROVIDERS[provider];
-      const useNative = !!cap?.nativeFetch && provider === "claude-bridge";
       onUpdate?.({
         content: [
           {
             type: "text" as const,
-            text: `Fetching${useNative ? ` (native: ${provider})` : ""} ${params.url}...`,
+            text: `Fetching ${params.url}...`,
           },
         ],
+        details: {},
       });
       try {
-        let text: string;
-        let nativeError: string | undefined;
-        if (useNative) {
-          try {
-            text = await claudeBridgeFetch(params.url, signal);
-          } catch (err: any) {
-            nativeError = err.message;
-            text = await httpFetch(params.url, signal);
-          }
-        } else {
-          text = await httpFetch(params.url, signal);
-        }
-        const out = nativeError
-          ? `> Native failed (${nativeError.slice(0, 80)}), used local fetch.\n\n${text}`
-          : text;
+        const text = await checkedResult(httpFetch(params.url, signal), signal);
         return {
-          content: [{ type: "text" as const, text: out }],
+          content: [{ type: "text" as const, text }],
           details: {
             url: params.url,
             provider,
-            method: useNative && !nativeError ? "native" : "local",
+            method: "local",
           },
         };
-      } catch (err: any) {
-        if (signal?.aborted)
-          return { content: [{ type: "text" as const, text: "Cancelled." }] };
-        return {
-          content: [{ type: "text" as const, text: `Error: ${err.message}` }],
-          isError: true,
-        };
+      } catch (error) {
+        if (signal?.aborted) throw new Error("Web fetch cancelled", { cause: error });
+        throw error;
       }
     },
     renderCall(a, t) {
@@ -960,10 +840,16 @@ export default function searchExtension(pi: ExtensionAPI) {
         0,
       );
     },
-    renderResult(r, { expanded, isPartial }, t) {
+    renderResult(r, { expanded, isPartial }, t, context) {
       if (isPartial) return new Text(t.fg("warning", "Fetching..."), 0, 0);
-      const text = r.content[0]?.text ?? "",
+      const first = r.content[0];
+      const text = first?.type === "text" ? first.text : "",
         lines = text.split("\n").length;
+      if (context.isError) {
+        return expanded
+          ? new Text(text, 0, 0)
+          : new Text(t.fg("error", "Fetch failed"), 0, 0);
+      }
       return expanded
         ? new Text(text, 0, 0)
         : new Text(
@@ -971,20 +857,29 @@ export default function searchExtension(pi: ExtensionAPI) {
             0,
             0,
           );
-    },
+    }
   });
 
   // ─── Commands ───────────────────────────────────────────────────────────
 
-  pi.registerCommand("search", {
-    description: "Configure web search & fetch tools",
+  function reply(ctx: ExtensionContext, text: string, level: "info" | "warning" = "info") {
+    if (ctx.hasUI) ctx.ui.notify(text, level);
+    else pi.sendMessage({ customType: "native-search-command", content: text, display: true, details: { level } }, { triggerTurn: false });
+  }
+
+  if (!child) pi.registerCommand("search", {
+    description: `Configure web search & fetch tools. ${SEARCH_USAGE}`,
     getArgumentCompletions(p) {
-      return ["on", "off", "providers", "config"]
-        .filter((c) => c.startsWith(p))
-        .map((c) => ({ value: c, label: c }));
+      const matches = SEARCH_COMMANDS.filter(c => c.startsWith(p.trimStart().toLowerCase()))
+        .map(c => ({ value: c, label: c }));
+      return matches.length ? matches : null;
     },
     handler: async (args, ctx) => {
-      const sub = args?.trim().toLowerCase();
+      const sub = parseSearchCommand(args ?? "");
+      if (sub === undefined) {
+        reply(ctx, SEARCH_USAGE, "warning");
+        return;
+      }
       if (sub === "providers") {
         await showProviders(ctx);
         return;
@@ -994,23 +889,20 @@ export default function searchExtension(pi: ExtensionAPI) {
         return;
       }
       if (sub === "on") {
-        config.enabled = true;
-        config.searchEnabled = true;
-        config.fetchEnabled = true;
-        saveConfig(config);
+        persistConfig({ ...config, enabled: true, searchEnabled: true, fetchEnabled: true });
         pi.setActiveTools([...pi.getActiveTools(), "web_search", "web_fetch"]);
-        ctx.ui.notify("Search enabled", "info");
+        reply(ctx, "Search enabled");
         return;
       }
       if (sub === "off") {
-        config.enabled = false;
-        saveConfig(config);
+        persistConfig({ ...config, enabled: false });
         pi.setActiveTools(
           pi.getActiveTools().filter((t) => t !== "web_search" && t !== "web_fetch"),
         );
-        ctx.ui.notify("Search disabled", "info");
+        reply(ctx, "Search disabled");
         return;
       }
+      if (ctx.mode !== "tui" || !ctx.hasUI) { showConfig(ctx); return; }
       await showSearchSettings(ctx);
     },
   });
@@ -1042,14 +934,14 @@ export default function searchExtension(pi: ExtensionAPI) {
 
       const currentProvider = getCurrentProvider(ctx);
       for (const pid of Object.keys(PROVIDERS).sort()) {
-        if (!hasCredentials(pid) && pid !== currentProvider) continue;
+        if (!hasCredentials(ctx, pid) && pid !== currentProvider) continue;
         const cap = PROVIDERS[pid]!;
         const override = config.providerOverrides[pid];
-        const native = cap.nativeSearch ? " [native]" : "";
+        const capability = cap.nativeSearch ? " [native-capable]" : "";
         const current = pid === currentProvider ? " ← current" : "";
         items.push({
           id: `provider:${pid}:search`,
-          label: `${cap.name}${native}${current} - Search`,
+          label: `${cap.name}${capability}${current} - Search`,
           currentValue: override?.searchEnabled === false ? "disabled" : "enabled",
           values: ["enabled", "disabled"],
         });
@@ -1072,15 +964,16 @@ export default function searchExtension(pi: ExtensionAPI) {
         Math.min(items.length + 2, 20),
         getSettingsListTheme(),
         (id, val) => {
-          if (id === "enabled") config.enabled = val === "enabled";
-          else if (id === "search") config.searchEnabled = val === "enabled";
-          else if (id === "fetch") config.fetchEnabled = val === "enabled";
+          const next = structuredClone(config);
+          if (id === "enabled") next.enabled = val === "enabled";
+          else if (id === "search") next.searchEnabled = val === "enabled";
+          else if (id === "fetch") next.fetchEnabled = val === "enabled";
           else if (id.startsWith("provider:")) {
             const pid = id.split(":")[1]!;
-            if (!config.providerOverrides[pid]) config.providerOverrides[pid] = {};
-            config.providerOverrides[pid]!.searchEnabled = val === "enabled";
+            if (!next.providerOverrides[pid]) next.providerOverrides[pid] = {};
+            next.providerOverrides[pid]!.searchEnabled = val === "enabled";
           }
-          saveConfig(config);
+          persistConfig(next);
           applyToolsConfig(ctx);
         },
         () => done(undefined),
@@ -1108,19 +1001,25 @@ export default function searchExtension(pi: ExtensionAPI) {
 
   async function showProviders(ctx: ExtensionContext) {
     const currentProvider = getCurrentProvider(ctx);
-    const currentModel = getCurrentModel(ctx);
     const items: SelectItem[] = Object.entries(PROVIDERS)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([id, cap]) => ({
-        value: id,
-        label: `${cap.name}${id === currentProvider ? " ← current" : ""}${hasCredentials(id) ? " ✓" : ""}`,
-        description: `search: ${cap.nativeSearch ? `native (${id === "zai" ? "MCP" : id === "anthropic" ? "web_search server tool" : `model: ${id === currentProvider ? currentModel : "?"}`})` : "duckduckgo"} | key: ${hasCredentials(id) ? "yes" : "no"}`,
-      }));
+      .map(([id, cap]) => {
+        const capability = cap.nativeSearch ? "native-capable" : "duckduckgo-only";
+        return {
+          value: id,
+          label: `${cap.name}${id === currentProvider ? " ← current" : ""}${hasCredentials(ctx, id) ? " ✓" : ""}`,
+          description: `search: ${capability} | credential: ${hasCredentials(ctx, id) ? "yes" : "no"}`,
+        };
+      });
 
+    if (ctx.mode !== "tui" || !ctx.hasUI) {
+      reply(ctx, items.map(item => `${item.value}: ${item.description}`).join("\n"));
+      return;
+    }
     await ctx.ui.custom((tui, theme, _kb, done) => {
       const container = new Container();
       container.addChild(new Text(theme.fg("accent", theme.bold("All Providers"))));
-      container.addChild(new Text(theme.fg("dim", "✓ = has API key")));
+      container.addChild(new Text(theme.fg("dim", "✓ = credential available")));
       container.addChild(new Text(""));
       const sl = new SelectList(items, Math.min(items.length, 15), {
         selectedPrefix: (t) => theme.fg("accent", t),
@@ -1153,15 +1052,15 @@ export default function searchExtension(pi: ExtensionAPI) {
     const model = getCurrentModel(ctx);
     const baseUrl = getCurrentBaseUrl(ctx);
     const cap = provider ? PROVIDERS[provider] : undefined;
-    ctx.ui.notify(
+    reply(ctx,
       [
         `Extension: ${config.enabled ? "enabled" : "disabled"}`,
         `Search: ${config.searchEnabled ? "enabled" : "disabled"} | Fetch: ${config.fetchEnabled ? "enabled" : "disabled"}`,
         ``,
-        `Provider: ${cap?.name ?? provider ?? "?"} ${hasCredentials(provider ?? "") ? "✓" : "✗"}`,
+        `Provider: ${cap?.name ?? provider ?? "?"} ${hasCredentials(ctx, provider ?? "") ? "✓" : "✗"}`,
         `Model: ${model || "?"}`,
         `Base URL: ${baseUrl || "?"}`,
-        `Native: ${cap?.nativeSearch ? `yes` : "no"} | Fallback: DuckDuckGo`,
+        `Native capability: ${cap?.nativeSearch ? "yes" : "no"} | Route uses the effective credential at call time | Fallback: DuckDuckGo`,
       ].join("\n"),
       "info",
     );
@@ -1170,6 +1069,8 @@ export default function searchExtension(pi: ExtensionAPI) {
   // ─── Apply ──────────────────────────────────────────────────────────────
 
   function applyToolsConfig(ctx: ExtensionContext) {
+    // The SDK Host owns the frozen child allowlist; config only guards execution.
+    if (child) return;
     const a = pi
       .getActiveTools()
       .filter((t) => t !== "web_search" && t !== "web_fetch");
@@ -1179,6 +1080,7 @@ export default function searchExtension(pi: ExtensionAPI) {
   }
 
   function updateStatus(ctx: ExtensionContext) {
+    if (child) return;
     if (!config.enabled) {
       ctx.ui.setStatus("search", undefined);
       return;
@@ -1186,14 +1088,11 @@ export default function searchExtension(pi: ExtensionAPI) {
     const p = getCurrentProvider(ctx);
     const model = getCurrentModel(ctx);
     const cap = p ? PROVIDERS[p] : undefined;
-    const m =
-      cap?.nativeSearch && hasCredentials(p ?? "")
-        ? `native:${p === "zai" ? "mcp" : p === "claude-bridge" ? "cc-sdk" : model || "?"}`
-        : "ddg";
-    const fetchBackend =
-      cap?.nativeFetch && hasCredentials(p ?? "") && p === "claude-bridge"
-        ? "fetch:cc-sdk"
-        : "fetch";
+    const route = p ? searchRoute(config, p, discoverSearchBackends(backendEvents)) : "ddg";
+    const m = typeof route === "object" ? route.label : route !== "ddg" && cap?.nativeSearch && hasCredentials(ctx, p ?? "")
+      ? `native-capable:${p === "zai" ? "mcp" : model || "?"}`
+      : "ddg";
+    const fetchBackend = "fetch";
     const parts: string[] = [];
     if (config.searchEnabled) parts.push(`search:${m}`);
     if (config.fetchEnabled) parts.push(fetchBackend);
@@ -1206,18 +1105,29 @@ export default function searchExtension(pi: ExtensionAPI) {
   }
 
   pi.on("session_start", async (_, ctx) => {
-    config = loadConfig();
+    capability?.bind(ctx);
+    reloadConfig();
     applyToolsConfig(ctx);
     updateStatus(ctx);
   });
   pi.on("model_select", async (_, ctx) => {
-    config = loadConfig();
+    reloadConfig();
     applyToolsConfig(ctx);
     updateStatus(ctx);
   });
   pi.on("session_tree", async (_, ctx) => {
-    config = loadConfig();
+    reloadConfig();
     applyToolsConfig(ctx);
     updateStatus(ctx);
   });
+  pi.on("session_shutdown", async (_event, ctx) => {
+    capability?.release(ctx);
+    capability?.dispose();
+  });
+}
+
+export default function searchExtension(pi: ExtensionAPI): void {
+  const agentDir = getAgentDir();
+  const config = loadSearchConfig(agentDir);
+  installSearch(pi, { child: false, config, agentDir });
 }
