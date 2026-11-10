@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { createMockContext, createMockPi } from "../../../test/support.js";
 import { GoalCommandController } from "../src/commands.js";
+import { buildGoalSnapshotPayload, type GoalSnapshotPayloadV1 } from "../src/goal-snapshot.js";
 import { createGoal, GoalRuntime } from "../src/runtime.js";
 import { DEFAULT_GOAL_SETTINGS, type GoalSettings } from "../src/settings.js";
 import {
@@ -11,6 +13,8 @@ import {
 	parseGoalLimit,
 	showGoalSettings,
 } from "../src/settings-ui.js";
+import { attachTestMailbox } from "./mailbox-support.js";
+import { createTuiHarness } from "./tui-harness.js";
 
 initTheme("dark", false);
 
@@ -19,6 +23,7 @@ function runtime() {
 	const state = new GoalRuntime(mock.pi) as GoalRuntime & {
 		readonly visibility: ReturnType<GoalRuntime["snapshotGoalToolVisibility"]>;
 	};
+	attachTestMailbox(state, mock.pi);
 	state.settings = structuredClone(DEFAULT_GOAL_SETTINGS);
 	state.goalToolsHiddenByPolicy.add("goal_complete");
 	state.goalToolsHiddenByPolicy.add("goal_blocked");
@@ -28,7 +33,7 @@ function runtime() {
 	return state;
 }
 
-test("goal setting custom limits accept only safe whole numbers greater than zero", () => {
+test("goal setting custom limits accept only safe whole numbers greater than zero", async () => {
 	assert.equal(parseGoalLimit("40"), 40);
 	assert.equal(parseGoalLimit(" 25 "), 25);
 	for (const invalid of [
@@ -47,11 +52,11 @@ test("goal setting custom limits accept only safe whole numbers greater than zer
 	assert.equal(formatGoalLimit(null), "Unlimited");
 });
 
-test("applyGoalSettings saves before committing runtime settings and enforces lower limits", () => {
+test("applyGoalSettings saves before committing runtime settings and enforces lower limits", async () => {
 	const state = runtime();
 	let saved: GoalSettings | undefined;
 	let enforced = 0;
-	state.enforceAutomaticTurnLimit = () => {
+	state.enforceAutomaticTurnLimit = async () => {
 		enforced++;
 		return false;
 	};
@@ -61,7 +66,7 @@ test("applyGoalSettings saves before committing runtime settings and enforces lo
 	};
 	const context = createMockContext();
 
-	applyGoalSettings(state as never, next, context.ctx, {
+	await applyGoalSettings(state as never, next, context.ctx, {
 		save(settings: GoalSettings) {
 			saved = structuredClone(settings);
 		},
@@ -72,7 +77,7 @@ test("applyGoalSettings saves before committing runtime settings and enforces lo
 	assert.equal(enforced, 1);
 });
 
-test("applyGoalSettings restores effective tool policy when persistence fails", () => {
+test("applyGoalSettings restores effective tool policy when persistence fails", async () => {
 	const state = runtime();
 	const before = structuredClone(state.visibility);
 	const next: GoalSettings = {
@@ -81,9 +86,9 @@ test("applyGoalSettings restores effective tool policy when persistence fails", 
 	};
 	const context = createMockContext();
 
-	assert.throws(
-		() =>
-			applyGoalSettings(state as never, next, context.ctx, {
+	await assert.rejects(
+		async () =>
+			await applyGoalSettings(state as never, next, context.ctx, {
 				save() {
 					throw new Error("disk full");
 				},
@@ -94,9 +99,10 @@ test("applyGoalSettings restores effective tool policy when persistence fails", 
 	assert.deepEqual(state.visibility, before);
 });
 
-test("applyGoalSettings rolls back file and effective state after runtime application fails", () => {
+test("applyGoalSettings rolls back file and effective state after runtime application fails", async () => {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.settings = {
 		...structuredClone(DEFAULT_GOAL_SETTINGS),
 		experimental: { goals: true },
@@ -113,9 +119,9 @@ test("applyGoalSettings rolls back file and effective state after runtime applic
 	};
 	const context = createMockContext({ mode: "tui", hasUI: true });
 
-	assert.throws(
-		() =>
-			applyGoalSettings(state, next, context.ctx, {
+	await assert.rejects(
+		async () =>
+			await applyGoalSettings(state, next, context.ctx, {
 				save(settings) {
 					saved.push(structuredClone(settings));
 				},
@@ -128,9 +134,10 @@ test("applyGoalSettings rolls back file and effective state after runtime applic
 	assert.equal(state.activeGoal?.status, "active");
 });
 
-test("disabling a retained queue pauses and aborts in-flight Goal work", () => {
+test("disabling a retained queue pauses and aborts in-flight Goal work", async () => {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.settings = {
 		...structuredClone(DEFAULT_GOAL_SETTINGS),
 		experimental: { goals: true },
@@ -147,7 +154,7 @@ test("disabling a retained queue pauses and aborts in-flight Goal work", () => {
 	});
 	const next = { ...structuredClone(state.settings), experimental: { goals: false } };
 
-	applyGoalSettings(state, next, context.ctx, { save() {} });
+	await applyGoalSettings(state, next, context.ctx, { save() {} });
 
 	assert.equal(aborts, 1);
 	assert.equal(state.queueFrozen, true);
@@ -157,9 +164,10 @@ test("disabling a retained queue pauses and aborts in-flight Goal work", () => {
 	assert.equal(state.staleGoalToolCallsBlocked, true);
 });
 
-test("freezing a queue preserves an unrelated in-flight run", () => {
+test("freezing a queue preserves an unrelated in-flight run", async () => {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.settings = {
 		...structuredClone(DEFAULT_GOAL_SETTINGS),
 		experimental: { goals: true },
@@ -175,7 +183,7 @@ test("freezing a queue preserves an unrelated in-flight run", () => {
 	});
 	const next = { ...structuredClone(state.settings), experimental: { goals: false } };
 
-	applyGoalSettings(state, next, context.ctx, { save() {} });
+	await applyGoalSettings(state, next, context.ctx, { save() {} });
 
 	assert.equal(aborts, 0);
 	assert.equal(state.queueFrozen, true);
@@ -186,7 +194,7 @@ test("freezing a queue preserves an unrelated in-flight run", () => {
 	assert.equal(state.staleGoalToolCallsBlocked, false);
 });
 
-test("revealing lazy Goal tools rejects a busy unrelated run", () => {
+test("revealing lazy Goal tools rejects a busy unrelated run", async () => {
 	const state = runtime();
 	state.settings = {
 		...structuredClone(DEFAULT_GOAL_SETTINGS),
@@ -197,9 +205,9 @@ test("revealing lazy Goal tools rejects a busy unrelated run", () => {
 	let saves = 0;
 	const context = createMockContext({ mode: "tui", hasUI: true, isIdle: () => false });
 
-	assert.throws(
-		() =>
-			applyGoalSettings(state, next, context.ctx, {
+	await assert.rejects(
+		async () =>
+			await applyGoalSettings(state, next, context.ctx, {
 				save() {
 					saves++;
 				},
@@ -211,9 +219,11 @@ test("revealing lazy Goal tools rejects a busy unrelated run", () => {
 	assert.deepEqual(state.visibility, before);
 });
 
-test("hiding always-visible Goal tools rejects a busy unrelated run", () => {
+test("hiding always-visible Goal tools rejects a busy unrelated run", async () => {
 	const mock = createMockPi({ activeTools: ["read", "goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.settings = structuredClone(DEFAULT_GOAL_SETTINGS);
 	const before = state.snapshotGoalToolVisibility();
 	const next = {
@@ -223,9 +233,9 @@ test("hiding always-visible Goal tools rejects a busy unrelated run", () => {
 	let saves = 0;
 	const context = createMockContext({ mode: "tui", hasUI: true, isIdle: () => false });
 
-	assert.throws(
-		() =>
-			applyGoalSettings(state, next, context.ctx, {
+	await assert.rejects(
+		async () =>
+			await applyGoalSettings(state, next, context.ctx, {
 				save() {
 					saves++;
 				},
@@ -237,9 +247,10 @@ test("hiding always-visible Goal tools rejects a busy unrelated run", () => {
 	assert.deepEqual(state.snapshotGoalToolVisibility(), before);
 });
 
-test("lowering the no-progress limit pauses and aborts in-flight Goal work", () => {
+test("lowering the no-progress limit pauses and aborts in-flight Goal work", async () => {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.settings = {
 		...structuredClone(DEFAULT_GOAL_SETTINGS),
 		continuationLimits: { automaticTurns: 25, noProgressTurns: 5 },
@@ -258,16 +269,17 @@ test("lowering the no-progress limit pauses and aborts in-flight Goal work", () 
 		continuationLimits: { automaticTurns: 25, noProgressTurns: 3 },
 	};
 
-	applyGoalSettings(state, next, context.ctx, { save() {} });
+	await applyGoalSettings(state, next, context.ctx, { save() {} });
 
 	assert.equal(aborts, 1);
 	assert.equal(state.activeGoal?.status, "paused");
 	assert.equal(state.activeGoal?.safetyPauseCause, "no_progress");
 });
 
-test("lowering a reached limit preserves an unrelated in-flight run", () => {
+test("lowering a reached limit preserves an unrelated in-flight run", async () => {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.settings = {
 		...structuredClone(DEFAULT_GOAL_SETTINGS),
 		continuationLimits: { automaticTurns: 25, noProgressTurns: 5 },
@@ -286,7 +298,7 @@ test("lowering a reached limit preserves an unrelated in-flight run", () => {
 		continuationLimits: { automaticTurns: 25, noProgressTurns: 3 },
 	};
 
-	applyGoalSettings(state, next, context.ctx, { save() {} });
+	await applyGoalSettings(state, next, context.ctx, { save() {} });
 
 	assert.equal(aborts, 0);
 	assert.equal(state.agentRunGoalId, null);
@@ -297,6 +309,7 @@ test("lowering a reached limit preserves an unrelated in-flight run", () => {
 test("replacement confirmation does not replace a goal that changed while open", async () => {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.activeGoal = createGoal("previewed objective", undefined, 0);
 	const replacement = createGoal("replacement objective", undefined, 0);
 	const context = createMockContext({
@@ -319,6 +332,7 @@ test("replacement confirmation does not replace a goal that changed while open",
 test("replacement confirmation sanitizes terminal controls without changing goal data", async () => {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.activeGoal = createGoal("current\u001b]8;;bad\u0007 objective", undefined, 0);
 	state.queuedGoals = [createGoal("queued\u001b objective", undefined, 0)];
 	let preview = "";
@@ -343,9 +357,66 @@ test("replacement confirmation sanitizes terminal controls without changing goal
 	assert.equal(state.activeGoal?.text, "current\u001b]8;;bad\u0007 objective");
 });
 
+test("queue settings publish the stopped accounting clock and restart it only on unfreeze", async (t) => {
+	let now = 1_000_000;
+	t.mock.method(Date, "now", () => now);
+	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
+	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
+	state.settings = {
+		...structuredClone(DEFAULT_GOAL_SETTINGS),
+		experimental: { goals: true },
+	};
+	state.activeGoal = createGoal("current objective", undefined, 0);
+	state.queuedGoals = [createGoal("queued objective", undefined, 0)];
+	const context = createMockContext({ mode: "tui", hasUI: true, isIdle: () => true });
+	const snapshots: GoalSnapshotPayloadV1[] = [];
+	state.setSemanticSnapshotSink(() => {
+		snapshots.push(
+			buildGoalSnapshotPayload(
+				state.activeGoal,
+				state.queuedGoals.length,
+				state.queueFrozen,
+				context.ctx,
+			),
+		);
+	});
+	const enabled = structuredClone(state.settings);
+	now += 5_000;
+	await applyGoalSettings(
+		state,
+		{ ...structuredClone(enabled), experimental: { goals: false } },
+		context.ctx,
+		{ save() {} },
+	);
+	assert.equal(state.queueFrozen, true);
+	assert.equal(snapshots.at(-1)?.goal?.phase, "active");
+	assert.equal(snapshots.at(-1)?.goal?.clockRunning, false);
+	assert.equal(snapshots.at(-1)?.goal?.queueFrozen, true);
+	assert.equal(snapshots.at(-1)?.goal?.runtimeSeconds, 5);
+	now += 60_000;
+	assert.equal(
+		buildGoalSnapshotPayload(state.activeGoal, 1, state.queueFrozen, context.ctx).goal
+			?.runtimeSeconds,
+		5,
+	);
+	await applyGoalSettings(state, enabled, context.ctx, { save() {} });
+	await new GoalCommandController(state).resumeQueueAfterUnfreeze(context.ctx);
+	assert.equal(snapshots.at(-1)?.goal?.clockRunning, true);
+	assert.equal(snapshots.at(-1)?.goal?.queueFrozen, false);
+	assert.equal(snapshots.at(-1)?.goal?.runtimeSeconds, 5);
+	now += 3_000;
+	assert.equal(
+		buildGoalSnapshotPayload(state.activeGoal, 1, state.queueFrozen, context.ctx).goal
+			?.runtimeSeconds,
+		8,
+	);
+});
+
 test("unfreezing waits for an aborted frozen run to settle before dispatching", async () => {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.settings = {
 		...structuredClone(DEFAULT_GOAL_SETTINGS),
 		experimental: { goals: false },
@@ -360,7 +431,7 @@ test("unfreezing waits for an aborted frozen run to settle before dispatching", 
 	const enabled = { ...structuredClone(state.settings), experimental: { goals: true } };
 	const controller = new GoalCommandController(state);
 
-	applyGoalSettings(state, enabled, context.ctx, { save() {} });
+	await applyGoalSettings(state, enabled, context.ctx, { save() {} });
 	const dispatchedEarly = await controller.resumeQueueAfterUnfreeze(context.ctx);
 
 	assert.equal(dispatchedEarly, false);
@@ -381,6 +452,7 @@ test("unfreezing waits for an aborted frozen run to settle before dispatching", 
 test("unfreezing an active retained queue dispatches Goal work immediately", async () => {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.settings = {
 		...structuredClone(DEFAULT_GOAL_SETTINGS),
 		experimental: { goals: true },
@@ -401,6 +473,7 @@ test("unfreezing an active retained queue dispatches Goal work immediately", asy
 test("unfreezing a pending priority dispatches it at the idle boundary", async () => {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
 	const state = new GoalRuntime(mock.pi);
+	attachTestMailbox(state, mock.pi);
 	state.settings = {
 		...structuredClone(DEFAULT_GOAL_SETTINGS),
 		experimental: { goals: true },
@@ -434,12 +507,279 @@ test("standard settings keep all five controls on one level", async () => {
 	await showGoalSettings(state, context.ctx, { settingsPath: "/tmp/pi-goal.json" });
 	assert.match(title, /Pi Goal Settings/);
 	assert.deepEqual(options, [
-		"Automatic work",
+		"Automatic-work limit",
 		"No-progress guard",
 		"Goal tools",
 		"Ordered goal queue",
 		"Managed run RPC",
 	]);
+});
+
+test("automatic-work settings can open directly from the safety recovery flow", async () => {
+	const state = runtime();
+	let title = "";
+	let options: string[] = [];
+	const context = createMockContext({
+		hasUI: true,
+		mode: "tui",
+		select: async (receivedTitle: string, receivedOptions: string[]) => {
+			title = receivedTitle;
+			options = receivedOptions;
+			return undefined;
+		},
+	});
+
+	await showGoalSettings(state, context.ctx, {
+		settingsPath: "/tmp/pi-goal.json",
+		initialScreen: "automatic",
+	});
+
+	assert.match(title, /Automatic-work limit/i);
+	assert.deepEqual(options, ["Set response limit…", "Unlimited…"]);
+});
+
+test("automatic-work finite limit editor starts from the current value or built-in default", async () => {
+	for (const scenario of [
+		{
+			initial: null,
+			prefill: "25",
+			entered: "25",
+			expected: 25,
+		},
+		{
+			initial: 50,
+			prefill: "50",
+			entered: "40",
+			expected: 40,
+		},
+	] as const) {
+		const state = runtime();
+		state.settings.continuationLimits.automaticTurns = scenario.initial;
+		let saved: GoalSettings | undefined;
+		let editorTitle = "";
+		let editorPrefill = "";
+		const selections = ["Automatic-work limit", "Set response limit…", undefined];
+		const context = createMockContext({
+			hasUI: true,
+			mode: "tui",
+			select: async () => selections.shift(),
+			editor: async (title: string, prefill: string) => {
+				editorTitle = title;
+				editorPrefill = prefill;
+				return scenario.entered;
+			},
+		});
+
+		await showGoalSettings(state, context.ctx, {
+			settingsPath: "/tmp/pi-goal.json",
+			save(settings) {
+				saved = structuredClone(settings);
+			},
+		});
+
+		assert.match(editorTitle, /default: 25/i);
+		assert.equal(editorPrefill, scenario.prefill);
+		assert.equal(saved?.continuationLimits.automaticTurns, scenario.expected);
+		assert.equal(state.settings.continuationLimits.automaticTurns, scenario.expected);
+	}
+});
+
+test("cancelling the automatic-work finite limit editor changes nothing", async () => {
+	const state = runtime();
+	state.settings.continuationLimits.automaticTurns = 50;
+	let saves = 0;
+	const selections = ["Automatic-work limit", "Set response limit…", undefined];
+	const context = createMockContext({
+		hasUI: true,
+		mode: "tui",
+		select: async () => selections.shift(),
+		editor: async () => undefined,
+	});
+
+	await showGoalSettings(state, context.ctx, {
+		settingsPath: "/tmp/pi-goal.json",
+		save() {
+			saves++;
+		},
+	});
+
+	assert.equal(saves, 0);
+	assert.equal(state.settings.continuationLimits.automaticTurns, 50);
+});
+
+test("Unlimited automatic work requires a concrete confirmation and cancellation changes nothing", async () => {
+	for (const confirmed of [false, true]) {
+		const state = runtime();
+		let confirmation = "";
+		let saves = 0;
+		const selections = ["Automatic-work limit", "Unlimited…", undefined];
+		const context = createMockContext({
+			hasUI: true,
+			mode: "tui",
+			select: async () => selections.shift(),
+			confirm: async (_title: string, message: string) => {
+				confirmation = message;
+				return confirmed;
+			},
+		});
+
+		await showGoalSettings(state, context.ctx, {
+			settingsPath: "/tmp/pi-goal.json",
+			save() {
+				saves++;
+			},
+		});
+
+		assert.match(confirmation, /tool loops can continue.*without a response-count limit/i);
+		assert.equal(saves, confirmed ? 1 : 0);
+		assert.equal(state.settings.continuationLimits.automaticTurns, confirmed ? null : 25);
+	}
+});
+
+test("lowering a reached automatic-work limit previews the immediate pause", async () => {
+	for (const confirmed of [false, true]) {
+		const state = runtime();
+		state.settings.continuationLimits.automaticTurns = 40;
+		state.activeGoal = createGoal("active objective", undefined, 0);
+		state.activeGoal.automaticModelTurns = 25;
+		let preview = "";
+		let saves = 0;
+		const selections = ["Automatic-work limit", "Set response limit…", undefined];
+		const context = createMockContext({
+			hasUI: true,
+			mode: "tui",
+			select: async () => selections.shift(),
+			editor: async () => "20",
+			confirm: async (_title: string, message: string) => {
+				preview = message;
+				return confirmed;
+			},
+		});
+
+		await showGoalSettings(state, context.ctx, {
+			settingsPath: "/tmp/pi-goal.json",
+			save() {
+				saves++;
+			},
+		});
+
+		assert.match(preview, /already used 25.*limit to 20.*pause.*without deleting progress/is);
+		assert.equal(saves, confirmed ? 1 : 0);
+		assert.equal(state.settings.continuationLimits.automaticTurns, confirmed ? 20 : 40);
+		assert.equal(state.activeGoal?.status, confirmed ? "paused" : "active");
+	}
+});
+
+test("automatic-work save failure preserves the previous valid setting", async () => {
+	const state = runtime();
+	const selections = ["Automatic-work limit", "Set response limit…", undefined];
+	const context = createMockContext({
+		hasUI: true,
+		mode: "tui",
+		select: async () => selections.shift(),
+		editor: async () => "40",
+	});
+
+	await showGoalSettings(state, context.ctx, {
+		settingsPath: "/tmp/pi-goal.json",
+		save() {
+			throw new Error("disk full");
+		},
+	});
+
+	assert.equal(state.settings.continuationLimits.automaticTurns, 25);
+	assert.match(context.notifications.at(-1)?.message ?? "", /previous value remains/i);
+});
+
+test("automatic-work settings stay readable and keyboard-operable at supported widths", async () => {
+	const state = runtime();
+	const tui = createTuiHarness({ width: 80, rows: 30 });
+	const context = createMockContext({ mode: "tui", hasUI: true, custom: tui.custom });
+
+	try {
+		const running = showGoalSettings(state, context.ctx, {
+			settingsPath: "/tmp/pi-goal.json",
+			save() {},
+		});
+		await tui.waitForOpen();
+		for (const width of [40, 80, 120]) {
+			const lines = tui.render(width);
+			assert.ok(lines.every((line) => visibleWidth(line) <= width));
+			assert.match(lines.join(" "), /Automatic-work limit/i);
+		}
+
+		tui.press("tui.select.confirm");
+		await tui.waitForClose();
+		await tui.waitForOpen();
+		for (const width of [40, 80, 120]) {
+			const lines = tui.render(width);
+			const frame = lines.join(" ").replace(/\s+/gu, " ");
+			assert.ok(lines.every((line) => visibleWidth(line) <= width));
+			assert.match(frame, /Set response limit…/i);
+			assert.match(frame, /Default: 25/i);
+			assert.match(frame, /Unlimited…/i);
+			assert.doesNotMatch(frame, /25 responses \(default\)/i);
+		}
+		tui.press("tui.select.cancel");
+		await tui.waitForOpen();
+		assert.match(tui.render().join(" "), /Automatic-work limit/i);
+		tui.press("ctrl+c");
+		await running;
+	} finally {
+		tui.dispose();
+	}
+});
+
+test("automatic-work editing stops without side effects when its menu is disposed", async () => {
+	const state = runtime();
+	let saves = 0;
+	const selections = ["Automatic-work limit", "Set response limit…", undefined];
+	const context = createMockContext({
+		hasUI: true,
+		mode: "tui",
+		select: async () => selections.shift(),
+		editor: async () => {
+			state.closeMenuSession();
+			return "10";
+		},
+	});
+
+	await showGoalSettings(state, context.ctx, {
+		settingsPath: "/tmp/pi-goal.json",
+		save() {
+			saves++;
+		},
+	});
+
+	assert.equal(saves, 0);
+	assert.equal(state.settings.continuationLimits.automaticTurns, 25);
+});
+
+test("automatic-work editing rejects a replacement active goal without saving", async () => {
+	const state = runtime();
+	state.activeGoal = createGoal("original", undefined, 0);
+	let saves = 0;
+	const selections = ["Automatic-work limit", "Set response limit…", undefined];
+	const context = createMockContext({
+		hasUI: true,
+		mode: "tui",
+		select: async () => selections.shift(),
+		editor: async () => {
+			state.activeGoal = createGoal("replacement", undefined, 0);
+			return "10";
+		},
+	});
+
+	await showGoalSettings(state, context.ctx, {
+		settingsPath: "/tmp/pi-goal.json",
+		save() {
+			saves++;
+		},
+	});
+
+	assert.equal(saves, 0);
+	assert.equal(state.settings.continuationLimits.automaticTurns, 25);
+	assert.match(context.notifications.at(-1)?.message ?? "", /active goal changed/i);
 });
 
 test("Managed run RPC setting defaults off and saves immediately", async () => {
@@ -545,7 +885,7 @@ test("invalid settings use a standard read-only detail screen", async () => {
 	await showGoalSettings(state, context.ctx, { settingsPath: "/tmp/pi-goal.json" });
 	assert.match(title, /Read only/i);
 	assert.match(title, /Invalid settings file/i);
-	assert.match(title, /Automatic work: Unlimited/i);
+	assert.match(title, /Automatic-work limit: Up to 25 responses/i);
 	assert.match(title, /Managed run RPC: Off/i);
 });
 

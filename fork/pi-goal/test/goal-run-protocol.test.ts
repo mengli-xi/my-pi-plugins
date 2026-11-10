@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
 import { createMockContext, createMockPi } from "../../../test/support.js";
-import goal from "../src/goal.js";
+import { goalWithTestMailbox as goal } from "./mailbox-support.js";
 
 const START_CHANNEL = "pi-goal:start";
 const CANCEL_CHANNEL = "pi-goal:cancel";
@@ -74,7 +74,7 @@ function registerGoal(mock: ReturnType<typeof createMockPi>, settingsPath = ENAB
 }
 
 function bindSession(mock: ReturnType<typeof createMockPi>, context = createMockContext()) {
-	mock.events.get("session_start")?.[0]?.({}, context.ctx);
+	void mock.events.get("session_start")?.[0]?.({}, context.ctx);
 	return context;
 }
 
@@ -400,7 +400,7 @@ test("cancel during the first active event prevents kickoff delivery", async () 
 	);
 	assert.equal(mock.sentUserMessages.length, 0);
 	assert.equal(lastPersistedGoal(mock)?.status, "paused");
-	assert.equal(context.statuses.get("goal"), "paused");
+	assert.equal(context.statuses.get("goal"), "paused · automatic 0/25");
 });
 
 test("unknown, stale, and manual runs cannot be cancelled", async () => {
@@ -601,7 +601,7 @@ test("blocked and usage-limited transitions preserve terminal reasons", async ()
 	const usageEvents = observeRun(usageMock, "usage-run");
 	startRun(usageMock, "usage-run");
 	await flush();
-	usageMock.events.get("agent_end")?.[0]?.(
+	await usageMock.events.get("agent_end")?.[0]?.(
 		{
 			messages: [
 				{
@@ -862,7 +862,7 @@ test("session replacement invalidates old run ownership and terminal details", a
 	const secondContext = createMockContext({
 		sessionManager: { getBranch: () => branch, getEntries: () => branch },
 	});
-	mock.events.get("session_start")?.[0]?.({}, secondContext.ctx);
+	await mock.events.get("session_start")?.[0]?.({}, secondContext.ctx);
 	const staleEvents = observeRun(mock, "old-run");
 	cancelRun(mock, "old-run");
 	await flush();

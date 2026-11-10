@@ -4,8 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createMockContext, createMockPi } from "../../../test/support.js";
-import goal from "../src/goal.js";
+import {
+	GOAL_SNAPSHOT_CHANNEL,
+	GOAL_SNAPSHOT_REQUEST_CHANNEL,
+	type GoalSnapshotPayloadV1,
+} from "../src/goal-snapshot.js";
 import type { ActiveGoal, GoalStateEntryData } from "../src/persistence.js";
+import { goalWithTestMailbox as goal } from "./mailbox-support.js";
 
 const settingsDirectory = mkdtempSync(join(tmpdir(), "pi-goal-queue-settings-"));
 const enabledSettingsPath = join(settingsDirectory, "enabled.json");
@@ -39,7 +44,9 @@ test("experimental mode keeps singular registration and exposes canonical queue 
 			"resume",
 			"clear",
 			"edit",
+			"modify",
 			"status",
+			"idle-checkin",
 			"add",
 			"prioritize",
 			"drop-last",
@@ -185,8 +192,8 @@ test("automatic queue advance preserves a shelved goal safety epoch", async () =
 
 	const prompt = harness.mock.sentUserMessages.at(-1)?.text ?? "";
 	harness.mock.events.get("input")?.[0]?.({ source: "extension", text: prompt }, harness.ctx);
-	harness.mock.events.get("before_agent_start")?.[0]?.(
-		{ prompt, systemPrompt: "base" },
+	await harness.mock.events.get("before_agent_start")?.[0]?.(
+		{ messageType: "user", prompt, systemPrompt: "base" },
 		harness.ctx,
 	);
 	const started = stateGoals(harness.mock)[0];
@@ -303,7 +310,7 @@ test("pending prioritize does not inject or account the old goal on unrelated tu
 
 	const beforeStart = harness.mock.events.get("before_agent_start")?.[0];
 	const result = await beforeStart?.(
-		{ prompt: "unrelated user work", systemPrompt: "base" },
+		{ messageType: "user", prompt: "unrelated user work", systemPrompt: "base" },
 		harness.ctx,
 	);
 	assert.equal(result, undefined);
@@ -352,7 +359,7 @@ test("pending prioritize excludes unrelated usage during shutdown", async () => 
 	await harness.command("original goal");
 	await harness.command("prioritize urgent goal");
 	await harness.mock.events.get("before_agent_start")?.[0]?.(
-		{ prompt: "unrelated user work", systemPrompt: "base" },
+		{ messageType: "user", prompt: "unrelated user work", systemPrompt: "base" },
 		harness.ctx,
 	);
 	branch.push(assistantUsageEntry(25));
@@ -412,7 +419,7 @@ test("pending prioritize preserves budget wrap-up completion ownership", async (
 	assert.equal(stateGoals(harness.mock)[0]?.status, "budget_limited");
 	await harness.command("prioritize urgent goal");
 	await harness.mock.events.get("before_agent_start")?.[0]?.(
-		{ prompt: "budget wrap-up", systemPrompt: "base" },
+		{ messageType: "user", prompt: "budget wrap-up", systemPrompt: "base" },
 		harness.ctx,
 	);
 
@@ -450,7 +457,7 @@ test("pending priority lets an unfinished budget wrap-up close at agent_end", as
 	await harness.mock.events.get("tool_execution_end")?.[0]?.({}, harness.ctx);
 	await harness.command("prioritize urgent goal");
 	await harness.mock.events.get("before_agent_start")?.[0]?.(
-		{ prompt: "budget wrap-up", systemPrompt: "base" },
+		{ messageType: "user", prompt: "budget wrap-up", systemPrompt: "base" },
 		harness.ctx,
 	);
 
@@ -478,7 +485,10 @@ test("pending prioritize preserves Pi-owned retry turns", async () => {
 	assert.ok(recovering);
 	assert.ok(ownedPrompt);
 	const beforeStart = harness.mock.events.get("before_agent_start")?.[0];
-	await beforeStart?.({ prompt: ownedPrompt, systemPrompt: "base" }, harness.ctx);
+	await beforeStart?.(
+		{ messageType: "user", prompt: ownedPrompt, systemPrompt: "base" },
+		harness.ctx,
+	);
 	await harness.command("prioritize urgent goal");
 	await harness.mock.events.get("agent_end")?.[0]?.(
 		{
@@ -489,14 +499,11 @@ test("pending prioritize preserves Pi-owned retry turns", async () => {
 		harness.ctx,
 	);
 
-	const retryStart = await beforeStart?.(
-		{ prompt: "automatic provider retry", systemPrompt: "base" },
+	const _retryStart = await beforeStart?.(
+		{ messageType: "user", prompt: "automatic provider retry", systemPrompt: "base" },
 		harness.ctx,
 	);
-	assert.match(
-		String((retryStart as { systemPrompt?: string } | undefined)?.systemPrompt),
-		/recovering goal/,
-	);
+	assert.match(contextGoalText(harness), /recovering goal/);
 	const completed = await completionTool(harness.mock).execute(
 		"retry-completion",
 		{ goal_id: recovering.id, summary: "Recovering goal completed and verified." },
@@ -522,7 +529,7 @@ test("exhausted retry finalizes before pending priority dispatches at settlement
 	const ownedPrompt = harness.mock.sentUserMessages.at(-1)?.text;
 	assert.ok(ownedPrompt);
 	await harness.mock.events.get("before_agent_start")?.[0]?.(
-		{ prompt: ownedPrompt, systemPrompt: "base" },
+		{ messageType: "user", prompt: ownedPrompt, systemPrompt: "base" },
 		harness.ctx,
 	);
 	await harness.command("prioritize urgent goal");
@@ -555,7 +562,10 @@ test("extension input cannot claim a pending Pi retry under priority", async () 
 	assert.ok(recovering);
 	assert.ok(ownedPrompt);
 	const beforeStart = harness.mock.events.get("before_agent_start")?.[0];
-	await beforeStart?.({ prompt: ownedPrompt, systemPrompt: "base" }, harness.ctx);
+	await beforeStart?.(
+		{ messageType: "user", prompt: ownedPrompt, systemPrompt: "base" },
+		harness.ctx,
+	);
 	await harness.command("prioritize urgent goal");
 	await harness.mock.events.get("agent_end")?.[0]?.(
 		{
@@ -571,7 +581,7 @@ test("extension input cannot claim a pending Pi retry under priority", async () 
 	);
 
 	const unrelatedStart = await beforeStart?.(
-		{ prompt: "unrelated extension work", systemPrompt: "base" },
+		{ messageType: "user", prompt: "unrelated extension work", systemPrompt: "base" },
 		harness.ctx,
 	);
 	assert.equal(unrelatedStart, undefined);
@@ -600,7 +610,7 @@ test("pending prioritize rejects terminal reports from unrelated turns", async (
 	assert.ok(original);
 	await harness.command("prioritize urgent goal");
 	await harness.mock.events.get("before_agent_start")?.[0]?.(
-		{ prompt: "unrelated user work", systemPrompt: "base" },
+		{ messageType: "user", prompt: "unrelated user work", systemPrompt: "base" },
 		harness.ctx,
 	);
 
@@ -642,7 +652,7 @@ test("failed finalized priority activation pauses without absorbing unrelated us
 	await harness.command("original goal");
 	await harness.command("prioritize urgent goal");
 	await harness.mock.events.get("before_agent_start")?.[0]?.(
-		{ prompt: "unrelated user work", systemPrompt: "base" },
+		{ messageType: "user", prompt: "unrelated user work", systemPrompt: "base" },
 		harness.ctx,
 	);
 	branch.push(assistantUsageEntry(25));
@@ -722,7 +732,7 @@ test("restored exhausted queued heads remain budget-limited without a kickoff pr
 
 	assert.equal(restored.mock.sentUserMessages.length, 0);
 	assert.equal(stateGoals(restored.mock)[0]?.status, "budget_limited");
-	assert.equal(restored.statuses.get("goal"), "budget 10/10");
+	assert.equal(restored.statuses.get("goal"), "budget 10/10 · automatic 0/25");
 });
 
 test("pending priority survives reload after the displaced head completes", async () => {
@@ -995,7 +1005,7 @@ test("a pending busy skip does not abort unrelated user work before advancement"
 
 	const beforeStart = harness.mock.events.get("before_agent_start")?.[0];
 	const result = await beforeStart?.(
-		{ prompt: "newer unrelated work", systemPrompt: "base" },
+		{ messageType: "user", prompt: "newer unrelated work", systemPrompt: "base" },
 		harness.ctx,
 	);
 	assert.equal(result, undefined);
@@ -1141,7 +1151,7 @@ test("finalized priority dispatches from idle manual compaction", async () => {
 	await harness.command("old head");
 	await harness.command("prioritize urgent head");
 	await harness.mock.events.get("before_agent_start")?.[0]?.(
-		{ prompt: "unrelated user work", systemPrompt: "base" },
+		{ messageType: "user", prompt: "unrelated user work", systemPrompt: "base" },
 		harness.ctx,
 	);
 	const finalizedState = lastState(harness.mock);
@@ -1196,7 +1206,7 @@ test("manual compaction dispatches pending priority before old-head budget limit
 			{ text: "tail", status: "queued" },
 		],
 	);
-	assert.doesNotMatch(harness.mock.sentUserMessages.at(-1)?.text ?? "", /pi-goal-continuation:/i);
+	assert.match(harness.mock.sentUserMessages.at(-1)?.text ?? "", /pi-goal-continuation:/i);
 });
 
 test("retry and compaction lifecycle snapshots preserve the queued tail", async () => {
@@ -1375,9 +1385,11 @@ test("separate factory runtimes keep independent queues", async () => {
 	);
 });
 
-test("disabled settings freeze retained queues without losing state", async () => {
+test("disabled settings freeze retained queues without losing state", async (t) => {
+	let now = 1_000_000;
+	t.mock.method(Date, "now", () => now);
 	const frozenState: GoalStateEntryData = {
-		goal: storedGoal("head", "active"),
+		goal: { ...storedGoal("head", "active"), timeUsedSeconds: 10 },
 		queue: [storedGoal("later", "queued")],
 	};
 	const branch = [{ type: "custom", customType: "goal-state", data: frozenState }];
@@ -1387,6 +1399,14 @@ test("disabled settings freeze retained queues without losing state", async () =
 	);
 
 	assert.equal(harness.statuses.get("goal"), "queue off");
+	assert.equal(harness.snapshots.at(-1)?.goal?.phase, "active");
+	assert.equal(harness.snapshots.at(-1)?.goal?.clockRunning, false);
+	assert.equal(harness.snapshots.at(-1)?.goal?.queueFrozen, true);
+	assert.equal(harness.snapshots.at(-1)?.goal?.runtimeSeconds, 10);
+	now += 60_000;
+	assert.equal(harness.runtimeSnapshot()?.goal?.clockRunning, false);
+	assert.equal(harness.runtimeSnapshot()?.goal?.queueFrozen, true);
+	assert.equal(harness.runtimeSnapshot()?.goal?.runtimeSeconds, 10);
 	assert.equal(harness.mock.sentUserMessages.length, 0);
 	await harness.command("");
 	assert.match(harness.notifications.at(-1)?.message ?? "", /queue.*off|re-enable/i);
@@ -1400,7 +1420,21 @@ test("disabled settings freeze retained queues without losing state", async () =
 	const restored = await createHarness({
 		sessionManager: { getBranch: () => restoredBranch, getEntries: () => restoredBranch },
 	});
-	assert.equal(restored.statuses.get("goal"), "active 0s");
+	assert.equal(restored.statuses.get("goal"), "active 10s · automatic 0/25");
+	assert.equal(restored.snapshots.at(-1)?.goal?.clockRunning, true);
+	assert.equal(restored.snapshots.at(-1)?.goal?.queueFrozen, false);
+	assert.equal(restored.runtimeSnapshot()?.goal?.queueFrozen, false);
+	assert.equal(restored.snapshots.at(-1)?.goal?.runtimeSeconds, 10);
+	now += 3_000;
+	assert.equal(restored.runtimeSnapshot()?.goal?.runtimeSeconds, 13);
+	await restored.command("pause");
+	assert.equal(restored.snapshots.at(-1)?.goal?.phase, "paused");
+	assert.equal(restored.snapshots.at(-1)?.goal?.clockRunning, false);
+	assert.equal(restored.snapshots.at(-1)?.goal?.queueFrozen, false);
+	assert.equal(restored.runtimeSnapshot()?.goal?.queueFrozen, false);
+	assert.equal(restored.snapshots.at(-1)?.goal?.runtimeSeconds, 13);
+	now += 60_000;
+	assert.equal(restored.runtimeSnapshot()?.goal?.runtimeSeconds, 13);
 	assert.deepEqual(
 		stateGoals(restored.mock).map(({ text }) => text),
 		["head", "later"],
@@ -1412,12 +1446,26 @@ test("disabled settings freeze retained queues without losing state", async () =
 
 async function createHarness(overrides: Record<string, unknown> = {}, enabled = true) {
 	const mock = createMockPi({ activeTools: ["goal_complete", "goal_blocked"] });
+	const snapshots: GoalSnapshotPayloadV1[] = [];
+	mock.eventBus.on(GOAL_SNAPSHOT_CHANNEL, (value) => {
+		snapshots.push(value as GoalSnapshotPayloadV1);
+	});
 	goal(mock.pi, { settingsPath: enabled ? enabledSettingsPath : disabledSettingsPath });
 	const context = createMockContext(overrides);
 	await mock.events.get("session_start")?.[0]?.({}, context.ctx);
 	return {
 		mock,
 		...context,
+		snapshots,
+		runtimeSnapshot: () => {
+			let snapshot: GoalSnapshotPayloadV1 | undefined;
+			mock.eventBus.emit(GOAL_SNAPSHOT_REQUEST_CHANNEL, {
+				reply: (value: GoalSnapshotPayloadV1) => {
+					snapshot = value;
+				},
+			});
+			return snapshot;
+		},
 		command: async (args: string) => mock.commands.get("goal")?.handler(args, context.ctx),
 	};
 }
@@ -1475,4 +1523,15 @@ function storedGoal(text: string, status: ActiveGoal["status"]): ActiveGoal {
 		toolFreeRepeatCount: 0,
 		...(status === "active" ? { activeStartedAt: 1 } : {}),
 	};
+}
+
+function contextGoalText(harness: Awaited<ReturnType<typeof createHarness>>) {
+	const result = harness.mock.events.get("context")?.[0]?.({ messages: [] }, harness.ctx) as
+		| { messages?: { content?: { text?: string }[] }[] }
+		| undefined;
+	return (
+		result?.messages
+			?.flatMap((message) => message.content?.map((part) => part.text ?? "") ?? [])
+			.join("\n") ?? ""
+	);
 }

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
 	type ActiveGoal,
 	loadGoalStateFromSession,
+	type PendingBackgroundContinuation,
 	serializeGoalState,
 } from "../src/persistence.js";
 
@@ -44,6 +45,87 @@ test("canonical persistence restores queue and pending prioritize safely", () =>
 	);
 	assert.deepEqual(loaded.pendingAction, pendingAction);
 	assert.equal(loaded.hasExperimentalQueueState, true);
+});
+
+test("an owed background continuation round-trips with its goal", () => {
+	const owed: PendingBackgroundContinuation = {
+		goalId: active.id,
+		continuationId: `${active.id}:3:2b0f4a1c`,
+		offerId: "offer-1",
+		ownerId: "pi-processes",
+		logicalKey: "notification:batch-1",
+		recordedAt: 1_700_000_000_000,
+	};
+	const data = serializeGoalState(active, [], undefined, owed);
+	assert.deepEqual(data, { goal: active, pendingContinuation: owed });
+	assert.deepEqual(
+		loadGoalStateFromSession(branch({ customType: "goal-state", data })).pendingContinuation,
+		owed,
+	);
+});
+
+test("new owed source session identity survives its first checkpoint without an intent", () => {
+	const owed: PendingBackgroundContinuation = {
+		goalId: active.id,
+		continuationId: `${active.id}:3:owned`,
+		offerId: "offer",
+		ownerId: "pi-processes",
+		logicalKey: "local",
+		recordedAt: 1,
+		sourceSessionId: "own-fork",
+	};
+	const loaded = loadGoalStateFromSession(
+		branch({ customType: "goal-state", data: serializeGoalState(active, [], undefined, owed) }),
+	);
+	assert.deepEqual(loaded.pendingContinuation, owed);
+	assert.equal(loaded.mailbox, undefined);
+});
+
+test("an owed background continuation is dropped without its own goal", () => {
+	const owed: PendingBackgroundContinuation = {
+		goalId: active.id,
+		continuationId: `${active.id}:3:2b0f4a1c`,
+		offerId: "offer-1",
+		ownerId: "pi-processes",
+		logicalKey: "notification:batch-1",
+		recordedAt: 1_700_000_000_000,
+	};
+	// A completed goal owes nothing, and a cleared goal keeps no marker to owe it with.
+	assert.deepEqual(serializeGoalState(storedGoal("done", "complete"), [], undefined, owed), {
+		goal: storedGoal("done", "complete"),
+	});
+	assert.deepEqual(serializeGoalState(undefined, [], undefined, owed), { goal: null });
+	assert.deepEqual(serializeGoalState(queued, [], undefined, owed), { goal: queued });
+});
+
+test("a malformed owed continuation is dropped without discarding the goal", () => {
+	const base = {
+		goalId: active.id,
+		continuationId: `${active.id}:3:2b0f4a1c`,
+		offerId: "offer-1",
+		ownerId: "pi-processes",
+		logicalKey: "notification:batch-1",
+		recordedAt: 1_700_000_000_000,
+	};
+	const rejected = [
+		{ ...base, goalId: "another-goal" },
+		{ ...base, continuationId: "someone-elses-goal:3:2b0f4a1c" },
+		{ ...base, continuationId: `${active.id}:3:has space` },
+		{ ...base, continuationId: 7 },
+		{ ...base, offerId: "" },
+		{ ...base, ownerId: undefined },
+		{ ...base, sourceSessionId: "" },
+		{ ...base, sourceSessionId: null },
+		{ ...base, sourceSessionId: 7 },
+		"not-a-record",
+	];
+	for (const pendingContinuation of rejected) {
+		const loaded = loadGoalStateFromSession(
+			branch({ customType: "goal-state", data: { goal: active, pendingContinuation } }),
+		);
+		assert.equal(loaded.goal?.id, active.id, JSON.stringify(pendingContinuation));
+		assert.equal(loaded.pendingContinuation, undefined, JSON.stringify(pendingContinuation));
+	}
 });
 
 test("a queued head is experimental state even without a queued tail", () => {

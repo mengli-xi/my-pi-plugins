@@ -21,13 +21,15 @@ export interface GoalSettings {
 		automaticTurns: ContinuationLimit;
 		noProgressTurns: ContinuationLimit;
 	};
+	backgroundWaitCheckInMs: number | null;
 }
 
 export const DEFAULT_GOAL_SETTINGS: GoalSettings = {
 	toolVisibility: "always",
 	experimental: { goals: false },
 	rpc: { enabled: false },
-	continuationLimits: { automaticTurns: null, noProgressTurns: 3 },
+	continuationLimits: { automaticTurns: 25, noProgressTurns: 3 },
+	backgroundWaitCheckInMs: 20 * 60 * 1_000,
 };
 
 export type GoalSettingsLoadResult =
@@ -105,12 +107,36 @@ export function normalizeGoalSettings(value: unknown): GoalSettings | undefined 
 			)
 		: DEFAULT_GOAL_SETTINGS.continuationLimits.noProgressTurns;
 	if (automaticTurns === undefined || noProgressTurns === undefined) return undefined;
+	const hasBackgroundCheckIn = Object.hasOwn(value, "backgroundWaitCheckInMs");
+	const hasLegacyProcessCheckIn = Object.hasOwn(value, "processWaitCheckInMs");
+	const rawBackgroundWaitCheckInMs = hasBackgroundCheckIn
+		? Reflect.get(value, "backgroundWaitCheckInMs")
+		: hasLegacyProcessCheckIn
+			? Reflect.get(value, "processWaitCheckInMs")
+			: DEFAULT_GOAL_SETTINGS.backgroundWaitCheckInMs;
+	if (
+		hasBackgroundCheckIn &&
+		hasLegacyProcessCheckIn &&
+		Reflect.get(value, "backgroundWaitCheckInMs") !== Reflect.get(value, "processWaitCheckInMs")
+	) {
+		return undefined;
+	}
+	const backgroundWaitCheckInMs =
+		rawBackgroundWaitCheckInMs === null
+			? null
+			: typeof rawBackgroundWaitCheckInMs === "number" &&
+					Number.isSafeInteger(rawBackgroundWaitCheckInMs) &&
+					rawBackgroundWaitCheckInMs >= 60_000
+				? rawBackgroundWaitCheckInMs
+				: undefined;
+	if (backgroundWaitCheckInMs === undefined) return undefined;
 
 	return {
 		toolVisibility: toolVisibility as GoalToolVisibility,
 		experimental: { goals },
 		rpc: { enabled: rpcEnabled },
 		continuationLimits: { automaticTurns, noProgressTurns },
+		backgroundWaitCheckInMs,
 	};
 }
 
@@ -148,6 +174,7 @@ export function saveGoalSettings(
 	const experimental = ownRecord(raw.experimental) ?? {};
 	const rpc = ownRecord(raw.rpc) ?? {};
 	const continuationLimits = ownRecord(raw.continuationLimits) ?? {};
+	delete raw.processWaitCheckInMs;
 	const document = `${JSON.stringify(
 		{
 			...raw,
@@ -159,6 +186,7 @@ export function saveGoalSettings(
 				automaticTurns: normalized.continuationLimits.automaticTurns,
 				noProgressTurns: normalized.continuationLimits.noProgressTurns,
 			},
+			backgroundWaitCheckInMs: normalized.backgroundWaitCheckInMs,
 		},
 		null,
 		2,

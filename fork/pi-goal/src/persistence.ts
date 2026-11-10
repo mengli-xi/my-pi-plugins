@@ -1,19 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import process from "node:process";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
 	isNonNegativeFiniteNumber,
 	nonNegativeFiniteNumber,
 	normalizeTokenBudget,
 } from "./accounting.js";
+import { type GoalMailboxState, parseGoalMailboxState } from "./mailbox-state.js";
 import type { GoalStatus } from "./prompts.js";
 
 const GOAL_STATE_ENTRY_TYPE = "goal-state";
 const LEGACY_GOALS_STATE_ENTRY_TYPE = "goals-state";
-const STATE_FILE = join(
-	process.env.PI_CODING_AGENT_DIR ?? join(process.env.HOME ?? ".", ".pi", "agent"),
-	"pi-goal-state.json",
-);
+const STATE_FILE = join(getAgentDir(), "pi-goal-state.json");
 
 export type SafetyPauseCause = "continuation_limit" | "no_progress";
 
@@ -50,16 +48,37 @@ export type PendingQueueAction =
 			completedText: string;
 	  };
 
+/**
+ * A background wake this goal already answered with a committed consumer receipt but has
+ * not dispatched yet. Its producer treats that delivery as finished and will never notify
+ * again, so only this durable record can recover the owed continuation after a reload.
+ */
+export interface PendingBackgroundContinuation {
+	goalId: string;
+	/** Present from the first receipt commit, before asynchronous mailbox submit. */
+	sourceSessionId?: string;
+	continuationId: string;
+	offerId: string;
+	ownerId: string;
+	logicalKey: string;
+	recordedAt: number;
+}
+
 export interface GoalStateEntryData {
+	mailbox?: GoalMailboxState;
 	goal: ActiveGoal | null;
 	queue?: ActiveGoal[];
 	pendingAction?: PendingQueueAction;
+	pendingContinuation?: PendingBackgroundContinuation;
 }
 
 export interface LoadedGoalState {
+	mailbox?: GoalMailboxState;
+	mailboxInvalid?: boolean;
 	goal: ActiveGoal | undefined;
 	queue: ActiveGoal[];
 	pendingAction: PendingQueueAction | undefined;
+	pendingContinuation: PendingBackgroundContinuation | undefined;
 	hasExperimentalQueueState: boolean;
 	source: "none" | "canonical" | "legacy-goals";
 }
@@ -81,11 +100,23 @@ export function serializeGoalState(
 	goal: ActiveGoal | undefined,
 	queue: readonly ActiveGoal[],
 	pendingAction: PendingQueueAction | undefined,
+	pendingContinuation?: PendingBackgroundContinuation,
+	mailbox?: GoalMailboxState,
 ): GoalStateEntryData {
+	// A cleared or completed goal owes nothing further, so its marker is dropped here
+	// rather than at every call site.
+	const owedContinuation =
+		goal && goal.status !== "complete" && pendingContinuation?.goalId === goal.id
+			? pendingContinuation
+			: undefined;
 	return {
 		goal: goal ?? null,
+		...(mailbox && (mailbox.intents.length > 0 || mailbox.cancelling)
+			? { mailbox: structuredClone(mailbox) }
+			: {}),
 		...(queue.length > 0 ? { queue: [...queue] } : {}),
 		...(pendingAction ? { pendingAction } : {}),
+		...(owedContinuation ? { pendingContinuation: owedContinuation } : {}),
 	};
 }
 
@@ -131,10 +162,53 @@ function loadCanonicalGoalState(data: unknown): LoadedGoalState {
 		goal,
 		queue,
 		pendingAction,
+		...(Object.hasOwn(data, "mailbox")
+			? {
+					mailbox: parseGoalMailboxState(data.mailbox),
+					mailboxInvalid: !parseGoalMailboxState(data.mailbox),
+				}
+			: {}),
+		pendingContinuation: normalizePendingContinuation(data.pendingContinuation, goal),
 		hasExperimentalQueueState:
 			goal?.status === "queued" || queue.length > 0 || pendingAction !== undefined,
 		source: "canonical",
 	};
+}
+
+// A malformed marker is dropped on its own. It records one owed continuation, not
+// authoritative goal state, so it must never discard the restored goal with it.
+function normalizePendingContinuation(
+	value: unknown,
+	goal: ActiveGoal | undefined,
+): PendingBackgroundContinuation | undefined {
+	if (!goal || goal.status === "complete" || !isRecord(value)) return undefined;
+	if (value.goalId !== goal.id) return undefined;
+	const { continuationId, offerId, ownerId, logicalKey } = value;
+	if (!isContinuationMarkerToken(continuationId)) return undefined;
+	if (!continuationId.startsWith(`${goal.id}:`)) return undefined;
+	if (!isIdentityToken(offerId) || !isIdentityToken(ownerId) || !isIdentityToken(logicalKey)) {
+		return undefined;
+	}
+	if (value.sourceSessionId !== undefined && !isIdentityToken(value.sourceSessionId))
+		return undefined;
+	return {
+		goalId: goal.id,
+		...(value.sourceSessionId !== undefined ? { sourceSessionId: value.sourceSessionId } : {}),
+		continuationId,
+		offerId,
+		ownerId,
+		logicalKey,
+		recordedAt: isNonNegativeFiniteNumber(value.recordedAt) ? value.recordedAt : Date.now(),
+	};
+}
+
+function isContinuationMarkerToken(value: unknown): value is string {
+	// The prompt marker comment cannot carry whitespace or a closing angle bracket.
+	return isIdentityToken(value) && !/[\s>]/u.test(value);
+}
+
+function isIdentityToken(value: unknown): value is string {
+	return typeof value === "string" && value.length > 0 && value.length <= 300;
 }
 
 function loadLegacyGoalsState(data: unknown): LoadedGoalState {
@@ -157,6 +231,7 @@ function loadLegacyGoalsState(data: unknown): LoadedGoalState {
 		goal: goals[0],
 		queue: goals.slice(1),
 		pendingAction,
+		pendingContinuation: undefined,
 		hasExperimentalQueueState:
 			goals[0]?.status === "queued" || goals.length > 1 || pendingAction !== undefined,
 		source: "legacy-goals",
@@ -312,6 +387,7 @@ function emptyGoalState(source: LoadedGoalState["source"]): LoadedGoalState {
 		goal: undefined,
 		queue: [],
 		pendingAction: undefined,
+		pendingContinuation: undefined,
 		hasExperimentalQueueState: false,
 		source,
 	};

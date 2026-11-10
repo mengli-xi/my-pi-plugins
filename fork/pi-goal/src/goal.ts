@@ -1,11 +1,28 @@
-import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	type AgentEndEvent,
+	type AgentSettledEvent,
+	type BeforeAgentStartEvent,
+	defineTool,
+	type ExtensionAPI,
+	type ExtensionCommandContext,
+	type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import { showTextPanel } from "pi-li-uikit/text-panel";
+import { registerGoalContinuationObligationV1 } from "pi-runtime-contracts/goal-continuation-obligation-v1";
+import type { MailboxBinding, MailboxRunStart } from "pi-session-inject/mailbox-v1";
 import { Type } from "typebox";
-import { currentTokenTotal } from "./accounting.js";
+import { currentTokenTotal, formatDuration } from "./accounting.js";
 import { completeGoalArguments, parseCommand } from "./command.js";
 import { GoalCommandController } from "./commands.js";
-import { showGoalManager } from "./menu.js";
+import {
+	buildGoalSnapshotPayload,
+	GOAL_SNAPSHOT_CHANNEL,
+	installGoalSnapshotProtocol,
+} from "./goal-snapshot.js";
+import { GOAL_MAILBOX_TYPE, GoalMailbox, goalSourceSessionScope } from "./mailbox.js";
+import { editGoalObjective, showGoalManager } from "./menu.js";
 import { type ActiveGoal, loadGoalStateFromSession } from "./persistence.js";
-import { buildGoalPrompt, buildGoalSystemPrompt } from "./prompts.js";
+import { buildGoalPrompt, buildGoalSystemPrompt, buildPausedGoalSystemPrompt } from "./prompts.js";
 import { activateQueuedGoal } from "./queue.js";
 import { GoalRunController } from "./run-protocol.js";
 import {
@@ -30,8 +47,14 @@ import {
 	transitionGoal,
 	truncateNotification,
 } from "./runtime.js";
+import { ProcessContinuationBridge } from "./runtime-continuation.js";
 import { hasAssistantToolCall } from "./safety.js";
-import { DEFAULT_GOAL_SETTINGS, readGoalSettings } from "./settings.js";
+import {
+	DEFAULT_GOAL_SETTINGS,
+	type GoalSettings,
+	readGoalSettings,
+	saveGoalSettings,
+} from "./settings.js";
 import { showGoalSettings } from "./settings-ui.js";
 
 // goal.ts remains the Pi-facing composition root despite its size because tool contracts and
@@ -54,6 +77,7 @@ interface GoalBlockedDetails {
 
 interface GoalOptions {
 	settingsPath?: string;
+	mailbox?: MailboxBinding;
 }
 
 const EXPERIMENTAL_GOALS_WARNING =
@@ -66,8 +90,69 @@ const MAX_BLOCKER_EVIDENCE_LENGTH = 4_000;
 function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 	const runtime = new GoalRuntime(pi);
 	const commands = new GoalCommandController(runtime);
+	const endedRuns = new WeakSet<object>();
+	const startedRuns = new WeakSet<object>();
 	const runController = new GoalRunController(runtime, commands);
+	const processContinuation = new ProcessContinuationBridge();
+	let lastAppendIssue: string | undefined;
+	const mailbox = new GoalMailbox(
+		runtime,
+		pi,
+		{
+			beforeRun: (start) => {
+				if (startedRuns.has(start.event)) return;
+				startedRuns.add(start.event);
+				return beforeRun(start.event, start.ctx, start);
+			},
+			afterRun: (end) => {
+				if (endedRuns.has(end.event)) return;
+				endedRuns.add(end.event);
+				return afterRun(end.event, end.ctx);
+			},
+			settled: (event, ctx) => settled(event, ctx),
+		},
+		options.mailbox,
+	);
+	runtime.mailbox = mailbox;
 	runController.register(pi);
+	let snapshotContext: StatusContext | undefined;
+	const readObligation: Parameters<typeof registerGoalContinuationObligationV1>[0] = (query) => {
+		const ctx = snapshotContext as ExtensionContext | undefined;
+		if (!ctx || runtime.mailboxInvalid) return "unknown";
+		if (ctx.sessionManager.getSessionId() !== query.sessionId) return "none";
+		const state = loadGoalStateFromSession(ctx);
+		if (state.mailboxInvalid) return "unknown";
+		if (
+			!state.goal ||
+			state.goal.status === "complete" ||
+			state.pendingContinuation?.continuationId !== query.continuationId
+		)
+			return "none";
+		const scope = goalSourceSessionScope(
+			ctx,
+			state.pendingContinuation.sourceSessionId !== undefined
+				? state.pendingContinuation
+				: (state.mailbox?.intents.find((intent) => intent.marker === query.continuationId) ??
+						state.pendingContinuation),
+		);
+		return scope === "own" ? "owed" : scope === "foreign" ? "none" : "unknown";
+	};
+	let obligationReader = registerGoalContinuationObligationV1(readObligation);
+	// session_tree restores only durable state. Its owed completion needs one later
+	// settled boundary to rebuild ephemeral continuation intent/delivery.
+	let restoreOwedContinuationAtSettled = false;
+	const readSemanticSnapshot = () =>
+		buildGoalSnapshotPayload(
+			runtime.activeGoal,
+			runtime.queuedGoals.length,
+			runtime.queueFrozen,
+			snapshotContext,
+		);
+	const publishSemanticSnapshot = () => {
+		pi.events.emit(GOAL_SNAPSHOT_CHANNEL, readSemanticSnapshot());
+	};
+	installGoalSnapshotProtocol(pi, readSemanticSnapshot);
+	runtime.setSemanticSnapshotSink(publishSemanticSnapshot);
 
 	// Bind per-factory runtime operations once so event orchestration stays concise
 	// without reintroducing module-global mutable state.
@@ -98,6 +183,7 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 	const consumeStaleOwnedGoalPrompt = runtime.consumeStaleOwnedGoalPrompt.bind(runtime);
 	const consumePendingGoalPrompt = runtime.consumeOwnedGoalPrompt.bind(runtime);
 	const markContinuationStarted = runtime.markContinuationStarted.bind(runtime);
+	const confirmContinuationDispatch = runtime.confirmContinuationDispatch.bind(runtime);
 	const hasContinuationWorkForGoal = runtime.hasContinuationWorkForGoal.bind(runtime);
 	const recordAutomaticTurn = runtime.recordAutomaticTurn.bind(runtime);
 	const recordAutomaticRunProgress = runtime.recordAutomaticRunProgress.bind(runtime);
@@ -106,13 +192,105 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 	const clearActiveGoal = runtime.clearActiveGoal.bind(runtime);
 	const showCompletionStatus = runtime.showCompletionStatus.bind(runtime);
 	const restoreGoalToolsHiddenByPolicy = runtime.restoreGoalToolsHiddenByPolicy.bind(runtime);
-	const sendOwnedGoalPrompt = (
-		_pi: ExtensionAPI,
-		ctx: StatusContext,
+	const activeBackgroundLease = (ctx: StatusContext) => {
+		const sessionManager = ctx.sessionManager as { getSessionId?: () => string } | undefined;
+		const sessionId = sessionManager?.getSessionId?.();
+		return processContinuation.activeLease(sessionId);
+	};
+	const shouldDeferContinuation = (ctx: StatusContext) => activeBackgroundLease(ctx) !== undefined;
+	const recordOwedBackgroundContinuation = (
 		goalId: string,
-		prompt: string,
-		resetSafetyEpoch = true,
-	) => runtime.sendOwnedGoalPrompt(ctx, goalId, prompt, resetSafetyEpoch);
+		continuationId: string,
+		offer: { offerId: string; ownerId: string; logicalKey: string },
+		sourceSessionId: string,
+	) => {
+		const goal = runtime.activeGoal;
+		// The receipt stands even when the dispatch attempt just paused the goal for a safety
+		// limit or missing tools: that promise is then owed to the resume, not dropped.
+		if (
+			goal?.id !== goalId ||
+			goal.status === "complete" ||
+			runtime.mailboxSessionId !== sourceSessionId
+		)
+			return false;
+		const owed = runtime.pendingBackgroundContinuation;
+		// Offers that coalesce onto one continuation owe one turn between them. The first claim
+		// keeps the record so the merged turn discharges it exactly once.
+		if (owed?.goalId === goalId && owed.continuationId === continuationId) {
+			const intent = runtime.mailboxState.intents.find((item) => item.marker === continuationId);
+			if (
+				!snapshotContext ||
+				goalSourceSessionScope(
+					snapshotContext as ExtensionContext,
+					owed.sourceSessionId !== undefined ? owed : (intent ?? owed),
+				) !== "own"
+			)
+				return false;
+			runtime.pendingBackgroundContinuation = { ...owed, sourceSessionId };
+			persistGoal(goal);
+			return true;
+		}
+		runtime.pendingBackgroundContinuation = {
+			goalId,
+			sourceSessionId,
+			continuationId,
+			offerId: offer.offerId,
+			ownerId: offer.ownerId,
+			logicalKey: offer.logicalKey,
+			recordedAt: Date.now(),
+		};
+		persistGoal(goal);
+		return true;
+	};
+	// The producer already saw this wake delivered, so nothing will offer it again. Re-arm
+	// the owed continuation once and let the ordinary dispatch path run it at the first
+	// settled boundary. A paused or otherwise stopped goal keeps the marker until /goal
+	// resume, and a cleared or completed goal never carries one (D-007, D-009).
+	const restoreOwedBackgroundContinuation = async (ctx: StatusContext) => {
+		const owed = runtime.pendingBackgroundContinuation;
+		const goal = runtime.activeGoal;
+		if (!owed || goal?.id !== owed.goalId || goal.status !== "active") return false;
+		if (
+			goalSourceSessionScope(
+				ctx as ExtensionContext,
+				owed.sourceSessionId !== undefined
+					? owed
+					: (runtime.mailboxState.intents.find((intent) => intent.marker === owed.continuationId) ??
+							owed),
+			) !== "own" ||
+			hasContinuationWorkForGoal(goal.id)
+		)
+			return false;
+		processContinuation.markOfferHandled(owed.offerId);
+		if (!requestContinuation(goal, owed.continuationId)) return false;
+		await dispatchContinuationIfSettled(ctx);
+		return true;
+	};
+	const scheduleProcessWaitCheckInIfNeeded = (ctx: StatusContext) => {
+		runtime.clearProcessWaitCheckInTimer();
+		const intervalMs = runtime.settings.backgroundWaitCheckInMs;
+		if (intervalMs === null || !runtime.activeGoal || runtime.activeGoal.status !== "active")
+			return;
+		const lease = activeBackgroundLease(ctx);
+		if (!lease) return;
+		const now = Date.now();
+		const base = processContinuation.checkInBase(lease);
+		const delayMs = Math.max(0, base + intervalMs - now);
+		runtime.processWaitCheckInTimer = setTimeout(() => {
+			runtime.processWaitCheckInTimer = undefined;
+			const currentLease = activeBackgroundLease(ctx);
+			const goal = runtime.activeGoal;
+			if (!currentLease || !goal || goal.status !== "active") return;
+			processContinuation.markCheckIn(currentLease.leaseId);
+			const backgroundReason = currentLease.reason?.trim() || "background work";
+			const prompt = [
+				`Background work '${backgroundReason}' has been waiting for ${formatDuration(intervalMs / 1_000)} while the active /goal is paused for it.`,
+				"Inspect the relevant background status or result, then decide whether to keep waiting, intervene, mark the goal blocked, or continue only if there is enough evidence.",
+			].join("\n");
+			void runtime.sendAutomaticGoalPrompt(ctx, goal.id, prompt, "checkin");
+		}, delayMs);
+		runtime.processWaitCheckInTimer.unref?.();
+	};
 	const dispatchPendingQueueActionIfSettled =
 		commands.dispatchPendingQueueActionIfSettled.bind(commands);
 
@@ -228,6 +406,16 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 				};
 			}
 
+			if (runtime.needsMailboxCancellation() && !(await runtime.cancelGoalMail(ctx)))
+				return {
+					content: [{ type: "text", text: "Goal completion held: cancellation pending." }],
+					details: { goal, goal_id: requestedGoalId, summary },
+				};
+			if (runtime.activeGoal?.id !== completedGoal.id)
+				return {
+					content: [{ type: "text", text: "Goal changed." }],
+					details: { goal, goal_id: requestedGoalId, summary },
+				};
 			runtime.activeGoal = transitionGoal(completedGoal, "complete");
 			runtime.setCompletionSummary(runtime.activeGoal.id, summary);
 			updateGoalUsage(runtime.activeGoal, ctx);
@@ -276,7 +464,7 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			persistGoal(runtime.activeGoal);
 
 			ctx.ui.setStatus(STATUS_KEY, formatStatus(runtime.activeGoal));
-			clearActiveGoal(ctx);
+			await clearActiveGoal(ctx);
 			showCompletionStatus(ctx);
 			ctx.ui.notify(`Goal complete: ${goal}`, "info");
 
@@ -368,6 +556,8 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			if (repeatedTurns < 3) return reject("repeated_turns must be at least 3");
 
 			updateGoalUsage(blockedGoal, ctx);
+			if (runtime.needsMailboxCancellation() && !(await runtime.cancelGoalMail(ctx)))
+				return reject("cancellation pending");
 			cancelContinuationWork();
 			clearBudgetWrapUp();
 			clearGoalRecoveryForGoal(blockedGoal.id);
@@ -398,6 +588,41 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 	// actions are unbound until the session binds the runtime. session_start applies
 	// baseline visibility once actions work; later hooks only enforce goal safety.
 
+	/**
+	 * `/goal status`, as a card replacing the editor.
+	 *
+	 * Only in the TUI, and only with something to read: RPC has no editor slot of its
+	 * own and print/json have no output channel at all, so both keep the
+	 * notification — which for print/json is still the error saying so. "No goal
+	 * is currently set" stays a notification too; a card that has to be dismissed
+	 * is more ceremony than a one-line answer deserves.
+	 */
+	const showGoalStatus = async (ctx: ExtensionCommandContext) => {
+		if (!runtime.activeGoal || ctx.mode !== "tui" || !ctx.hasUI) {
+			commands.showGoal(ctx);
+			return;
+		}
+		await showTextPanel(ctx, {
+			title: "Goal status",
+			body: commands.goalStatusReport(ctx),
+			format: "plain",
+		});
+	};
+
+	/** `/goal modify`: the menu's edit dialog, reached without the menu. */
+	const modifyGoalObjective = async (ctx: ExtensionCommandContext) => {
+		if (ctx.mode !== "tui" && ctx.mode !== "rpc") {
+			throw new Error(
+				`/goal modify is unavailable in ${ctx.mode ?? "this"} mode because it opens an editor. Use /goal edit <objective>.`,
+			);
+		}
+		if (!runtime.activeGoal) {
+			ctx.ui.notify("No active goal. Use /goal <objective> to start one.", "warning");
+			return;
+		}
+		await editGoalObjective(runtime, commands, ctx);
+	};
+
 	pi.registerCommand("goal", {
 		description: "Run a goal to completion: /goal [--tokens 100k] <goal_to_complete>",
 		getArgumentCompletions: (prefix) =>
@@ -413,9 +638,10 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 				return;
 			}
 			if (result.kind === "show" && args.trim() === "") {
-				await showGoalManager(runtime, commands, ctx, (menuCtx) =>
+				await showGoalManager(runtime, commands, ctx, (menuCtx, target) =>
 					showGoalSettings(runtime, menuCtx, {
 						settingsPath: options.settingsPath,
+						initialScreen: target,
 						onQueueUnfrozen: async (settingsCtx) => {
 							await commands.resumeQueueAfterUnfreeze(settingsCtx);
 						},
@@ -424,8 +650,8 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 				return;
 			}
 			if (runtime.queueFrozen) {
-				if (result.kind === "show") commands.showGoal(ctx);
-				else if (result.kind === "clear") commands.clearGoal(ctx);
+				if (result.kind === "show") await showGoalStatus(ctx);
+				else if (result.kind === "clear") await commands.clearGoal(ctx);
 				else commands.notifyFrozenQueue(ctx);
 				return;
 			}
@@ -439,16 +665,19 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 
 			switch (result.kind) {
 				case "show":
-					commands.showGoal(ctx);
+					await showGoalStatus(ctx);
+					return;
+				case "modify":
+					await modifyGoalObjective(ctx);
 					return;
 				case "pause":
-					commands.pauseGoal(ctx);
+					await commands.pauseGoal(ctx);
 					return;
 				case "resume":
 					await commands.resumeGoal(ctx);
 					return;
 				case "clear":
-					commands.clearGoal(ctx);
+					await commands.clearGoal(ctx);
 					return;
 				case "edit":
 					await commands.editGoal(result.objective ?? "", result.tokenBudget, ctx);
@@ -460,11 +689,30 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 					await commands.prioritizeGoal(result.objective ?? "", result.tokenBudget, ctx);
 					return;
 				case "drop-last":
-					commands.dropLastGoal(ctx);
+					await commands.dropLastGoal(ctx);
 					return;
 				case "skip":
 					await commands.skipGoal(ctx);
 					return;
+				case "idle-checkin": {
+					const next = {
+						...structuredClone(runtime.settings),
+						backgroundWaitCheckInMs: result.backgroundWaitCheckInMs ?? null,
+					} satisfies GoalSettings;
+					try {
+						saveGoalSettings(next, options.settingsPath);
+						runtime.settings = next;
+						ctx.ui.notify(
+							next.backgroundWaitCheckInMs === null
+								? "Goal background-wait idle check-in: off."
+								: `Goal background-wait idle check-in: ${formatDuration(next.backgroundWaitCheckInMs / 1_000)}.`,
+							"info",
+						);
+					} catch (error) {
+						ctx.ui.notify(`Cannot save /goal settings: ${formatError(error)}`, "error");
+					}
+					return;
+				}
 				case "start":
 					await commands.startGoal(result.objective ?? "", result.tokenBudget, ctx);
 					return;
@@ -472,10 +720,17 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		},
 	});
 
-	pi.on("session_start", async (_event, ctx) => {
+	async function restoreSession(ctx: ExtensionContext) {
+		snapshotContext = ctx;
+		obligationReader.dispose();
+		obligationReader = registerGoalContinuationObligationV1(readObligation);
+		restoreOwedContinuationAtSettled = false;
+		lastAppendIssue = undefined;
 		runtime.replaceMenuSession();
+		const generation = runtime.menuGeneration;
 		clearCompletionStatusTimer();
 		clearContinuationTracking();
+		processContinuation.clear();
 		clearPendingGoalPrompts();
 		runtime.clearAgentRun();
 		runtime.guardAbortGoalId = undefined;
@@ -525,10 +780,76 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		runtime.activeGoal = loaded.goal;
 		runtime.queuedGoals = loaded.queue;
 		runtime.pendingQueueAction = loaded.pendingAction;
+		runtime.pendingBackgroundContinuation = loaded.pendingContinuation;
+		runtime.mailboxState = loaded.mailbox ?? { intents: [], cancelling: false };
+		runtime.mailboxInvalid = loaded.mailboxInvalid ?? false;
+		runtime.mailboxSessionId = ctx.sessionManager.getSessionId();
+		if (runtime.mailboxInvalid || runtime.mailboxState.cancelling)
+			ctx.ui.notify("Goal mailbox is held: invalid state or pending cancellation.", "warning");
+		const sessionManager = ctx.sessionManager as { getSessionId?: () => string } | undefined;
+		const sessionId = sessionManager?.getSessionId?.();
+		if (sessionId) {
+			processContinuation.bindWakeConsumer({
+				sessionId,
+				consumerId: "pi-goal-local",
+				getActiveGoal: () => {
+					const goal = runtime.activeGoal;
+					return goal?.status === "active" &&
+						!runtime.mailboxState.cancelling &&
+						!runtime.mailboxInvalid
+						? { id: goal.id, startedAt: goal.startedAt }
+						: undefined;
+				},
+				scheduleContinuation: (goalId, offer) => {
+					const goal = runtime.activeGoal;
+					if (
+						goal?.status !== "active" ||
+						goal.id !== goalId ||
+						!snapshotContext ||
+						runtime.mailboxSessionId !== sessionId
+					)
+						return undefined;
+					const existingMarker =
+						runtime.continuationIntent?.goalId === goalId
+							? runtime.continuationIntent.marker
+							: runtime.continuationDelivery?.goalId === goalId
+								? runtime.continuationDelivery.marker
+								: runtime.mailboxState.intents.find(
+										(intent) =>
+											intent.goalId === goalId && !intent.started && intent.kind === "continue",
+									)?.marker;
+					const created = requestContinuation(goal);
+					const continuationId =
+						existingMarker ??
+						runtime.continuationIntent?.marker ??
+						runtime.continuationDelivery?.marker;
+					if (!continuationId) return undefined;
+					runtime.noteCompletionDrivenContinuation(goalId);
+					// The receipt returned below terminalizes this offer for its producer, which
+					// will never notify again, so the promise is recorded with the goal before the
+					// dispatch attempt rather than only when Main is busy (WAKE-003). An idle
+					// dispatch is no safer: pi.sendUserMessage() returns before the host has
+					// accepted the prompt, and a reload in that window would drop a delivery the
+					// producer already counts as done.
+					if (!recordOwedBackgroundContinuation(goalId, continuationId, offer, sessionId))
+						return undefined;
+					void dispatchContinuationIfSettled(snapshotContext);
+					return {
+						continuationId,
+						scheduling: created ? ("scheduled" as const) : ("coalesced" as const),
+					};
+				},
+				diagnostic: (message) => snapshotContext?.ui.notify(message, "warning"),
+			});
+		}
 		runtime.queueFrozen = loaded.hasExperimentalQueueState && !runtime.settings.experimental.goals;
 		runController.bindSession(ctx);
 		if (runtime.queueFrozen) {
-			if (runtime.activeGoal) persistGoal(runtime.activeGoal);
+			if (runtime.activeGoal) {
+				// Loading starts active clocks; a retained disabled queue has no live clock.
+				runtime.activeGoal.activeStartedAt = undefined;
+				persistGoal(runtime.activeGoal);
+			}
 			ctx.ui.setStatus(STATUS_KEY, "queue off");
 			ctx.ui.notify(
 				"An experimental goal queue is frozen because experimental.goals is disabled. Re-enable it and run /reload to continue, or use /goal clear.",
@@ -543,6 +864,7 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			startRestoredQueuedGoal = runtime.activeGoal.status === "active";
 		}
 		if (runtime.pendingQueueAction) await dispatchPendingQueueActionIfSettled(ctx);
+		if (generation !== runtime.menuGeneration) return;
 		if (runtime.activeGoal) {
 			if (runtime.activeGoal.status === "active" && runtime.activeGoal.safetyResetPending) {
 				// Resume/edit activation is persisted before its queued prompt starts. A
@@ -551,9 +873,12 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			}
 			if (runtime.activeGoal.status === "active") {
 				updateGoalUsage(runtime.activeGoal, ctx);
-				if (limitActiveGoalForBudget(ctx, false)) return;
-				if (enforceAutomaticTurnLimit(ctx, false) || enforceNoProgressLimit(ctx)) return;
+				if (await limitActiveGoalForBudget(ctx, false)) return;
+				if (generation !== runtime.menuGeneration) return;
+				if ((await enforceAutomaticTurnLimit(ctx, false)) || (await enforceNoProgressLimit(ctx)))
+					return;
 			}
+			if (generation !== runtime.menuGeneration) return;
 			if (runtime.settings.toolVisibility === "after-first-goal") {
 				// Registered tools are already active on an unrestricted fresh runtime.
 				// If an earlier session_start handler removed them, that restrictive
@@ -562,20 +887,19 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 				runtime.goalToolsHiddenByPolicy.clear();
 			}
 			if (runtime.activeGoal.status === "active" && !goalToolsAvailable()) {
-				pauseGoalForUnavailableTools(ctx, false);
+				await pauseGoalForUnavailableTools(ctx, false);
 				return;
 			}
 			persistGoal(runtime.activeGoal);
 			updateStatus(ctx, runtime.activeGoal);
 			if (startRestoredQueuedGoal) {
 				const restoredGoal = runtime.activeGoal;
-				const sent = await sendOwnedGoalPrompt(
-					runtime.pi,
+				const sent = await runtime.sendAutomaticGoalPrompt(
 					ctx,
 					restoredGoal.id,
 					buildGoalPrompt(restoredGoal),
-					false, // Reloaded queue activation preserves its persisted safety epoch.
 				);
+				if (generation !== runtime.menuGeneration) return;
 				if (!sent && runtime.activeGoal?.id === restoredGoal.id) {
 					runtime.activeGoal = transitionGoal(restoredGoal, "paused");
 					blockStaleGoalToolCalls();
@@ -583,16 +907,81 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 					updateStatus(ctx, runtime.activeGoal);
 				}
 			}
+			await mailbox.restore(ctx);
+			if (generation !== runtime.menuGeneration) return;
+			await restoreOwedBackgroundContinuation(ctx);
 		} else {
+			if (generation !== runtime.menuGeneration) return;
 			if (runtime.settings.toolVisibility === "after-first-goal" && !runtime.goalToolsUnlocked) {
 				hideGoalToolsIfLocked();
 			}
 			ctx.ui.setStatus(STATUS_KEY, undefined);
+			publishSemanticSnapshot();
+		}
+	}
+	pi.on("session_start", (_event, ctx) => mailbox.duringRecovery(() => restoreSession(ctx)));
+
+	// Pi emits session_before_tree while ctx still points at the outgoing branch. Checkpoint
+	// active usage/time there so time spent elsewhere cannot be charged on return.
+	pi.on("session_before_tree", (_event, ctx) => {
+		const outgoing = runtime.activeGoal;
+		if (!runtime.queueFrozen && outgoing?.status === "active") {
+			// Navigation can be cancelled after this preparation hook. Persist a stopped
+			// checkpoint for the still-selected branch without stopping the live runtime
+			// clock, which remains authoritative until session_tree actually arrives.
+			const checkpoint = { ...outgoing };
+			updateGoalUsage(checkpoint, ctx, false);
+			persistGoal(checkpoint);
 		}
 	});
 
+	// Tree navigation keeps this extension instance alive, unlike session replacement.
+	// Goal state belongs to the branch at the new leaf, so discard only runtime-local
+	// ownership from the old branch and restore the target branch's persisted snapshot.
+	// Do not send a prompt or activate queued work here: tree navigation is reversible.
+	pi.on("session_tree", (_event, ctx) => {
+		runtime.replaceMenuSession();
+		clearCompletionStatusTimer();
+		clearContinuationTracking();
+		clearPendingGoalPrompts();
+		runtime.clearAgentRun();
+		runtime.guardAbortGoalId = undefined;
+		clearGoalRecovery();
+		clearBudgetWrapUp();
+		clearStaleGoalToolCallBlock();
+		runtime.clearProcessWaitCheckInTimer();
+
+		const restored = loadGoalStateFromSession(ctx);
+		restoreOwedContinuationAtSettled = restored.pendingContinuation !== undefined;
+		runtime.activeGoal = restored.goal;
+		runtime.queuedGoals = restored.queue;
+		runtime.pendingQueueAction = restored.pendingAction;
+		runtime.pendingBackgroundContinuation = restored.pendingContinuation;
+		runtime.mailboxState = restored.mailbox ?? { intents: [], cancelling: false };
+		runtime.mailboxInvalid = restored.mailboxInvalid ?? false;
+		runtime.queueFrozen =
+			restored.hasExperimentalQueueState && !runtime.settings.experimental.goals;
+		runtime.queueFreezeAwaitingSettle = false;
+		runtime.clearTerminalDetails();
+
+		if (runtime.queueFrozen) {
+			if (runtime.activeGoal) runtime.activeGoal.activeStartedAt = undefined;
+			ctx.ui.setStatus(STATUS_KEY, runtime.activeGoal ? "queue off" : undefined);
+		} else if (runtime.activeGoal) {
+			if (blocksStaleGoalToolCalls(runtime.activeGoal.status)) {
+				blockStaleGoalToolCalls();
+			}
+			updateStatus(ctx, runtime.activeGoal);
+		} else {
+			ctx.ui.setStatus(STATUS_KEY, undefined);
+		}
+		publishSemanticSnapshot();
+	});
+
 	pi.on("session_shutdown", (_event, ctx) => {
+		restoreOwedContinuationAtSettled = false;
 		runController.unbindSession();
+		obligationReader.dispose();
 		runtime.closeMenuSession();
 		if (runtime.activeGoal) {
 			if (!runtime.queueFrozen && runtime.activeGoal.status === "active") {
@@ -601,6 +990,7 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			persistGoal(runtime.activeGoal);
 		}
 		clearContinuationTracking();
+		processContinuation.clear();
 		clearPendingGoalPrompts();
 		runtime.clearAgentRun();
 		runtime.guardAbortGoalId = undefined;
@@ -612,12 +1002,15 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		runtime.pendingQueueAction = undefined;
 		runtime.queueFrozen = false;
 		runtime.queueFreezeAwaitingSettle = false;
+		snapshotContext = undefined;
+		publishSemanticSnapshot();
 		ctx.ui.setStatus(STATUS_KEY, undefined);
 		clearCompletionStatusTimer();
+		runtime.clearProcessWaitCheckInTimer();
 		runtime.clearTerminalDetails();
 	});
 
-	pi.on("session_before_compact", (event, ctx) => {
+	pi.on("session_before_compact", async (event, ctx) => {
 		if (runtime.queueFrozen) return;
 		if (runtime.activeGoal?.status === "budget_limited") {
 			if ((event as { willRetry?: boolean }).willRetry === true) return { cancel: true as const };
@@ -629,11 +1022,14 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		persistGoal(runtime.activeGoal);
 		updateStatus(ctx, runtime.activeGoal);
 		if (runtime.pendingQueueAction) return;
-		if (limitActiveGoalForBudget(ctx, false)) return { cancel: true as const };
+		if (await limitActiveGoalForBudget(ctx, false)) return { cancel: true as const };
 	});
 
 	pi.on("session_compact", async (event, ctx) => {
+		const generation = runtime.menuGeneration;
 		if (runtime.queueFrozen) return;
+		await mailbox.restore(ctx);
+		if (generation !== runtime.menuGeneration) return;
 		if (runtime.activeGoal?.status !== "active") {
 			clearGoalRecovery();
 			if (runtime.pendingQueueAction) await dispatchPendingQueueActionIfSettled(ctx);
@@ -656,16 +1052,17 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			return;
 		}
 		if (!usageRecorded) return;
-		if (limitActiveGoalForBudget(ctx, false)) return;
+		if (await limitActiveGoalForBudget(ctx, false)) return;
+		if (generation !== runtime.menuGeneration) return;
 
 		const wasPiRetry = isPiOwnedCompactionRetry(event, runtime.activeGoal.id);
 		if (wasPiRetry) return;
 		clearGoalRecoveryForGoal(runtime.activeGoal.id);
+		if (shouldDeferContinuation(ctx)) return;
 		requestContinuation(runtime.activeGoal);
-		// Manual compaction does not emit agent_settled. This common dispatcher is
-		// therefore the narrow fallback; threshold compaction leaves the intent for
-		// agent_settled when Pi is still busy.
-		dispatchContinuationIfSettled(ctx);
+		// Manual compaction's owned immediate retries once after Pi releases its
+		// busy state; threshold compaction leaves the intent for agent_settled.
+		await dispatchContinuationIfSettled(ctx);
 	});
 
 	pi.on("input", (event, ctx) => {
@@ -703,7 +1100,7 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 	});
 
 	pi.on("message_start", (event, ctx) => {
-		const message = event.message as { role?: unknown; content?: unknown };
+		const message = event.message as { role?: unknown; customType?: unknown; content?: unknown };
 		if (
 			message.role === "assistant" &&
 			runtime.activeGoal?.status === "paused" &&
@@ -713,6 +1110,11 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			return;
 		}
 		if (message.role === "custom") {
+			if (
+				message.customType === GOAL_MAILBOX_TYPE ||
+				message.customType === "agent-mailbox-trigger-v1"
+			)
+				return;
 			if (runtime.isActiveBudgetWrapUpMessage(message)) return;
 			if (runtime.guardAbortGoalId === runtime.activeGoal?.id) {
 				runtime.guardAbortGoalId = undefined;
@@ -732,6 +1134,9 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			: typeof message.content === "string"
 				? message.content
 				: "";
+		// A prompt Pi queued while it was streaming never reaches before_agent_start, so its
+		// message boundary is where that dispatch is finally proven started.
+		confirmContinuationDispatch(prompt);
 		const ownedPrompt = consumePendingGoalPrompt(prompt);
 		const ownedPromptBoundary = runtime.hasOwnedPromptBoundary(prompt);
 		const queuedNonGoalInput = runtime.consumeQueuedNonGoalInput(prompt, !ownedPromptBoundary);
@@ -767,13 +1172,63 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			// A current custom follow-up clears the guard at message_start. Otherwise,
 			// context transformation aborts before the provider adapter receives the signal.
 			abortCurrentTurn(ctx);
+			if (messages.length !== event.messages.length) return { messages };
+			return;
+		}
+		// D-007: a paused goal still gets woken by background work it started before the pause, and
+		// that turn needs to know the goal is paused. It cannot be done from before_agent_start: this
+		// Pi emits that event only from AgentSession.prompt(), so a producer that wakes Main with
+		// sendMessage(..., { triggerTurn: true }) never reaches it. This transform runs for every
+		// provider request on every path, and its result is request-scoped rather than persisted, so
+		// the block rides along with the turn that actually sees the result and leaves no transcript
+		// entry behind.
+		if (
+			runtime.activeGoal?.status === "paused" ||
+			(runtime.activeGoal && runtime.mailboxState.cancelling)
+		) {
+			return {
+				messages: [
+					...messages,
+					{
+						role: "user" as const,
+						content: [
+							{ type: "text" as const, text: buildPausedGoalSystemPrompt(runtime.activeGoal) },
+						],
+						timestamp: Date.now(),
+					},
+				] as typeof event.messages,
+			};
+		}
+		if (
+			runtime.activeGoal?.status === "active" &&
+			!runtime.queueFrozen &&
+			runtime.agentRunGoalId === runtime.activeGoal.id
+		) {
+			const prompt = buildGoalSystemPrompt(runtime.activeGoal, (issue) => {
+				if (issue === lastAppendIssue) return;
+				lastAppendIssue = issue;
+				if (!issue) return;
+				if (ctx.hasUI) ctx.ui.notify(issue, "warning");
+				// Headless modes have no notification channel; keep stdout/RPC output untouched.
+				else process.stderr.write(`${issue}\n`);
+			});
+			return {
+				messages: [
+					...messages,
+					{
+						role: "user" as const,
+						content: [{ type: "text" as const, text: prompt }],
+						timestamp: Date.now(),
+					},
+				] as typeof event.messages,
+			};
 		}
 		if (messages.length !== event.messages.length) return { messages };
 	});
 
 	pi.on("tool_call", (event, ctx) => {
 		runtime.markAgentToolAttempted();
-		if (runtime.queueFrozen) {
+		if (runtime.queueFrozen || runtime.mailboxState.cancelling || runtime.mailboxInvalid) {
 			if (!isGoalToolName(event.toolName)) return;
 			// Blocking alone feeds an error tool result back to the model. Abort too so
 			// stale Goal calls cannot loop while the experimental queue remains frozen.
@@ -812,14 +1267,14 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		};
 	});
 
-	pi.on("tool_execution_end", (_event, ctx) => {
+	pi.on("tool_execution_end", async (_event, ctx) => {
 		if (runtime.queueFrozen) return;
 		if (
 			runtime.activeGoal?.status === "budget_limited" &&
 			runtime.budgetWrapUp?.goalId === runtime.activeGoal.id &&
 			!runtime.budgetWrapUp.delivered
 		) {
-			queueBudgetWrapUp(ctx, runtime.activeGoal);
+			await queueBudgetWrapUp(ctx, runtime.activeGoal);
 			return;
 		}
 		if (runtime.activeGoal?.status !== "active") return;
@@ -829,38 +1284,78 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		if (!updateGoalUsage(runtime.activeGoal, ctx)) return;
 		persistGoal(runtime.activeGoal);
 		updateStatus(ctx, runtime.activeGoal);
-		if (limitActiveGoalForBudget(ctx, true)) return;
-		if (!goalToolsAvailable()) pauseGoalForUnavailableTools(ctx);
+		if (await limitActiveGoalForBudget(ctx, true)) return;
+		if (!goalToolsAvailable()) await pauseGoalForUnavailableTools(ctx);
 	});
 
-	pi.on("before_agent_start", (event, ctx) => {
+	async function beforeRun(
+		event: BeforeAgentStartEvent,
+		ctx: ExtensionContext,
+		start: MailboxRunStart,
+	) {
+		const admitted = mailbox.start(start);
 		runtime.clearAgentRun();
-		if (runtime.queueFrozen) return;
+		if (admitted?.kind === "budget")
+			runtime.budgetWrapUp = { goalId: admitted.goalId, delivered: true };
+		if (
+			event.messageType === "custom" &&
+			event.message.customType === "agent-mailbox-trigger-v1" &&
+			!admitted
+		) {
+			runtime.beginAgentRun(null, undefined);
+			return;
+		}
+		if (runtime.queueFrozen || runtime.mailboxState.cancelling || runtime.mailboxInvalid) return;
 		// Pi-owned retries emit agent_start directly. Reaching a normal prompt
 		// boundary means cleanup no longer owns the next run, so the hard-cap guard
 		// must not abort it.
 		if (runtime.guardAbortGoalId) runtime.guardAbortGoalId = undefined;
-		const goalPrompt = consumePendingGoalPrompt(event.prompt);
+		const goalPrompt =
+			event.messageType === "user" ? consumePendingGoalPrompt(event.prompt) : undefined;
 		const goalPromptGoalId = goalPrompt?.goalId;
-		const continuationGoalId = goalPromptGoalId ? undefined : markContinuationStarted(event.prompt);
+		const continuationGoalId =
+			admitted && start.automatic
+				? admitted.goalId
+				: event.messageType === "user" && !goalPromptGoalId
+					? markContinuationStarted(event.prompt)
+					: undefined;
+		// Pi reaches before_agent_start only after preflight, once the host will run this turn.
+		// That is the acceptance the void dispatch call could not prove, so the owed background
+		// promise is discharged here rather than at the send.
+		if (event.messageType === "user" && continuationGoalId)
+			confirmContinuationDispatch(event.prompt);
 		const ownedPromptGoalId = goalPromptGoalId ?? continuationGoalId;
-		const ownedPromptBoundary = runtime.hasOwnedPromptBoundary(event.prompt);
+		// The queued reset belongs to the goal, not to the prompt carrying it.
+		// consumePendingGoalPrompt above is destructive and six guards below
+		// return before the resetSafetyEpoch branch at the end of this handler,
+		// so a resume whose prompt lost the race to another owned prompt dropped
+		// its reset with no way to replay it — only session_start honoured
+		// safetyResetPending after that. Commit it here, on the same terms.
+		if (runtime.activeGoal?.status === "active" && runtime.activeGoal.safetyResetPending) {
+			runtime.activeGoal = resetGoalSafetyEpoch(runtime.activeGoal);
+			persistGoal(runtime.activeGoal);
+			updateStatus(ctx, runtime.activeGoal);
+		}
+		const ownedPromptBoundary =
+			event.messageType === "user" && runtime.hasOwnedPromptBoundary(event.prompt);
 		const activeBudgetWrapUp = runtime.hasActiveBudgetWrapUp();
 		const activeGoalRecovery = runtime.hasActiveGoalRecovery();
-		const queuedNonGoalInput = activeBudgetWrapUp
-			? undefined
-			: runtime.consumeQueuedNonGoalInput(
-					event.prompt,
-					!activeGoalRecovery && ownedPromptGoalId === undefined && !ownedPromptBoundary,
-				);
+		const queuedNonGoalInput =
+			event.messageType !== "user" || activeBudgetWrapUp
+				? undefined
+				: runtime.consumeQueuedNonGoalInput(
+						event.prompt,
+						!activeGoalRecovery && ownedPromptGoalId === undefined && !ownedPromptBoundary,
+					);
 		if (queuedNonGoalInput?.behavior === "followUp") {
 			beginNonGoalFollowUp(ctx, queuedNonGoalInput.resetSafetyEpoch);
 		}
-		const runOrigin = continuationGoalId
-			? "automatic"
-			: activeGoalRecovery && runtime.goalRecovery?.automaticOwner
+		const runOrigin =
+			continuationGoalId && (!admitted || admitted.kind === "continue")
 				? "automatic"
-				: "manual";
+				: activeGoalRecovery && runtime.goalRecovery?.automaticOwner
+					? "automatic"
+					: "manual";
 		if (
 			runtime.pendingQueueAction?.kind === "prioritize" &&
 			!activeBudgetWrapUp &&
@@ -898,7 +1393,7 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		if (ownedPromptGoalId && ownedPromptGoalId !== runtime.activeGoal?.id) {
 			runtime.beginAgentRun(ownedPromptGoalId, runOrigin);
 			if (runtime.activeGoal?.status === "active" && !goalToolsAvailable()) {
-				pauseGoalForUnavailableTools(ctx, false);
+				await pauseGoalForUnavailableTools(ctx, false);
 			}
 			abortCurrentTurn(ctx);
 			return;
@@ -906,7 +1401,7 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		if (runtime.activeGoal?.status !== "active") return;
 		runtime.beginAgentRun(runtime.activeGoal.id, runOrigin);
 		if (!goalToolsAvailable()) {
-			pauseGoalForUnavailableTools(ctx, ownedPromptGoalId !== undefined);
+			await pauseGoalForUnavailableTools(ctx, ownedPromptGoalId !== undefined);
 			return;
 		}
 		if (goalPrompt?.resetSafetyEpoch && goalPromptGoalId === runtime.activeGoal.id) {
@@ -914,11 +1409,7 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			persistGoal(runtime.activeGoal);
 			updateStatus(ctx, runtime.activeGoal);
 		}
-
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n${buildGoalSystemPrompt(runtime.activeGoal)}`,
-		};
-	});
+	}
 
 	pi.on("agent_start", (_event, _ctx) => {
 		if (runtime.queueFrozen) return;
@@ -940,12 +1431,12 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		runtime.beginRecoveryRunIfNeeded();
 	});
 
-	pi.on("turn_end", (event, ctx) => {
+	pi.on("turn_end", async (event, ctx) => {
 		if (runtime.queueFrozen) return;
-		recordAutomaticTurn(ctx, event.message);
+		await recordAutomaticTurn(ctx, event.message);
 	});
 
-	pi.on("agent_end", (event, ctx) => {
+	async function afterRun(event: AgentEndEvent, ctx: ExtensionContext) {
 		const run = runtime.finishAgentRun();
 		if (runtime.queueFrozen || run.goalId === null) return;
 		if (!runtime.canRecordGoalUsage() && !runtime.hasActiveBudgetWrapUp()) return;
@@ -973,24 +1464,35 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		}
 
 		const goalId = runtime.activeGoal.id;
+		const generation = runtime.menuGeneration;
+		const isCurrent = () =>
+			generation === runtime.menuGeneration && runtime.activeGoal?.id === goalId;
 		const alreadyAwaitingContinuation = hasContinuationWorkForGoal(goalId);
 		const finalAssistant = findFinalAssistantMessage(event.messages);
+		const waitingForExternalEvent =
+			finalAssistant?.stopReason !== "aborted" &&
+			finalAssistant?.stopReason !== "error" &&
+			shouldDeferContinuation(ctx);
 
-		if (!alreadyAwaitingContinuation) runtime.activeGoal = incrementGoal(runtime.activeGoal);
+		if (!alreadyAwaitingContinuation && !waitingForExternalEvent) {
+			runtime.activeGoal = incrementGoal(runtime.activeGoal);
+		}
 		updateGoalUsage(runtime.activeGoal, ctx);
 
 		if (finalAssistant?.stopReason === "aborted") {
 			clearGoalRecoveryForGoal(goalId);
-			stopGoalAfterAgentEnd(ctx, runtime.activeGoal, finalAssistant, "paused");
+			await stopGoalAfterAgentEnd(ctx, runtime.activeGoal, finalAssistant, "paused");
 			return;
 		}
 
 		if (finalAssistant?.stopReason === "error") {
 			if (isRetryableGoalInterruption(finalAssistant)) {
-				if (run.origin === "automatic" && enforceAutomaticTurnLimit(ctx, true)) return;
-				if (limitActiveGoalForBudget(ctx, false)) return;
+				if (run.origin === "automatic" && (await enforceAutomaticTurnLimit(ctx, true))) return;
+				if (!isCurrent()) return;
+				if (await limitActiveGoalForBudget(ctx, false)) return;
+				if (!isCurrent()) return;
 				if (!goalToolsAvailable()) {
-					pauseGoalForUnavailableTools(ctx);
+					await pauseGoalForUnavailableTools(ctx);
 					return;
 				}
 				runtime.goalRecovery = {
@@ -1005,7 +1507,7 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 				return;
 			}
 			clearGoalRecoveryForGoal(goalId);
-			stopGoalAfterAgentEnd(
+			await stopGoalAfterAgentEnd(
 				ctx,
 				runtime.activeGoal,
 				finalAssistant,
@@ -1016,33 +1518,45 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 
 		clearGoalRecoveryForGoal(goalId);
 
-		if (limitActiveGoalForBudget(ctx, false)) return;
+		if (await limitActiveGoalForBudget(ctx, true)) return;
+		if (!isCurrent()) return;
 		if (!goalToolsAvailable()) {
-			pauseGoalForUnavailableTools(ctx);
+			await pauseGoalForUnavailableTools(ctx);
 			return;
 		}
 		if (
 			run.origin === "automatic" &&
-			recordAutomaticRunProgress(
+			(await recordAutomaticRunProgress(
 				ctx,
 				goalId,
 				event.messages,
 				run.toolAttempted || hasAssistantToolCall(event.messages),
-			)
+			))
 		) {
 			return;
 		}
 
+		if (!isCurrent() || !runtime.activeGoal) return;
 		persistGoal(runtime.activeGoal);
 		updateStatus(ctx, runtime.activeGoal);
 
+		if (waitingForExternalEvent) {
+			scheduleProcessWaitCheckInIfNeeded(ctx);
+			return;
+		}
+		runtime.clearProcessWaitCheckInTimer();
 		const currentGoal = runtime.activeGoal;
 		if (!currentGoal || currentGoal.id !== goalId || currentGoal.status !== "active") return;
 		if (runtime.pendingQueueAction?.kind === "prioritize") return;
 		requestContinuation(currentGoal);
-	});
+	}
 
-	pi.on("agent_settled", async (_event, ctx) => {
+	async function settled(event: AgentSettledEvent, ctx: ExtensionContext) {
+		const generation = runtime.menuGeneration;
+		if (!runtime.mailboxState.cancelling) await mailbox.restore(ctx);
+		if (generation !== runtime.menuGeneration) return;
+		const restoredOwedContinuation = restoreOwedContinuationAtSettled;
+		restoreOwedContinuationAtSettled = false;
 		if (runtime.queueFrozen) {
 			runtime.clearSettledSafetyTracking();
 			runtime.queueFreezeAwaitingSettle = false;
@@ -1051,14 +1565,59 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 			}
 			return;
 		}
-		runtime.finalizeSettledRecovery(ctx);
+		// Escape can abort before an assistant message exists. The settled event is
+		// authoritative in that case; never let an idle continuation undo the abort.
+		if (event.aborted && runtime.activeGoal?.status === "active" && runtime.canRecordGoalUsage()) {
+			if (runtime.needsMailboxCancellation() && !(await runtime.cancelGoalMail(ctx))) return;
+			cancelContinuationWork();
+			clearBudgetWrapUp();
+			clearGoalRecovery();
+			blockStaleGoalToolCalls();
+			runtime.activeGoal = transitionGoal(runtime.activeGoal, "paused");
+			runtime.setTerminalReason(runtime.activeGoal.id, "goal paused after agent interruption");
+			persistGoal(runtime.activeGoal);
+			updateStatus(ctx, runtime.activeGoal);
+			ctx.ui.notify("Goal paused after interruption. Run /goal resume to continue.", "warning");
+		}
+		await runtime.finalizeSettledRecovery(ctx);
+		if (generation !== runtime.menuGeneration) return;
 		let dispatchedQueueAction = false;
 		if (runtime.pendingQueueAction) {
 			dispatchedQueueAction = await dispatchPendingQueueActionIfSettled(ctx);
+			if (generation !== runtime.menuGeneration) return;
 		}
-		if (!dispatchedQueueAction) dispatchContinuationIfSettled(ctx);
+		if (!dispatchedQueueAction) {
+			// Rebuild a tree-restored durable marker before checking unrelated producer
+			// leases. This makes its intent completion-driven, so that lease cannot defer
+			// the completion it already owes.
+			const restoredOwedDispatched = restoredOwedContinuation
+				? await restoreOwedBackgroundContinuation(ctx)
+				: false;
+			if (generation !== runtime.menuGeneration) return;
+			// A background result recorded while Main was busy owns this boundary. An unrelated
+			// lease still running is a different wait; letting it cancel the intent here means
+			// the finished work is never handled until that other work also finishes (D-008 ①).
+			if (shouldDeferContinuation(ctx) && !runtime.hasCompletionDrivenContinuationWork()) {
+				cancelContinuationWork();
+				scheduleProcessWaitCheckInIfNeeded(ctx);
+			} else {
+				runtime.clearProcessWaitCheckInTimer();
+				// The restored marker may have just dispatched a delivery. Do not treat that
+				// new delivery as unconfirmed at this same settled boundary; the next real
+				// boundary must still retry it if Pi never accepted the prompt.
+
+				if (
+					!restoredOwedDispatched &&
+					!(await dispatchContinuationIfSettled(ctx)) &&
+					shouldDeferContinuation(ctx)
+				) {
+					scheduleProcessWaitCheckInIfNeeded(ctx);
+				}
+			}
+		}
+		if (generation !== runtime.menuGeneration) return;
 		runtime.clearSettledSafetyTracking();
-	});
+	}
 
 	function beginNonGoalFollowUp(ctx: StatusContext, resetSafetyEpoch: boolean) {
 		clearGoalRecovery();
@@ -1078,12 +1637,13 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 		);
 	}
 
-	function stopGoalAfterAgentEnd(
+	async function stopGoalAfterAgentEnd(
 		ctx: StatusContext,
 		goal: ActiveGoal,
 		assistant: AssistantMessageLike,
 		status: "paused" | "blocked" | "usage_limited",
 	) {
+		if (runtime.needsMailboxCancellation() && !(await runtime.cancelGoalMail(ctx))) return;
 		cancelContinuationWork();
 		clearBudgetWrapUp();
 		blockStaleGoalToolCalls();
@@ -1138,7 +1698,7 @@ export {
 	validateObjective,
 } from "./command.js";
 
-export { buildGoalSystemPrompt } from "./prompts.js";
+export { buildGoalSystemPrompt, buildPausedGoalSystemPrompt } from "./prompts.js";
 
 export {
 	findFinalAssistantMessage,

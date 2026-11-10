@@ -12,12 +12,15 @@ export interface CommandResult {
 		| "clear"
 		| "show"
 		| "edit"
+		| "modify"
 		| "add"
 		| "prioritize"
 		| "drop-last"
-		| "skip";
+		| "skip"
+		| "idle-checkin";
 	objective?: string;
 	tokenBudget?: number;
+	backgroundWaitCheckInMs?: number | null;
 }
 
 export interface GoalArgumentCompletion {
@@ -36,7 +39,17 @@ const GOAL_ARGUMENT_COMPLETIONS: readonly GoalArgumentCompletion[] = [
 	{ value: "resume", label: "resume", description: "Resume a stopped or budget-limited goal" },
 	{ value: "clear", label: "clear", description: "Clear the current goal" },
 	{ value: "edit", label: "edit", description: "Edit the current goal objective" },
+	{
+		value: "modify",
+		label: "modify",
+		description: "Edit the current goal objective in an editor",
+	},
 	{ value: "status", label: "status", description: "Show the current goal" },
+	{
+		value: "idle-checkin ",
+		label: "idle-checkin",
+		description: "Set how often /goal checks long-running background work",
+	},
 	TOKEN_BUDGET_COMPLETION,
 ];
 const QUEUE_ARGUMENT_COMPLETIONS: readonly GoalArgumentCompletion[] = [
@@ -85,6 +98,17 @@ export function completeGoalArguments(
 				]
 			: null;
 	}
+	const idleCheckInOption = /^idle-check-?in\s+(\S*)$/.exec(prefix);
+	if (idleCheckInOption) {
+		const valuePrefix = idleCheckInOption[1] ?? "";
+		return ["20m", "10m", "5m", "default", "off"]
+			.filter((value) => value.startsWith(valuePrefix))
+			.map((value) => ({
+				value: `idle-checkin ${value}`,
+				label: value,
+				description: "Set the background-wait idle check-in interval",
+			}));
+	}
 	if (/\s/.test(prefix)) return null;
 	const matches = completions.filter(
 		(item) => item.value.startsWith(prefix) || item.label.startsWith(prefix),
@@ -104,7 +128,12 @@ export function parseCommand(
 	if (first === "clear" || first === "stop")
 		return rest.length === 0 ? { kind: "clear" } : "Usage: /goal clear";
 	if (first === "status") return rest.length === 0 ? { kind: "show" } : "Usage: /goal status";
-	if (first === "edit") return parseObjective("edit", rest);
+	if (first === "idle-checkin" || first === "idle-check-in") return parseIdleCheckIn(rest);
+	if (first === "edit")
+		return rest.length === 0 ? { kind: "modify" } : parseObjective("edit", rest);
+	// The objective is the editor's prefill rather than an argument, so anything
+	// after the word would be silently dropped.
+	if (first === "modify") return rest.length === 0 ? { kind: "modify" } : "Usage: /goal modify";
 
 	if (features.experimentalGoals) {
 		if (first === "drop-last" || first === "pop") {
@@ -120,6 +149,22 @@ export function parseCommand(
 	}
 
 	return parseObjective("start", tokens);
+}
+
+function parseIdleCheckIn(tokens: string[]): CommandResult | string {
+	if (tokens.length !== 1) return "Usage: /goal idle-checkin <duration|default|off>";
+	const [value] = tokens;
+	if (value === "off" || value === "disable" || value === "disabled") {
+		return { kind: "idle-checkin", backgroundWaitCheckInMs: null };
+	}
+	if (value === "default") {
+		return { kind: "idle-checkin", backgroundWaitCheckInMs: 20 * 60 * 1_000 };
+	}
+	const duration = parseDurationMs(value);
+	if (duration === undefined || duration < 60_000) {
+		return `Invalid idle check-in duration: ${value}. Use at least 1m, or off/default.`;
+	}
+	return { kind: "idle-checkin", backgroundWaitCheckInMs: duration };
 }
 
 function parseObjective(
@@ -180,6 +225,26 @@ export function parseTokenBudget(value: string): number | undefined {
 	const multiplier =
 		match[2]?.toLowerCase() === "m" ? 1_000_000 : match[2]?.toLowerCase() === "k" ? 1_000 : 1;
 	return normalizeTokenBudget(Math.floor(amount * multiplier));
+}
+
+function parseDurationMs(value: string): number | undefined {
+	const match = /^(\d+(?:\.\d+)?)(ms|s|m|min|mins|minute|minutes|h|hr|hour|hours)?$/iu.exec(
+		value.trim(),
+	);
+	if (!match) return undefined;
+	const amount = Number(match[1]);
+	if (!Number.isFinite(amount) || amount <= 0) return undefined;
+	const unit = match[2]?.toLowerCase() ?? "m";
+	const multiplier =
+		unit === "ms"
+			? 1
+			: unit === "s"
+				? 1_000
+				: unit === "h" || unit === "hr" || unit === "hour" || unit === "hours"
+					? 3_600_000
+					: 60_000;
+	const duration = Math.floor(amount * multiplier);
+	return Number.isSafeInteger(duration) && duration > 0 ? duration : undefined;
 }
 
 export function validateObjective(objective: string): string | undefined {

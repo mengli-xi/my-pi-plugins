@@ -15,34 +15,36 @@
 	],
 	"files": [
 		"src",
+		"dist",
+		"docs",
 		"README.md",
 		"LICENSE"
 	],
 	"pi": {
 		"extensions": [
-			"./src/index.ts"
+			"./dist/index.js"
 		]
 	},
 	"scripts": {
-		"check": "biome check . && npm run typecheck",
+		"build": "bun build src/index.ts --outdir dist --splitting --target node --format esm --external \"@earendil-works/*\" --external typebox",
+		"check": "biome check . && node scripts/check-extension-boundaries.mjs && npm run typecheck && npm test",
 		"format": "biome check --write .",
+		"test": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
 		"test:runtime": "node ./test/goal-runtime-smoke.mjs",
-		"typecheck": "tsc --noEmit"
+		"test:ui": "bun ./test/goal-ui-e2e.mjs",
+		"typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json --allowImportingTsExtensions"
 	},
 	"dependencies": {
 		"@narumitw/pi-tui-kit": "^0.40.0",
-		"typebox": "^1.3.9"
+		"pi-runtime-contracts": "*",
+		"pi-li-uikit": "*",
+		"pi-session-inject": "*"
 	},
 	"peerDependencies": {
-		"@earendil-works/pi-ai": "*",
-		"@earendil-works/pi-coding-agent": "*",
-		"@earendil-works/pi-tui": "*"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "2.5.6",
-		"@earendil-works/pi-ai": "0.83.0",
-		"@earendil-works/pi-coding-agent": "0.83.0",
-		"typescript": "7.0.2"
+		"@earendil-works/pi-ai": "^1.5.0",
+		"@earendil-works/pi-coding-agent": "^1.5.0",
+		"@earendil-works/pi-tui": "^1.5.0",
+		"typebox": "*"
 	},
 	"repository": {
 		"type": "git",

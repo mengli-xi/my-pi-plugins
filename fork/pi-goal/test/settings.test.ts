@@ -14,7 +14,8 @@ import {
 const DEFAULT_GOAL_SETTINGS_DOCUMENT = `${JSON.stringify(DEFAULT_GOAL_SETTINGS, null, 2)}\n`;
 
 test("normalizeGoalSettings applies defaults and accepts bounded continuation limits", () => {
-	assert.equal(DEFAULT_GOAL_SETTINGS.continuationLimits.automaticTurns, null);
+	assert.equal(DEFAULT_GOAL_SETTINGS.continuationLimits.automaticTurns, 25);
+	assert.equal(DEFAULT_GOAL_SETTINGS.backgroundWaitCheckInMs, 20 * 60 * 1_000);
 	assert.deepEqual(DEFAULT_GOAL_SETTINGS.rpc, { enabled: false });
 	assert.deepEqual(normalizeGoalSettings({}), DEFAULT_GOAL_SETTINGS);
 	assert.deepEqual(normalizeGoalSettings({ futureOption: true }), DEFAULT_GOAL_SETTINGS);
@@ -49,7 +50,7 @@ test("normalizeGoalSettings applies defaults and accepts bounded continuation li
 	});
 	assert.deepEqual(normalizeGoalSettings({ continuationLimits: { noProgressTurns: 2 } }), {
 		...DEFAULT_GOAL_SETTINGS,
-		continuationLimits: { automaticTurns: null, noProgressTurns: 2 },
+		continuationLimits: { automaticTurns: 25, noProgressTurns: 2 },
 	});
 	assert.deepEqual(
 		normalizeGoalSettings({
@@ -59,6 +60,18 @@ test("normalizeGoalSettings applies defaults and accepts bounded continuation li
 			...DEFAULT_GOAL_SETTINGS,
 			continuationLimits: { automaticTurns: null, noProgressTurns: null },
 		},
+	);
+	assert.deepEqual(normalizeGoalSettings({ backgroundWaitCheckInMs: 60_000 }), {
+		...DEFAULT_GOAL_SETTINGS,
+		backgroundWaitCheckInMs: 60_000,
+	});
+	assert.deepEqual(normalizeGoalSettings({ processWaitCheckInMs: null }), {
+		...DEFAULT_GOAL_SETTINGS,
+		backgroundWaitCheckInMs: null,
+	});
+	assert.equal(
+		normalizeGoalSettings({ backgroundWaitCheckInMs: 60_000, processWaitCheckInMs: 120_000 }),
+		undefined,
 	);
 
 	for (const value of [
@@ -78,6 +91,9 @@ test("normalizeGoalSettings applies defaults and accepts bounded continuation li
 		{ continuationLimits: { automaticTurns: 1.5 } },
 		{ continuationLimits: { automaticTurns: Number.MAX_SAFE_INTEGER + 1 } },
 		{ continuationLimits: { noProgressTurns: "3" } },
+		{ backgroundWaitCheckInMs: 0 },
+		{ backgroundWaitCheckInMs: 59_999 },
+		{ backgroundWaitCheckInMs: "20m" },
 	]) {
 		assert.equal(normalizeGoalSettings(value), undefined);
 	}
@@ -113,6 +129,7 @@ test("saveGoalSettings atomically preserves unknown top-level and nested fields"
 			experimental: { goals: false, futureQueue: "keep" },
 			rpc: { enabled: true, futureRpc: "keep" },
 			continuationLimits: { automaticTurns: 25, noProgressTurns: 3, futureLimit: 9 },
+			processWaitCheckInMs: 300_000,
 		}),
 	);
 
@@ -122,6 +139,7 @@ test("saveGoalSettings atomically preserves unknown top-level and nested fields"
 			experimental: { goals: true },
 			rpc: { enabled: false },
 			continuationLimits: { automaticTurns: 40, noProgressTurns: null },
+			backgroundWaitCheckInMs: null,
 		},
 		settingsPath,
 	);
@@ -132,6 +150,7 @@ test("saveGoalSettings atomically preserves unknown top-level and nested fields"
 		experimental: { goals: true, futureQueue: "keep" },
 		rpc: { enabled: false, futureRpc: "keep" },
 		continuationLimits: { automaticTurns: 40, noProgressTurns: null, futureLimit: 9 },
+		backgroundWaitCheckInMs: null,
 	});
 	assert.deepEqual(readdirSync(directory), ["pi-goal.json"]);
 });
@@ -176,7 +195,8 @@ test("readGoalSettings distinguishes missing, loaded, malformed, and unreadable 
 			toolVisibility: "after-first-goal",
 			experimental: { goals: true },
 			rpc: { enabled: false },
-			continuationLimits: { automaticTurns: null, noProgressTurns: 3 },
+			continuationLimits: { automaticTurns: 25, noProgressTurns: 3 },
+			backgroundWaitCheckInMs: 20 * 60 * 1_000,
 		},
 	});
 

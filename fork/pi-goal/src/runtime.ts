@@ -7,6 +7,8 @@ import {
 	updateGoalUsage,
 } from "./accounting.js";
 import { formatError, truncateNotification } from "./errors.js";
+import type { GoalMailbox } from "./mailbox.js";
+import type { GoalMailboxState } from "./mailbox-state.js";
 import {
 	appendGoalPromptMarker,
 	extractContinuationMarker,
@@ -15,6 +17,7 @@ import {
 import {
 	type ActiveGoal,
 	clearLegacyPersistedGoal,
+	type PendingBackgroundContinuation,
 	type PendingQueueAction,
 	type SafetyPauseCause,
 	serializeGoalState,
@@ -35,6 +38,11 @@ export interface ContinuationTicket {
 	iteration: number;
 	marker: string;
 	prompt: string;
+	/**
+	 * A finished background task is what this turn has to handle. Another live lease is
+	 * a different question and must not swallow it (D-008 ①).
+	 */
+	completionDriven?: boolean;
 }
 
 export interface BudgetWrapUp {
@@ -126,6 +134,7 @@ export interface GoalSettingsRuntimeSnapshot {
 	queueFreezeAwaitingSettle: boolean;
 	continuationIntent?: ContinuationTicket;
 	continuationDelivery?: ContinuationTicket;
+	pendingBackgroundContinuation?: PendingBackgroundContinuation;
 	goalRecovery?: GoalRecovery;
 	budgetWrapUp?: BudgetWrapUp;
 	guardAbortGoalId?: string;
@@ -171,13 +180,20 @@ export class GoalRuntime {
 	/** Terminal details captured for the matching persisted-state snapshot. */
 	private terminalDetails?: GoalTerminalDetails;
 	private goalStateSink?: (snapshot: GoalStateSnapshot) => void;
+	private semanticSnapshotSink?: () => void;
 	queuedGoals: ActiveGoal[] = [];
 	pendingQueueAction?: PendingQueueAction;
 	queueFrozen = false;
 	queueFreezeAwaitingSettle = false;
 	completionStatusTimer?: NodeJS.Timeout;
+	processWaitCheckInTimer?: NodeJS.Timeout;
 	continuationIntent?: ContinuationTicket;
 	continuationDelivery?: ContinuationTicket;
+	/**
+	 * A background wake already answered with a committed receipt whose continuation has
+	 * not been dispatched yet. Persisted with the goal so a reload can still run it.
+	 */
+	pendingBackgroundContinuation?: PendingBackgroundContinuation;
 	goalRecovery?: GoalRecovery;
 	budgetWrapUp?: BudgetWrapUp;
 	/** `null` marks a run that must not be charged to the active goal. */
@@ -198,14 +214,69 @@ export class GoalRuntime {
 	menuGeneration = 0;
 	menuController = new AbortController();
 
+	mailbox?: GoalMailbox;
+	mailboxState: GoalMailboxState = { intents: [], cancelling: false };
+	mailboxInvalid = false;
+	mailboxSessionId?: string;
+	private cancellingMail = false;
 	readonly pi: ExtensionAPI;
 
 	constructor(pi: ExtensionAPI) {
 		this.pi = pi;
 	}
 
+	needsMailboxCancellation() {
+		return Boolean(
+			this.mailbox &&
+				(this.mailboxInvalid ||
+					this.mailboxState.cancelling ||
+					this.mailboxState.intents.some((intent) => intent.goalId === this.activeGoal?.id)),
+		);
+	}
+
+	async cancelGoalMail(ctx: StatusContext) {
+		if (this.mailboxInvalid) {
+			ctx.ui.notify("Goal cancellation held: invalid source state requires recovery.", "error");
+			return false;
+		}
+		if (!this.mailbox || !this.activeGoal) return true;
+		if (this.cancellingMail) return false;
+		const goalId = this.activeGoal.id;
+		const generation = this.menuGeneration;
+		this.cancellingMail = true;
+		this.mailboxState.cancelling = true;
+		const terminal = this.terminalDetails;
+		this.persistGoal(this.activeGoal);
+		this.terminalDetails = terminal;
+		try {
+			await this.mailbox.cancelGoal(ctx, goalId);
+			if (this.menuGeneration !== generation || this.activeGoal?.id !== goalId) return false;
+			this.mailboxState.cancelling = false;
+			this.terminalDetails = terminal;
+			return true;
+		} catch (error) {
+			if (this.menuGeneration === generation)
+				ctx.ui.notify(`Goal cancellation pending: ${formatError(error)}`, "error");
+			return false;
+		} finally {
+			if (this.menuGeneration === generation) this.cancellingMail = false;
+		}
+	}
+
 	setGoalStateSink(sink: ((snapshot: GoalStateSnapshot) => void) | undefined) {
 		this.goalStateSink = sink;
+	}
+
+	setSemanticSnapshotSink(sink: (() => void) | undefined) {
+		this.semanticSnapshotSink = sink;
+	}
+
+	private publishSemanticSnapshot() {
+		try {
+			this.semanticSnapshotSink?.();
+		} catch {
+			// Semantic UI publication must not interrupt canonical Goal persistence.
+		}
 	}
 
 	private publishGoalState(snapshot: GoalStateSnapshot) {
@@ -218,12 +289,14 @@ export class GoalRuntime {
 
 	replaceMenuSession() {
 		this.menuGeneration += 1;
+		this.cancellingMail = false;
 		this.menuController.abort(new DOMException("Goal session replaced", "AbortError"));
 		this.menuController = new AbortController();
 	}
 
 	closeMenuSession() {
 		this.menuGeneration += 1;
+		this.cancellingMail = false;
 		this.menuController.abort(new DOMException("Goal session shut down", "AbortError"));
 	}
 
@@ -303,23 +376,27 @@ export class GoalRuntime {
 		return true;
 	}
 
-	requestContinuation(goal: ActiveGoal) {
+	requestContinuation(goal: ActiveGoal, restoredMarker?: string) {
 		if (this.hasContinuationWorkForGoal(goal.id)) return false;
-		const marker = continuationMarker(goal);
+		const marker = restoredMarker ?? continuationMarker(goal);
 		this.continuationIntent = {
 			goalId: goal.id,
 			iteration: goal.iteration,
 			marker,
 			prompt: buildContinuePrompt(goal, marker),
+			// A committed background receipt is still owed to this goal, so whichever turn
+			// finally carries it must survive an unrelated live lease (D-008 ①).
+			...(this.pendingBackgroundContinuation?.goalId === goal.id ? { completionDriven: true } : {}),
 		};
 		return true;
 	}
 
-	dispatchContinuationIfSettled(ctx: StatusContext) {
+	async dispatchContinuationIfSettled(ctx: StatusContext) {
+		const generation = this.menuGeneration;
 		const intent = this.continuationIntent;
 		if (!intent) return false;
 		if (this.activeGoal?.status === "active" && !this.goalToolsAvailable()) {
-			this.pauseGoalForUnavailableTools(ctx);
+			await this.pauseGoalForUnavailableTools(ctx);
 			return false;
 		}
 		if (
@@ -330,37 +407,72 @@ export class GoalRuntime {
 			this.continuationIntent = undefined;
 			return false;
 		}
-		if (this.enforceAutomaticTurnLimit(ctx, false) || this.enforceNoProgressLimit(ctx)) {
+		if (
+			(await this.enforceAutomaticTurnLimit(ctx, false)) ||
+			(await this.enforceNoProgressLimit(ctx))
+		) {
 			return false;
 		}
-		if (ctx.isIdle?.() !== true || hasPendingMessages(ctx)) return false;
 
-		this.continuationIntent = undefined;
-		this.continuationDelivery = intent;
-		try {
-			this.pi.sendUserMessage(intent.prompt, { deliverAs: "followUp" });
-			return true;
-		} catch (error) {
-			if (this.continuationDelivery?.marker === intent.marker) {
-				this.continuationDelivery = undefined;
-			}
-			if (this.activeGoal?.id === intent.goalId && this.activeGoal.status === "active") {
-				this.continuationIntent = intent;
-			}
-			ctx.ui.notify(`Goal prompt failed: ${formatError(error)}`, "error");
+		if (
+			generation !== this.menuGeneration ||
+			this.mailboxState.cancelling ||
+			this.mailboxInvalid ||
+			this.activeGoal?.id !== intent.goalId ||
+			this.activeGoal.status !== "active"
+		)
 			return false;
-		}
+		if (!this.mailbox) throw new Error("Goal mailbox is unavailable");
+		this.continuationDelivery = intent;
+		this.continuationIntent = undefined;
+		return this.mailbox.submit(ctx, intent.goalId, intent.marker, intent.prompt);
 	}
 
 	hasContinuationWorkForGoal(goalId: string) {
 		return (
-			this.continuationIntent?.goalId === goalId || this.continuationDelivery?.goalId === goalId
+			this.continuationIntent?.goalId === goalId ||
+			this.continuationDelivery?.goalId === goalId ||
+			this.mailboxState.intents.some(
+				(intent) => intent.goalId === goalId && !intent.started && intent.kind === "continue",
+			)
+		);
+	}
+
+	/**
+	 * Stamp the pending continuation as owed to a finished background task. A wake that
+	 * coalesces onto an ordinary intent upgrades it, so the merged turn keeps the stronger
+	 * claim.
+	 */
+	noteCompletionDrivenContinuation(goalId: string) {
+		if (this.continuationIntent?.goalId === goalId) {
+			this.continuationIntent = { ...this.continuationIntent, completionDriven: true };
+		}
+		if (this.continuationDelivery?.goalId === goalId) {
+			this.continuationDelivery = { ...this.continuationDelivery, completionDriven: true };
+		}
+	}
+
+	hasCompletionDrivenContinuationWork() {
+		return (
+			this.continuationIntent?.completionDriven === true ||
+			this.continuationDelivery?.completionDriven === true ||
+			Boolean(
+				this.pendingBackgroundContinuation &&
+					this.mailboxState.intents.some(
+						(intent) =>
+							intent.marker === this.pendingBackgroundContinuation?.continuationId &&
+							!intent.started,
+					),
+			)
 		);
 	}
 
 	updateStatus(ctx: StatusContext, goal: ActiveGoal) {
 		this.clearCompletionStatusTimer();
-		ctx.ui.setStatus(STATUS_KEY, formatStatus(goal));
+		ctx.ui.setStatus(
+			STATUS_KEY,
+			formatStatus(goal, this.settings.continuationLimits.automaticTurns),
+		);
 	}
 
 	blockStaleGoalToolCalls() {
@@ -400,7 +512,7 @@ export class GoalRuntime {
 		};
 		return (
 			candidate.role === "custom" &&
-			candidate.customType === BUDGET_WRAP_UP_MESSAGE_TYPE &&
+			candidate.customType === "goal-mailbox-continuation-v1" &&
 			typeof candidate.details?.goalId === "string" &&
 			candidate.details.goalId === this.budgetWrapUp?.goalId &&
 			candidate.details.goalId === this.activeGoal?.id
@@ -409,38 +521,31 @@ export class GoalRuntime {
 
 	keepBudgetWrapUpMessage(message: unknown) {
 		if (!message || typeof message !== "object") return true;
-		const candidate = message as { role?: unknown; customType?: unknown };
-		if (candidate.role !== "custom" || candidate.customType !== BUDGET_WRAP_UP_MESSAGE_TYPE) {
-			return true;
-		}
-		return this.isActiveBudgetWrapUpMessage(message);
+		const candidate = message as { role?: unknown; customType?: unknown; content?: unknown };
+		if (candidate.role !== "custom") return true;
+		const budget =
+			candidate.customType === BUDGET_WRAP_UP_MESSAGE_TYPE ||
+			(candidate.customType === "goal-mailbox-continuation-v1" &&
+				typeof candidate.content === "string" &&
+				candidate.content.startsWith(BUDGET_WRAP_UP_PROMPT));
+		return !budget || this.isActiveBudgetWrapUpMessage(message);
 	}
 
-	queueBudgetWrapUp(ctx: StatusContext, goal: ActiveGoal) {
-		if (!this.budgetWrapUp || this.budgetWrapUp.goalId !== goal.id) {
-			this.budgetWrapUp = { goalId: goal.id, delivered: false };
-		}
-		if (this.budgetWrapUp.delivered) return true;
-		this.budgetWrapUp.delivered = true;
-		try {
-			this.pi.sendMessage(
-				{
-					customType: BUDGET_WRAP_UP_MESSAGE_TYPE,
-					content: BUDGET_WRAP_UP_PROMPT,
-					display: true,
-					details: { goalId: goal.id },
-				},
-				{ deliverAs: "steer" },
-			);
-			return true;
-		} catch (error) {
-			this.budgetWrapUp.delivered = false;
-			ctx.ui.notify(`Goal budget wrap-up failed: ${formatError(error)}`, "error");
-			return false;
-		}
+	async queueBudgetWrapUp(ctx: StatusContext, goal: ActiveGoal) {
+		if (this.budgetWrapUp?.goalId === goal.id && this.budgetWrapUp.delivered) return true;
+		this.budgetWrapUp = { goalId: goal.id, delivered: true };
+		if (!this.mailbox) throw new Error("Goal mailbox is unavailable");
+		const marker = continuationMarker(goal);
+		return this.mailbox.submit(
+			ctx,
+			goal.id,
+			marker,
+			`${BUDGET_WRAP_UP_PROMPT}\n\n<!-- pi-goal-continuation:${marker} -->`,
+			"budget",
+		);
 	}
 
-	limitActiveGoalForBudget(ctx: StatusContext, sendWrapUp: boolean) {
+	async limitActiveGoalForBudget(ctx: StatusContext, sendWrapUp: boolean) {
 		const goal = this.activeGoal;
 		if (
 			goal?.status !== "active" ||
@@ -450,6 +555,7 @@ export class GoalRuntime {
 			return false;
 		}
 
+		if (this.needsMailboxCancellation() && !(await this.cancelGoalMail(ctx))) return false;
 		this.cancelContinuationWork();
 		this.clearGoalRecoveryForGoal(goal.id);
 		this.clearBudgetWrapUp();
@@ -461,11 +567,11 @@ export class GoalRuntime {
 		this.persistGoal(this.activeGoal);
 		this.updateStatus(ctx, this.activeGoal);
 		ctx.ui.notify(`Goal token budget reached: ${formatBudget(this.activeGoal)}`, "warning");
-		if (sendWrapUp) this.queueBudgetWrapUp(ctx, this.activeGoal);
+		if (sendWrapUp) await this.queueBudgetWrapUp(ctx, this.activeGoal);
 		return true;
 	}
 
-	recordAutomaticTurn(ctx: StatusContext, message: unknown) {
+	async recordAutomaticTurn(ctx: StatusContext, message: unknown) {
 		const goal = this.activeGoal;
 		if (goal?.status !== "active" || !this.isAutomaticRunForGoal(goal.id)) return false;
 		const candidate = message as { role?: unknown; stopReason?: unknown } | undefined;
@@ -477,10 +583,10 @@ export class GoalRuntime {
 		// Terminal errors need agent_end classification before a safety pause can
 		// choose between usage_limited, blocked, or retryable cleanup.
 		if (candidate?.role === "assistant" && candidate.stopReason === "error") return false;
-		return this.enforceAutomaticTurnLimit(ctx, true);
+		return await this.enforceAutomaticTurnLimit(ctx, true);
 	}
 
-	recordAutomaticRunProgress(
+	async recordAutomaticRunProgress(
 		ctx: StatusContext,
 		goalId: string,
 		messages: readonly unknown[],
@@ -495,31 +601,36 @@ export class GoalRuntime {
 		this.updateStatus(ctx, goal);
 		const limit = this.settings.continuationLimits.noProgressTurns;
 		if (limit === null || goal.toolFreeRepeatCount < limit) return false;
-		return this.pauseGoalForSafety(ctx, "no_progress", false);
+		return await this.pauseGoalForSafety(ctx, "no_progress", false);
 	}
 
-	enforceAutomaticTurnLimit(ctx: StatusContext, abortTurn: boolean) {
+	async enforceAutomaticTurnLimit(ctx: StatusContext, abortTurn: boolean) {
 		const goal = this.activeGoal;
 		const limit = this.settings.continuationLimits.automaticTurns;
 		if (goal?.status !== "active" || limit === null || goal.automaticModelTurns < limit) {
 			return false;
 		}
-		return this.pauseGoalForSafety(ctx, "continuation_limit", abortTurn);
+		return await this.pauseGoalForSafety(ctx, "continuation_limit", abortTurn);
 	}
 
-	enforceNoProgressLimit(ctx: StatusContext, abortTurn = false) {
+	async enforceNoProgressLimit(ctx: StatusContext, abortTurn = false) {
 		const goal = this.activeGoal;
 		const limit = this.settings.continuationLimits.noProgressTurns;
 		if (goal?.status !== "active" || limit === null || goal.toolFreeRepeatCount < limit) {
 			return false;
 		}
-		return this.pauseGoalForSafety(ctx, "no_progress", abortTurn);
+		return await this.pauseGoalForSafety(ctx, "no_progress", abortTurn);
 	}
 
-	pauseGoalForSafety(ctx: StatusContext, cause: SafetyPauseCause, abortTurn: boolean) {
+	async pauseGoalForSafety(ctx: StatusContext, cause: SafetyPauseCause, abortTurn: boolean) {
 		const goal = this.activeGoal;
 		if (goal?.status !== "active") return false;
+		if (this.needsMailboxCancellation() && !(await this.cancelGoalMail(ctx))) return false;
 		this.cancelContinuationWork();
+		// A paused goal is not waiting on anything, so the background-wait heartbeat
+		// has nothing left to nudge. Left armed, it fires the moment /goal resume
+		// flips the status back to active and races that resume's own prompt.
+		this.clearProcessWaitCheckInTimer();
 		this.clearGoalRecoveryForGoal(goal.id);
 		this.clearBudgetWrapUp();
 		this.blockStaleGoalToolCalls();
@@ -528,9 +639,10 @@ export class GoalRuntime {
 			abortCurrentTurn(ctx);
 		}
 		this.activeGoal = transitionGoal({ ...goal, safetyPauseCause: cause }, "paused");
+		const automaticLimit = this.settings.continuationLimits.automaticTurns;
 		const count =
 			cause === "continuation_limit"
-				? `${this.activeGoal.automaticModelTurns} automatic model responses`
+				? `${this.activeGoal.automaticModelTurns} of ${automaticLimit ?? "Unlimited"} automatic model responses`
 				: `no progress across ${this.activeGoal.toolFreeRepeatCount} automatic runs`;
 		this.setTerminalReason(
 			this.activeGoal.id,
@@ -539,7 +651,9 @@ export class GoalRuntime {
 		this.persistGoal(this.activeGoal);
 		this.updateStatus(ctx, this.activeGoal);
 		ctx.ui.notify(
-			`Goal paused: ${count}; ${formatTokenCount(this.activeGoal.tokensUsed)} cumulative tokens. Run /goal resume to continue.`,
+			cause === "continuation_limit"
+				? `Automatic-work limit reached: ${this.activeGoal.automaticModelTurns} of ${automaticLimit} responses. Goal progress is saved with ${formatTokenCount(this.activeGoal.tokensUsed)} cumulative tokens. Open /goal to review and continue.`
+				: `Goal paused: ${count}; ${formatTokenCount(this.activeGoal.tokensUsed)} cumulative tokens. Open /goal to review and continue.`,
 			"warning",
 		);
 		return true;
@@ -555,12 +669,13 @@ export class GoalRuntime {
 		return true;
 	}
 
-	finalizeSettledRecovery(ctx: StatusContext) {
+	async finalizeSettledRecovery(ctx: StatusContext) {
 		const recovery = this.goalRecovery;
 		if (!recovery) return false;
 		this.goalRecovery = undefined;
 		const goal = this.activeGoal;
 		if (goal?.id !== recovery.goalId || goal.status !== "active") return false;
+		if (this.needsMailboxCancellation() && !(await this.cancelGoalMail(ctx))) return false;
 		this.cancelContinuationWork();
 		this.clearBudgetWrapUp();
 		this.blockStaleGoalToolCalls();
@@ -601,14 +716,58 @@ export class GoalRuntime {
 	clearContinuationTracking() {
 		this.continuationIntent = undefined;
 		this.continuationDelivery = undefined;
+		// Runtime-local only: the owed background marker is restored from the branch by the
+		// next session_start, which is what makes it survive a reload.
+		this.pendingBackgroundContinuation = undefined;
 		this.cancelledContinuationMarkers.clear();
 		this.claimedContinuationMarkers.clear();
+	}
+
+	/**
+	 * Pi accepted the dispatched continuation: a prompt boundary carries this goal's own
+	 * continuation marker, which the host only reaches after preflight (`before_agent_start`)
+	 * or when it starts a prompt it had queued (`message_start`). That is the first observable
+	 * proof the turn is Pi's to run, so the durable promise is discharged here rather than when
+	 * the void sendUserMessage call returned. Safe to re-enter: the second call finds nothing.
+	 */
+	confirmContinuationDispatch(prompt: string) {
+		const marker = extractContinuationMarker(prompt);
+		if (!marker) return false;
+		const goalId = marker.split(":", 1)[0];
+		if (
+			!goalId ||
+			this.pendingBackgroundContinuation?.goalId !== goalId ||
+			this.pendingBackgroundContinuation.continuationId !== marker
+		)
+			return false;
+		this.pendingBackgroundContinuation = undefined;
+		if (this.activeGoal?.id === goalId) this.persistGoal(this.activeGoal);
+		return true;
 	}
 
 	clearPendingGoalPrompts() {
 		this.pendingGoalPromptMarkers.clear();
 		this.claimedGoalPromptMarkers.clear();
 		this.pendingNonGoalInputs = [];
+	}
+
+	async sendAutomaticGoalPrompt(
+		ctx: StatusContext,
+		goalId: string,
+		prompt: string,
+		kind: "activation" | "checkin" = "activation",
+	) {
+		if (!this.mailbox || this.mailboxState.cancelling || this.mailboxInvalid) return false;
+		const goal = this.activeGoal;
+		if (!goal || goal.id !== goalId) return false;
+		const marker = continuationMarker(goal);
+		return this.mailbox.submit(
+			ctx,
+			goalId,
+			marker,
+			`${prompt}\n\n<!-- pi-goal-continuation:${marker} -->`,
+			kind,
+		);
 	}
 
 	async sendOwnedGoalPrompt(
@@ -734,12 +893,19 @@ export class GoalRuntime {
 	markContinuationStarted(prompt: string) {
 		const marker = extractContinuationMarker(prompt);
 		if (!marker) {
+			if (this.mailbox) {
+				this.continuationIntent = undefined;
+				return undefined;
+			}
 			// A user, retry, or another extension started newer work. Cancel both an
 			// unsent intent and a delivery that may have lost the non-atomic idle race;
 			// the newer work's agent_end will record a fresh intent.
 			this.cancelContinuationWork();
 			return undefined;
 		}
+		// A re-armed intent for the marker that just started is already spent; leaving it would
+		// send the same continuation a second time at the next boundary.
+		if (this.continuationIntent?.marker === marker) this.continuationIntent = undefined;
 		if (this.continuationDelivery?.marker === marker) {
 			this.continuationDelivery = undefined;
 			this.rememberClaimedContinuationMarker(marker);
@@ -751,13 +917,23 @@ export class GoalRuntime {
 		if (!isTerminalGoalStatus(goal.status) || this.terminalDetails?.goalId !== goal.id) {
 			this.clearTerminalDetails();
 		}
+		if (this.pendingBackgroundContinuation?.goalId !== goal.id) {
+			this.pendingBackgroundContinuation = undefined;
+		}
 		this.pi.appendEntry(
 			GOAL_STATE_ENTRY_TYPE,
-			serializeGoalState(goal, this.queuedGoals, this.pendingQueueAction),
+			serializeGoalState(
+				goal,
+				this.queuedGoals,
+				this.pendingQueueAction,
+				this.pendingBackgroundContinuation,
+				this.mailboxState,
+			),
 		);
 		this.publishGoalState(
 			buildGoalStateSnapshot(goal, this.terminalDetails?.summary, this.terminalDetails?.reason),
 		);
+		this.publishSemanticSnapshot();
 	}
 
 	clearPersistedGoal(cwd: string, clearedGoal?: ActiveGoal, reason = "goal cleared") {
@@ -769,13 +945,18 @@ export class GoalRuntime {
 				reason,
 			});
 		}
+		this.publishSemanticSnapshot();
 		this.clearTerminalDetails();
 		clearLegacyPersistedGoal(cwd);
 	}
 
-	clearActiveGoal(ctx: StatusContext, reason = "goal cleared") {
+	async clearActiveGoal(ctx: StatusContext, reason = "goal cleared") {
 		const clearedGoal = this.activeGoal;
+		if (this.needsMailboxCancellation() && !(await this.cancelGoalMail(ctx))) return false;
 		this.cancelContinuationWork();
+		// Clearing a goal drops its owed continuation, not the background task itself: the
+		// producing extension still owns that task's lifecycle and result (D-009).
+		this.pendingBackgroundContinuation = undefined;
 		this.clearGoalRecovery();
 		this.clearBudgetWrapUp();
 		this.clearStaleGoalToolCallBlock();
@@ -789,6 +970,7 @@ export class GoalRuntime {
 		// Do not clear goalToolsUnlocked: after first activation, keep tools visible
 		// for the rest of this extension runtime to avoid repeated goal-tool schema
 		// churn within the same runtime.
+		return true;
 	}
 
 	isGoalToolName(name: string) {
@@ -893,6 +1075,9 @@ export class GoalRuntime {
 			continuationDelivery: this.continuationDelivery
 				? structuredClone(this.continuationDelivery)
 				: undefined,
+			pendingBackgroundContinuation: this.pendingBackgroundContinuation
+				? structuredClone(this.pendingBackgroundContinuation)
+				: undefined,
 			goalRecovery: this.goalRecovery ? structuredClone(this.goalRecovery) : undefined,
 			budgetWrapUp: this.budgetWrapUp ? structuredClone(this.budgetWrapUp) : undefined,
 			guardAbortGoalId: this.guardAbortGoalId,
@@ -914,6 +1099,9 @@ export class GoalRuntime {
 		this.continuationDelivery = snapshot.continuationDelivery
 			? structuredClone(snapshot.continuationDelivery)
 			: undefined;
+		this.pendingBackgroundContinuation = snapshot.pendingBackgroundContinuation
+			? structuredClone(snapshot.pendingBackgroundContinuation)
+			: undefined;
 		this.goalRecovery = snapshot.goalRecovery ? structuredClone(snapshot.goalRecovery) : undefined;
 		this.budgetWrapUp = snapshot.budgetWrapUp ? structuredClone(snapshot.budgetWrapUp) : undefined;
 		this.guardAbortGoalId = snapshot.guardAbortGoalId;
@@ -934,10 +1122,11 @@ export class GoalRuntime {
 		}
 	}
 
-	pauseGoalForUnavailableTools(ctx: StatusContext, abortTurn = true, recordUsage = true) {
+	async pauseGoalForUnavailableTools(ctx: StatusContext, abortTurn = true, recordUsage = true) {
 		const goal = this.activeGoal;
 		if (goal?.status !== "active") return false;
 		if (recordUsage) this.recordGoalUsage(goal, ctx);
+		if (this.needsMailboxCancellation() && !(await this.cancelGoalMail(ctx))) return false;
 		this.cancelContinuationWork();
 		this.clearGoalRecoveryForGoal(goal.id);
 		this.clearBudgetWrapUp();
@@ -975,6 +1164,11 @@ export class GoalRuntime {
 		if (!this.completionStatusTimer) return;
 		clearTimeout(this.completionStatusTimer);
 		this.completionStatusTimer = undefined;
+	}
+
+	clearProcessWaitCheckInTimer() {
+		if (this.processWaitCheckInTimer) clearTimeout(this.processWaitCheckInTimer);
+		this.processWaitCheckInTimer = undefined;
 	}
 
 	private rememberPendingGoalPrompt(goalId: string, prompt: string, resetSafetyEpoch: boolean) {
@@ -1071,16 +1265,32 @@ export function incrementGoal(goal: ActiveGoal): ActiveGoal {
 	return { ...goal, iteration: goal.iteration + 1, updatedAt: Date.now() };
 }
 
-export function formatStatus(goal: ActiveGoal | undefined) {
+export function formatStatus(
+	goal: ActiveGoal | undefined,
+	automaticTurnLimit: number | null = DEFAULT_GOAL_SETTINGS.continuationLimits.automaticTurns,
+) {
 	if (!goal) return undefined;
 	if (goal.status === "complete") return "complete";
-	if (goal.status === "queued") return "queued";
-	if (goal.status === "paused") return "paused";
-	if (goal.status === "blocked") return "blocked";
-	if (goal.status === "usage_limited") return "usage";
-	if (goal.status === "budget_limited") return `budget ${formatBudget(goal)}`;
-	if (goal.tokenBudget !== undefined) return `active ${formatBudget(goal)}`;
-	return `active ${formatDuration(goal.timeUsedSeconds)}`;
+	const automatic =
+		automaticTurnLimit === null
+			? "automatic Unlimited"
+			: `automatic ${goal.automaticModelTurns}/${automaticTurnLimit}`;
+	if (goal.status === "queued") return `queued · ${automatic}`;
+	if (goal.status === "paused" && goal.safetyPauseCause === "continuation_limit") {
+		if (automaticTurnLimit === null) {
+			return `paused · previous automatic limit at ${goal.automaticModelTurns}`;
+		}
+		if (goal.automaticModelTurns < automaticTurnLimit) {
+			return `paused · automatic ${goal.automaticModelTurns}/${automaticTurnLimit}`;
+		}
+		return `paused · automatic limit ${goal.automaticModelTurns}/${automaticTurnLimit}`;
+	}
+	if (goal.status === "paused") return `paused · ${automatic}`;
+	if (goal.status === "blocked") return `blocked · ${automatic}`;
+	if (goal.status === "usage_limited") return `usage · ${automatic}`;
+	if (goal.status === "budget_limited") return `budget ${formatBudget(goal)} · ${automatic}`;
+	if (goal.tokenBudget !== undefined) return `active ${formatBudget(goal)} · ${automatic}`;
+	return `active ${formatDuration(goal.timeUsedSeconds)} · ${automatic}`;
 }
 
 export function formatBudget(goal: ActiveGoal) {
@@ -1093,18 +1303,23 @@ export function goalSummary(
 	experimentalGoals = false,
 	queueFrozen = false,
 	pendingAction?: PendingQueueAction,
+	automaticTurnLimit: number | null = DEFAULT_GOAL_SETTINGS.continuationLimits.automaticTurns,
 ) {
 	const summary = [
 		`Goal: ${goal.text}`,
 		`Status: ${queueFrozen ? "queue off" : goal.status}`,
 		`Iteration: ${goal.iteration}`,
-		`Automatic model responses: ${goal.automaticModelTurns}`,
+		automaticTurnLimit === null
+			? `Automatic work: ${goal.automaticModelTurns} responses · Unlimited`
+			: `Automatic work: ${goal.automaticModelTurns} of ${automaticTurnLimit} responses`,
 		`Active elapsed: ${formatDuration(goal.timeUsedSeconds)}`,
 		`Tokens: ${goal.tokenBudget === undefined ? formatTokenCount(goal.tokensUsed) : formatBudget(goal)}`,
 	];
 	if (goal.safetyPauseCause) {
 		summary.push(
-			`Safety pause: ${goal.safetyPauseCause === "continuation_limit" ? "automatic response limit" : "no progress"}`,
+			goal.safetyPauseCause === "continuation_limit"
+				? `Safety pause: automatic-work limit reached (${goal.automaticModelTurns} of ${automaticTurnLimit ?? "Unlimited"} responses). Progress is saved; open /goal to review and continue.`
+				: "Safety pause: no progress. Progress is saved; open /goal to review and continue.",
 		);
 	}
 	if (experimentalGoals || queuedGoals.length > 0 || queueFrozen || pendingAction) {

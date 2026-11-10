@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Type } from "@earendil-works/pi-ai";
+import { getSystemMessageText } from "@earendil-works/pi-ai";
 import {
 	createFauxCore,
 	fauxAssistantMessage,
@@ -16,11 +16,20 @@ import {
 	SessionManager,
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { isolatedEnvironment, stockHost } from "./runtime-test-env.mjs";
+
+const hostRoot = await mkdtemp(join(tmpdir(), "pi-goal-host-"));
+try {
+	stockHost(isolatedEnvironment(hostRoot));
+} finally {
+	await rm(hostRoot, { recursive: true, force: true });
+}
 
 const { AuthStorage } = await import(
 	new URL("./core/auth-storage.js", import.meta.resolve("@earendil-works/pi-coding-agent"))
 );
-const extensionPath = resolve(import.meta.dirname, "../src/goal.ts");
+const extensionPath = resolve(import.meta.dirname, "../dist/index.js");
 
 async function createHarness(
 	responses,
@@ -39,16 +48,22 @@ async function createHarness(
 		await writeFile(join(agentDir, "pi-goal.json"), `${JSON.stringify(goalSettings)}\n`, "utf8");
 	}
 
-	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+	const env = isolatedEnvironment(root);
+	const previousEnvironment = new Map(Object.keys(env).map((key) => [key, process.env[key]]));
 	let createdSession;
-	let agentDirRestored = false;
-	const restoreAgentDir = () => {
-		if (agentDirRestored) return;
-		agentDirRestored = true;
-		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
-		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+	let environmentRestored = false;
+	const restoreEnvironment = () => {
+		if (environmentRestored) return;
+		environmentRestored = true;
+		for (const [key, value] of previousEnvironment) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
 	};
-	process.env.PI_CODING_AGENT_DIR = agentDir;
+	for (const [key, value] of Object.entries(env)) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
 	const cleanupResources = async () => {
 		try {
 			createdSession?.dispose();
@@ -56,7 +71,7 @@ async function createHarness(
 			try {
 				await rm(root, { recursive: true, force: true });
 			} finally {
-				restoreAgentDir();
+				restoreEnvironment();
 			}
 		}
 	};
@@ -123,7 +138,7 @@ async function createHarness(
 							parameters: Type.Object({}),
 							async execute() {
 								lifecycleEvents.push("budget_probe_execute");
-								return { content: [{ type: "text", text: "probe complete" }] };
+								return { content: [{ type: "text", text: "probe complete" }], details: {} };
 							},
 						});
 						pi.on("session_start", () => lifecycleEvents.push("session_start"));
@@ -144,7 +159,7 @@ async function createHarness(
 			],
 		});
 		await resourceLoader.reload();
-		const sessionManager = SessionManager.inMemory(cwd);
+		const sessionManager = SessionManager.create(cwd, join(root, "sessions"));
 		prepareSession?.(sessionManager);
 		const result = await createAgentSession({
 			cwd,
@@ -178,8 +193,15 @@ async function createHarness(
 }
 
 function completionResponse(context) {
-	const goalId = /<goal_id>\s*([^<\s]+)\s*<\/goal_id>/.exec(context.systemPrompt ?? "")?.[1];
-	assert.ok(goalId, "expected goal id in continuation system prompt");
+	const goalId = [
+		...context.messages
+			.map((message) =>
+				message.role === "system" ? getSystemMessageText(message) : userMessageText(message),
+			)
+			.join("\n\n")
+			.matchAll(/<goal_id>\s*([^<\s]+)\s*<\/goal_id>/g),
+	].at(-1)?.[1];
+	assert.ok(goalId, "expected goal id in admitted request");
 	return fauxAssistantMessage(
 		fauxToolCall("goal_complete", {
 			goal_id: goalId,
@@ -189,7 +211,6 @@ function completionResponse(context) {
 }
 
 function userMessageText(message) {
-	if (message.role !== "user") return "";
 	if (typeof message.content === "string") return message.content;
 	if (!Array.isArray(message.content)) return "";
 	return message.content
@@ -247,6 +268,10 @@ async function normalContinuationScenario() {
 		await harness.session.prompt("/goal runtime continuation smoke");
 		await waitFor(() => harness.faux.state.callCount === 2, "settled continuation");
 		await harness.session.agent.waitForIdle();
+		await waitFor(
+			() => events.filter((type) => type === "agent_settled").length === 2,
+			"mailbox run settled",
+		);
 		assert.equal(events.filter((type) => type === "agent_settled").length, 2);
 		assert.equal(persistedGoalStatus(harness.session), null);
 		assert.ok(
@@ -311,6 +336,10 @@ async function automaticToolLoopLimitScenario() {
 	);
 	try {
 		await harness.session.prompt("/goal bounded automatic tool loop");
+		await waitFor(
+			() => persistedGoalStatus(harness.session) === "paused",
+			"automatic tool loop limit",
+		);
 		await harness.session.agent.waitForIdle();
 		await new Promise((resolve) => setTimeout(resolve, 100));
 		assert.equal(persistedGoalStatus(harness.session), "paused");
@@ -341,11 +370,6 @@ async function retryAtHardLimitScenario() {
 					errorMessage: "HTTP 524: transient upstream timeout",
 				});
 			},
-			(_context, options) => {
-				observedSignals.push(options?.signal?.aborted === true);
-				assert.equal(options?.signal?.aborted, true);
-				return fauxAssistantMessage("Guard-owned aborted retry cleanup.");
-			},
 		],
 		{},
 		undefined,
@@ -357,13 +381,15 @@ async function retryAtHardLimitScenario() {
 	);
 	try {
 		await harness.session.prompt("/goal retry cannot cross hard limit");
+		await waitFor(() => persistedGoalStatus(harness.session) === "paused", "retry hard limit");
 		await harness.session.agent.waitForIdle();
 		await new Promise((resolve) => setTimeout(resolve, 100));
 		assert.equal(persistedGoalStatus(harness.session), "paused");
 		assert.equal(persistedGoalState(harness.session)?.goal?.safetyPauseCause, "continuation_limit");
 		assert.equal(persistedGoalState(harness.session)?.goal?.automaticModelTurns, 1);
-		assert.deepEqual(observedSignals, [false, true]);
-		assert.equal(harness.faux.state.callCount, 3);
+		// Pi 1.2 stops the post-run loop before invoking an aborted retry.
+		assert.deepEqual(observedSignals, [false]);
+		assert.equal(harness.faux.state.callCount, 2);
 	} finally {
 		await harness.cleanup();
 	}
@@ -464,15 +490,33 @@ async function queuedInputScenario() {
 	const harness = await createHarness(
 		[
 			(context) => {
-				observedPrompts.push(context.messages.map(userMessageText).filter(Boolean).at(-1) ?? "");
+				observedPrompts.push(
+					context.messages
+						.filter((message) => message.role === "user" || message.role === "custom")
+						.map(userMessageText)
+						.filter(Boolean)
+						.join("\n"),
+				);
 				return fauxAssistantMessage("x".repeat(120));
 			},
 			(context) => {
-				observedPrompts.push(context.messages.map(userMessageText).filter(Boolean).at(-1) ?? "");
+				observedPrompts.push(
+					context.messages
+						.filter((message) => message.role === "user" || message.role === "custom")
+						.map(userMessageText)
+						.filter(Boolean)
+						.join("\n"),
+				);
 				return fauxAssistantMessage("Queued request handled.");
 			},
 			(context) => {
-				observedPrompts.push(context.messages.map(userMessageText).filter(Boolean).at(-1) ?? "");
+				observedPrompts.push(
+					context.messages
+						.filter((message) => message.role === "user" || message.role === "custom")
+						.map(userMessageText)
+						.filter(Boolean)
+						.join("\n"),
+				);
 				return completionResponse(context);
 			},
 		],
@@ -489,7 +533,10 @@ async function queuedInputScenario() {
 			text.includes("pi-goal-continuation:"),
 		);
 		assert.ok(queuedIndex >= 0, "expected queued work to reach the model");
-		assert.ok(continuationIndex > queuedIndex, "continuation must yield to queued work");
+		assert.ok(
+			continuationIndex >= queuedIndex,
+			"continuation must yield to the queued user boundary",
+		);
 	} finally {
 		await harness.cleanup();
 	}
@@ -506,7 +553,10 @@ async function busyEditOwnershipScenario() {
 	);
 	try {
 		await harness.session.prompt("/goal original busy objective");
-		await waitFor(() => harness.session.isStreaming, "busy goal turn");
+		await waitFor(
+			() => harness.session.isStreaming && harness.faux.state.callCount === 1,
+			"busy goal provider turn",
+		);
 		await harness.session.prompt("/goal edit revised busy objective");
 		await waitFor(() => harness.faux.state.callCount === 3, "edited-goal continuation");
 		await harness.session.agent.waitForIdle();
@@ -528,7 +578,10 @@ async function pauseScenario() {
 	});
 	try {
 		await harness.session.prompt("/goal interrupt runtime smoke");
-		await waitFor(() => harness.session.isStreaming, "goal turn streaming");
+		await waitFor(
+			() => harness.session.isStreaming && harness.faux.state.callCount === 1,
+			"goal provider streaming",
+		);
 		await harness.session.prompt("/goal pause");
 		await waitFor(() => !harness.session.isStreaming, "goal turn abort");
 		await new Promise((resolve) => setTimeout(resolve, 50));
@@ -621,6 +674,7 @@ async function staleBlockedToolAbortScenario() {
 	]);
 	try {
 		await harness.session.prompt("/goal stale blocked-tool runtime smoke");
+		await waitFor(() => persistedGoalStatus(harness.session) === "blocked", "terminal error state");
 		await harness.session.agent.waitForIdle();
 		assert.equal(persistedGoalStatus(harness.session), "blocked");
 
@@ -644,7 +698,8 @@ async function budgetBoundaryScenario() {
 		fauxAssistantMessage(fauxToolCall("budget_probe", {})),
 		(context) => {
 			const wrapUp = context.messages.find(
-				(message) => message.role === "custom" && message.customType === "goal-budget-wrap-up",
+				(message) =>
+					message.role === "custom" && message.customType === "goal-mailbox-continuation-v1",
 			);
 			assert.match(String(wrapUp?.content), /stop substantive work/i);
 			return fauxAssistantMessage("Budget-limited progress summary.");
@@ -673,15 +728,12 @@ async function budgetViolationScenario() {
 	const harness = await createHarness([
 		fauxAssistantMessage(fauxToolCall("budget_probe", {})),
 		fauxAssistantMessage(fauxToolCall("budget_probe", {})),
-		(_context, options) => {
-			assert.equal(options?.signal?.aborted, true);
-			return fauxAssistantMessage("This aborted response must not start more work.");
-		},
 	]);
 	try {
 		await harness.session.prompt("/goal --tokens 1 reject wrap-up tools at runtime");
+		await waitFor(() => harness.faux.state.callCount === 2, "budget tool violation");
 		await harness.session.agent.waitForIdle();
-		assert.equal(harness.faux.state.callCount, 3);
+		assert.equal(harness.faux.state.callCount, 2);
 		assert.equal(
 			harness.lifecycleEvents.filter((event) => event === "budget_probe_execute").length,
 			1,
@@ -693,11 +745,15 @@ async function budgetViolationScenario() {
 }
 
 async function budgetAgentEndFallbackScenario() {
-	const harness = await createHarness([fauxAssistantMessage("No-tool budget response.")]);
+	const harness = await createHarness([
+		fauxAssistantMessage("No-tool budget response."),
+		fauxAssistantMessage("No-tool budget summary."),
+	]);
 	try {
 		await harness.session.prompt("/goal --tokens 1 no-tool budget runtime smoke");
+		await waitFor(() => harness.faux.state.callCount === 2, "no-tool budget wrap-up");
 		await harness.session.agent.waitForIdle();
-		assert.equal(harness.faux.state.callCount, 1);
+		assert.equal(harness.faux.state.callCount, 2);
 		assert.equal(persistedGoalStatus(harness.session), "budget_limited");
 	} finally {
 		await harness.cleanup();
@@ -824,24 +880,29 @@ async function manualCompactionScenario() {
 	}
 }
 
-await agentDirectoryIsolationScenario();
-await normalContinuationScenario();
-await runawayNoProgressScenario();
-await automaticToolLoopLimitScenario();
-await retryAtHardLimitScenario();
-await automaticRetryOwnershipScenario();
-await orderedQueueScenario();
-await queuedInputScenario();
-await busyEditOwnershipScenario();
-await pauseScenario();
-await frozenQueueBlockedToolAbortScenario();
-await staleBlockedToolAbortScenario();
-await budgetBoundaryScenario();
-await budgetViolationScenario();
-await budgetAgentEndFallbackScenario();
-await managedRunRpcScenario();
-await managedRunDisabledScenario();
-await manualCompactionScenario();
-console.log(
-	"pi-goal runtime smoke: normal, runaway guards, retry and busy-edit ownership, ordered queue, queued input, pause, frozen-queue and stale blocked-tool aborts, managed-run RPC, bounded budget behavior, and manual compaction passed",
-);
+const scenarios = {
+	agentDirectoryIsolationScenario,
+	normalContinuationScenario,
+	runawayNoProgressScenario,
+	automaticToolLoopLimitScenario,
+	retryAtHardLimitScenario,
+	automaticRetryOwnershipScenario,
+	orderedQueueScenario,
+	queuedInputScenario,
+	busyEditOwnershipScenario,
+	pauseScenario,
+	frozenQueueBlockedToolAbortScenario,
+	staleBlockedToolAbortScenario,
+	budgetBoundaryScenario,
+	budgetViolationScenario,
+	budgetAgentEndFallbackScenario,
+	managedRunRpcScenario,
+	managedRunDisabledScenario,
+	manualCompactionScenario,
+};
+const selected = process.argv.slice(2);
+for (const [name, scenario] of Object.entries(scenarios)) {
+	if (selected.length && !selected.includes(name)) continue;
+	await scenario();
+	console.log(`${name}: passed`);
+}
