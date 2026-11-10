@@ -1,10 +1,7 @@
 {
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
-		"noEmit": false,
-		"outDir": "node_modules/.cache/pi-goal-test",
-		"rootDir": ".",
-		"rewriteRelativeImportExtensions": true
+		"rootDir": "."
 	},
 	"include": ["src/**/*.ts", "test/**/*.ts"]
 }

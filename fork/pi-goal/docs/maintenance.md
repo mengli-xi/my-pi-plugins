@@ -9,7 +9,7 @@
 
 Goal 使用 npm `@narumitw/pi-tui-kit`，当前锁定 **0.40.0**；本目录不包含该共享库的源码。
 
-stock Pi baseline 是 **1.5.0**；生产行为依赖公开 extension/session/context/custom-message API，无 Goal 私有 probe 或 host patch。外部 npm 上游包、这里的本地 Fork 和原始完整上游 monorepo 是不同分发边界，不能互相代替测试。
+stock Pi baseline 是 **1.5.0**；生产行为依赖公开 extension/session/context/custom-message API，无 Goal 私有 probe 或 host patch。外部 npm 包、vendor 中仅取 `extensions/pi-goal` 的原版和当前本地补丁包是不同测试对象，不能互相代替验证。
 
 ## 构建与轻入口
 

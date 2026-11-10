@@ -42,33 +42,23 @@ const packageJsonCache = new Map();
 const resolvedLibraryCache = new Map();
 const libraryCheckCache = new Map();
 const rootDirectory = process.cwd();
-const libraryPackages = [];
-const activePackages = [
-	{
-		directory: rootDirectory,
-		name: readJson(path.join(rootDirectory, "package.json")).name,
-		packageJson: readJson(path.join(rootDirectory, "package.json")),
-		packagePath: path.join(rootDirectory, "package.json"),
-	},
-];
-const experimentalPackageCount = 0;
-const libraryPackageNames = new Set(libraryPackages.map(({ name }) => name));
+const extensionPackage = {
+	directory: rootDirectory,
+	name: readJson(path.join(rootDirectory, "package.json")).name,
+	packageJson: readJson(path.join(rootDirectory, "package.json")),
+	packagePath: path.join(rootDirectory, "package.json"),
+};
 const failures = [];
-for (const libraryPackage of libraryPackages) checkLibraryPackage(libraryPackage);
-for (const extensionPackage of activePackages) {
-	checkPiEntrypoint(extensionPackage);
-	checkPackageDependencies(extensionPackage);
-	checkSourceImports(extensionPackage);
-}
+checkPiEntrypoint(extensionPackage);
+checkPackageDependencies(extensionPackage);
+checkSourceImports(extensionPackage);
 
 if (failures.length > 0) {
-	console.error("Extension boundary check failed:");
+	console.error(`${extensionPackage.name} 包边界检查失败：`);
 	for (const failure of failures) console.error(`- ${failure}`);
 	process.exitCode = 1;
 } else {
-	console.log(
-		`Extension boundary check passed: ${libraryPackages.length} libraries and ${activePackages.length} active extensions (${experimentalPackageCount} experimental) have valid package boundaries.`,
-	);
+	console.log(`${extensionPackage.name} 单包边界检查通过`);
 }
 
 function checkLibraryPackage(libraryPackage) {
@@ -220,11 +210,6 @@ function isForbiddenExtensionReference(
 ) {
 	const packageName = extensionPackage.name;
 	if (specifier === packageName || specifier.startsWith(`${packageName}/`)) return false;
-	for (const libraryPackageName of libraryPackageNames) {
-		if (specifier === libraryPackageName || specifier.startsWith(`${libraryPackageName}/`)) {
-			return false;
-		}
-	}
 	if (!EXTENSION_PACKAGE_RE.test(specifier)) return false;
 	return !isResolvedLibrary(fromPath, specifier.split("/").slice(0, 2).join("/"));
 }

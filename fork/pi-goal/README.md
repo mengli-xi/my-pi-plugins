@@ -96,7 +96,9 @@ TUI 的 `/goal` → Settings 可修改前五项控制；后台巡检用 `idle-ch
 - [生命周期与安全](docs/lifecycle.md)：25+3、token/时间、完成审计、暂停、重试、branch 与旧记录。
 - [Mailbox](docs/mailbox.md)：durable 投递、owed receipt、恢复 hold、lineage、取消和离线恢复。
 - [协议](docs/protocols.md)：snapshot、continuation/obligation 和旧 managed RPC。
-- [维护](docs/maintenance.md)：上游谱系、workspace/build、检查边界与当前本地意图。
+- [开发约束](docs/extension-conventions.md)：Goal 的依赖、生命周期、命令、UI 与验证规则。
+- [设置开发约束](docs/extension-settings.md)：设置的校验、持久化、交互与兼容规则。
+- [维护](docs/maintenance.md)：vendor 单包原版、workspace/build、检查边界与当前本地意图。
 
 ## 🔎 Keywords
 
