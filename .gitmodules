@@ -1,3 +1,6 @@
 [submodule "pi-goal"]
 	path = fork/pi-goal
 	url = ./fork/pi-goal
+[submodule "pi-mcp-adapter"]
+	path = fork/pi-mcp-adapter
+	url = ./fork/pi-mcp-adapter

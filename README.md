@@ -4,7 +4,7 @@
 
 ## 安装与加载
 
-需要 Node.js 22.19+、npm 和 Pi 1.5.0；构建 CC Style、Session Naming、Subagents、Processes、Goal 时还需 Bun。Node 直接运行 TypeScript 的测试建议使用 Node 24。将下面的仓库地址占位符换成实际地址：
+需要 Node.js 22.19+、npm 和 Pi 1.5.0；构建 CC Style、Session Naming、Subagents、Processes、Goal、MCP Adapter 时还需 Bun。Node 直接运行 TypeScript 的测试建议使用 Node 24。将下面的仓库地址占位符换成实际地址：
 
 ```sh
 git clone --recurse-submodules <仓库地址> pi-packages
@@ -17,6 +17,7 @@ npm run build -w pi-session-naming
 npm run build -w pi-subagents
 npm run build -w pi-processes
 npm run build -w @narumitw/pi-goal
+npm run build -w pi-mcp-adapter
 
 # 从本地路径安装一个插件；Pi 直接加载，不复制、不安装本地包依赖
 pi install "$PWD/local/pi-todo"
@@ -53,6 +54,7 @@ pi -e "$PWD/local/pi-todo"
 | [pi-effort](local/pi-effort/README.md) | 插件 | 推理档位滑杆与受控 ultra 提示 |
 | [pi-goal](fork/pi-goal/extensions/pi-goal/README.md) | Fork 插件 | 持续推进目标、完成审计、预算与 durable 续跑 |
 | [pi-li-uikit](local/pi-li-uikit/README.md) | 共享库 | 面板、选择器、鼠标和剪贴板组件 |
+| [pi-mcp-adapter](fork/pi-mcp-adapter/README.md) | Fork 插件 | MCP 网关、按需连接、OAuth、Apps 与 durable 后台结果 |
 | [pi-model-capacity](local/pi-model-capacity/README.md) | 插件 | 容量、订阅窗口和余额观测 |
 | [pi-model-prompts](local/pi-model-prompts/README.md) | 插件 | 模型规则、命名提示词与片段汇总 |
 | [pi-package-manager](local/pi-package-manager/README.md) | 插件 | 已配置包的启停、过滤和显式更新 |
@@ -82,6 +84,10 @@ pi -e "$PWD/local/pi-todo"
 | `pi-goal:start`、`pi-goal:cancel`、`pi-goal:event:${runId}`（无版本旧兼容，默认 OFF） | [Goal](fork/pi-goal/extensions/pi-goal/docs/protocols.md#managed-rpc-旧兼容) | 可选可信 managed-run 调用方 | 无 owner 不假定接受；开关关闭拒绝新 start，不影响手动 Goal |
 | `statusline:processes-snapshot-v2`、`processes:snapshot-request-v2`、`processes:open-request-v2` | [Processes](local/pi-processes/README.md#可选协作与降级) | CC Style | 无 processes 行/打开动作，不读私有存储 |
 | `processes:managed-snapshot-v1`、`processes:managed-snapshot-request-v1` | [Processes](local/pi-processes/docs/MANAGED_EXECUTION.md#只读-managed-snapshot-v1) | 外部只读监管方 | 无消费者不影响执行；快照本身不授予控制或 ownership |
+| `pi-mcp-adapter/status/v1` | [MCP Adapter](fork/pi-mcp-adapter/docs/extension-api.md) | 外部只读状态观察方 | 不显示 MCP 汇总，不连接服务器或读取凭据 |
+| `pi-mcp-adapter:runtime-register:v1`、`pi-mcp-adapter:runtime-snapshot:v1`、`pi-mcp-adapter:runtime-tool-call:v1` | [MCP Adapter](fork/pi-mcp-adapter/docs/extension-api.md) | 可信外部扩展 | 无回复视为能力不可用，不绕过审批或自行补发 |
+| `pi-mcp-adapter:protocol:v1` | [MCP Adapter](fork/pi-mcp-adapter/docs/protocol-extensions.md) | 可信自定义协议扩展 | 无 hook 明确拒绝，不暴露原始 client/transport |
+| `pi-mcp-adapter:tool-approval-request`（无版本旧兼容） | [MCP Adapter](fork/pi-mcp-adapter/docs/tools.md) 发请求 | 可选外部审批方 | 无 claim 为 abstain；保留本包审批或拒绝，不默许执行 |
 | `provider:activity-v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义 DTO；provider adapter 发布 | CC Style、Compact、SDK observer | 无队列/负载展示，压缩时钟正常计时 |
 | `model-capacity:snapshot-v2`、`model-capacity:request-snapshot-v2`、`model-capacity:watch-v2` | [Model Capacity](local/pi-model-capacity/README.md) | CC Style | 不显示容量，模型选择和请求照常 |
 | `model-capacity:register-adapter-v1`、`model-capacity:adapter-ready-v1` | [Model Capacity](local/pi-model-capacity/README.md) 与外部 adapter | adapter 注册 helper、CC watch 恢复 | 尚未准入不伪造成功；缺 adapter 不观测该 provider |
@@ -102,7 +108,7 @@ pi -e "$PWD/local/pi-todo"
 | `process-wait-bridge-v1` / `pi.subagents.process-wait-bridge.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 保留旧 API | 外部旧进程消费者 | 无 bridge 无协作 continuation；不与 V2 混用 |
 | `goal-continuation-obligation-v1` / `pi.goal.continuation-obligation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义，[Goal](fork/pi-goal/extensions/pi-goal/docs/protocols.md#continuation-与-obligation) 注册 reader | Subagents、Processes fallback | 无 reader 返回 none；unknown 保留 pending，不抢 continuation |
 | `pi.subagents.producer-continuation-proof.v1` | [Subagents](local/pi-subagents/README.md) | Goal claimant | 无兼容 registry 时不 claim Subagents，producer 自行唤醒 |
-| `pi-session-inject/mailbox-v1` | [Session Inject](local/pi-session-inject/README.md) | Goal、Subagents、Processes、Compact 只读过滤及外部 producer | 这是共享库硬依赖；无 active owner 保留 pending，不私发 fallback |
+| `pi-session-inject/mailbox-v1` | [Session Inject](local/pi-session-inject/README.md) | Goal、Subagents、Processes、MCP Apps/OAuth/Tasks、Compact 只读过滤及外部 producer | 这是共享库硬依赖；无 active owner 保留 pending，不私发 fallback |
 | `pi.session-runtime.effective-context.v1`、`pi.session-runtime.session-assembly-realm.v1`、`pi.session-runtime.factory-loader-realms.v1` | [Session Runtime](local/pi-session-runtime/README.md) | Subagents、Side Chat、Compact、外部 SDK owner | 无 capture 按合同拒绝/重建；realm 冲突拒绝，不拿错 SDK 执行 |
 | `pi.session-runtime.terminal-owner.v1`、`pi.session-runtime.terminal-gate.v1` | [Session Runtime](local/pi-session-runtime/README.md) | managed child view | 无 lease 不交接，保留 Main，不影响 headless |
 | `pi.claude-style.internals.v1` | [CC Style 诊断 registry](local/pi-claude-style/docs/maintenance.md#调度观测与兼容) | Side Chat probe 贡献 | 无 CC 仅不汇总诊断；Side 自行验证，不授予执行或视图权限 |
@@ -122,6 +128,7 @@ npm run typecheck
 npm test                         # 文档链接/可达性 + 各包离线测试
 npm run check:goal               # Goal retained Fork 检查；不把 Biome 扩到全仓
 npm run test:integration          # 跨插件及缺失协作方降级
+npm run test:integration:mcp      # MCP 与共享 transport、Goal/CC 的定向联测
 npm run test:integration:stock-host # Bun PTY；原版无 CC child 视图
 ```
 

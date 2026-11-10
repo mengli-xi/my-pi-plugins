@@ -4,18 +4,20 @@
   "type": "module",
   "workspaces": [
     "local/*",
-    "fork/pi-goal/extensions/pi-goal"
+    "fork/pi-goal/extensions/pi-goal",
+    "fork/pi-mcp-adapter"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces && tsc -p integration/tsconfig.json",
     "test": "node --test scripts/check-doc-links.test.mjs && node scripts/check-doc-links.mjs && node scripts/isolated-agent.mjs npm run test --workspaces",
-    "test:integration": "npm run build -w pi-claude-style && npm run build -w pi-subagents && npm run build -w pi-processes && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/*.test.ts",
+    "test:integration": "npm run build -w pi-claude-style && npm run build -w pi-subagents && npm run build -w pi-processes && npm run build -w @narumitw/pi-goal && npm run build -w pi-mcp-adapter && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/*.test.ts",
     "test:integration:side-chat": "npm run build -w pi-claude-style && node scripts/isolated-agent.mjs bun integration/side-chat/sdk-view-e2e.mjs && PI_S2_NATIVE_PRESENTATION=1 node scripts/isolated-agent.mjs bun integration/side-chat/sdk-view-e2e.mjs",
     "test:integration:stock-host": "npm run build -w pi-subagents && bun integration/subagent-no-presentation.mjs",
     "test:integration:patched-host": "node integration/run-patched-host.mjs",
     "test:integration:subagents": "npm run build -w pi-subagents && node integration/run-subagents.mjs",
     "check:goal": "node scripts/isolated-agent.mjs npm --prefix fork/pi-goal run check",
-    "test:integration:goal-ui": "npm run build -w @narumitw/pi-goal && npm run build -w pi-claude-style && node scripts/isolated-agent.mjs bun integration/goal/ui-e2e.mjs"
+    "test:integration:goal-ui": "npm run build -w @narumitw/pi-goal && npm run build -w pi-claude-style && node scripts/isolated-agent.mjs bun integration/goal/ui-e2e.mjs",
+    "test:integration:mcp": "npm run build -w pi-claude-style && npm run build -w @narumitw/pi-goal && npm run build -w pi-mcp-adapter && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/mcp*.test.ts"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.5.0",
@@ -29,6 +31,10 @@
     "github-slugger": "^2.0.0",
     "marked": "^18.0.11",
     "typescript": "~5.9.3",
-    "@biomejs/biome": "2.5.6"
+    "@biomejs/biome": "2.5.6",
+    "vitest": "5.1.0",
+    "tsx": "4.23.15",
+    "@types/cross-spawn": "6.0.6",
+    "@types/open": "6.2.1"
   }
 }
