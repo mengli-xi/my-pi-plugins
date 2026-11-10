@@ -83,7 +83,7 @@ pi install /path/to/my-pi/local/pi-effort
 在隔离 HOME/config/cache 中安装官方 Pi 1.5.0 锁定依赖，不读取日常配置：
 
 ```bash
-npm ci # 在仓库根运行；以下验证命令在包目录运行
+bun install --frozen-lockfile # 在仓库根运行；以下验证命令在包目录运行
 npm run typecheck
 npm test
 ```

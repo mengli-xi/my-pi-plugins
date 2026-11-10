@@ -8,7 +8,7 @@
 
 共享库，不加入 Pi packages；通过 workspace 依赖 import TypeScript subpath，无独立 build。
 
-依赖统一在仓库根 `npm ci`，不在包目录另建 lockfile。目标 Pi 1.5.0；编译消费者改源码或共享库后须重建并启动新进程。
+目标 Pi 1.5.0；依赖在仓库根安装，见[根安装说明](../../README.md#安装与加载)。编译消费者改源码或共享库后须重建并启动新进程。
 
 ## 配置与命令
 

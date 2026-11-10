@@ -1,15 +1,15 @@
 # Pi 插件与共享库
 
-本仓库用 npm workspace 管理可单独加载的 Pi 插件、共享运行库和可选宿主补丁。
+本仓库用 workspace 管理可单独加载的 Pi 插件、共享运行库和可选宿主补丁；依赖用 bun 安装。
 
 ## 安装与加载
 
-需要 Node.js 22.19+、npm 和 Pi 1.5.0；构建 CC Style、Session Naming、Subagents、Processes、Goal、MCP Adapter 时还需 Bun。Node 直接运行 TypeScript 的测试建议使用 Node 24。将下面的仓库地址占位符换成实际地址：
+开发本仓库需要 Node.js 22.19+、Bun 1.3+ 和 Pi 1.5.0。Bun 是开发前提：依赖安装和 6 个包的构建都用它，`node_modules` 由 bun 从全局缓存按写时复制生成，多份 clone 不重复占盘；日常 `npm run` 脚本不变，用 Node 自带的 npm 即可。Node 直接运行 TypeScript 的测试建议使用 Node 24。**插件使用者不需要 Bun，也不需要安装本仓库依赖**：Pi 从本地路径直接加载插件，不读根 lock。将下面的仓库地址占位符换成实际地址：
 
 ```sh
 git clone <仓库地址> pi-packages
 cd pi-packages
-npm ci
+bun install --frozen-lockfile   # 全仓唯一 lock：根 bun.lock
 # 仅这些包需要生成产物；使用前显式构建
 npm run build -w pi-claude-style
 npm run build -w pi-session-naming
@@ -37,7 +37,7 @@ pi -e "$PWD/local/pi-todo"
 
 以上方式来自 Pi 1.5.0 随包 `docs/packages.md`：`pi install <local-path>` 写个人配置，`--local` 写受信项目的 `.pi/settings.json`；`-e <package-path>` 仅本次加载。settings 中的相对本地路径以该 settings 文件所在目录为基准，不以启动 cwd 为基准。Pi 按包的 `pi.extensions`/`pi.skills` 声明加载资源，不自动加载全部 workspace。管理入口见 [pi-package-manager](local/pi-package-manager/README.md)。
 
-**插件**注册 extension，可逐个启用；**共享库**只被 import，不加入 Pi packages。四个共享库由 npm workspace 依赖解析，不能把包目录单独拷走后假定相邻依赖仍可用。全仓只在根 `npm ci`，不在各包重复安装或创建 lockfile。编译消费者更新后先重建并启动新 Pi 进程，不以 `/reload` 代替构建验证。
+**插件**注册 extension，可逐个启用；**共享库**只被 import，不加入 Pi packages。四个共享库由 workspace 依赖解析，不能把包目录单独拷走后假定相邻依赖仍可用。依赖只在仓库根按上面的安装命令装一次，不在各包重复安装或创建 lockfile。编译消费者更新后先重建并启动新 Pi 进程，不以 `/reload` 代替构建验证。
 
 `fork/` 下每个目录是一个直接纳入主仓库的上游插件包，与 `local/*` 共用根 workspace 和 lock。原版保存在同路径的 `vendor/upstream` 分支，本地补丁在主分支维护；来源见各包 `UPSTREAM.json`，升级规则见 [贡献规范](CONTRIBUTING.md#fork-维护规则)。Goal 入口是 [fork/pi-goal](fork/pi-goal/README.md)。
 
@@ -128,7 +128,7 @@ Main 和普通插件不要求宿主补丁。原版 Pi 1.5.0 也能打开 Subagen
 ## 验证入口
 
 ```sh
-npm ci
+bun install --frozen-lockfile
 npm run typecheck
 npm test                         # 文档链接/可达性 + 各包离线测试
 npm run check:goal               # Goal 包内检查；不把 Biome 扩到全仓

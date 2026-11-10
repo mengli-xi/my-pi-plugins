@@ -4,7 +4,7 @@
 
 ## 加载与构建
 
-需要 Pi 1.5.0。仓库根执行 `npm ci`，将本包绝对路径加入实际 agent directory 的 `settings.json`，或用 `pi -e /absolute/path/to/local/pi-skills` 临时加载。TypeScript 直接加载，无 build、工具注册或本包配置文件；不自动启用其他插件。
+需要 Pi 1.5.0。按[根安装说明](../../README.md#安装与加载)安装依赖，将本包绝对路径加入实际 agent directory 的 `settings.json`，或用 `pi -e /absolute/path/to/local/pi-skills` 临时加载。TypeScript 直接加载，无 build、工具注册或本包配置文件；不自动启用其他插件。
 
 ## 使用
 

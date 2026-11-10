@@ -83,7 +83,7 @@ role 仅有 `main | child | side`，默认 main；每个实例独立，不读 ch
 ## 验证
 
 ```sh
-npm ci # 在仓库根运行；以下验证命令在包目录运行
+bun install --frozen-lockfile # 在仓库根运行；以下验证命令在包目录运行
 npm run check
 npm run test:host
 ```

@@ -5,7 +5,7 @@
 ## Fork 与依赖边界
 
 上游来源与固定 tag、commit、子目录记录在 [UPSTREAM.json](../UPSTREAM.json)。原版位于主仓库 `vendor/upstream` 分支的 `fork/pi-goal/`，本目录维护本地补丁。升级流程见根 [贡献规范](../../../CONTRIBUTING.md#fork-维护规则)。
-活动 Goal workspace 是 `fork/pi-goal`。根 npm workspace 和唯一根 lockfile 统一依赖；只在根 `npm ci`，不在 Fork 另装依赖或维护第二份 lock。共享库在 `local/`，不作为 Pi extension 启用。TypeScript、Node types 和 Pi development baseline 由根管理；保留 Fork 原有 Biome 检查，不给整个根仓库新增 formatter 或升级 TypeScript。
+活动 Goal workspace 是 `fork/pi-goal`。根 workspace 和唯一根 `bun.lock` 统一依赖；只在根 `bun install`，不在 Fork 另装依赖或维护第二份 lock。共享库在 `local/`，不作为 Pi extension 启用。TypeScript、Node types 和 Pi development baseline 由根管理；保留 Fork 原有 Biome 检查，不给整个根仓库新增 formatter 或升级 TypeScript。
 
 Goal 使用 npm `@narumitw/pi-tui-kit`，当前锁定 **0.40.0**；本目录不包含该共享库的源码。
 
@@ -16,7 +16,7 @@ stock Pi baseline 是 **1.5.0**；生产行为依赖公开 extension/session/con
 从根运行：
 
 ```sh
-npm ci
+bun install --frozen-lockfile
 npm run build -w @narumitw/pi-goal
 pi -e "$PWD/fork/pi-goal"
 ```

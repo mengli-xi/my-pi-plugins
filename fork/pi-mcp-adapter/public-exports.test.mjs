@@ -78,7 +78,7 @@ test("npm pack includes working runtime and declaration entries for every public
       for (const path of [entry.import, entry.types]) assert.ok(files.has(path.slice(2)), `not packed: ${path}`);
     }
     for (const asset of ["dist/app-bridge.bundle.js", "dist/mcp-keyring-helper.cjs", "cli.js"]) assert.ok(files.has(asset), asset);
-    assert.equal([...files].some(path => path.endsWith(".test.ts") || path === "package-lock.json"), false);
+    assert.equal([...files].some(path => path.endsWith(".test.ts") || path === "bun.lock"), false);
     const consumer = join(sandbox.root, "consumer");
     const unpacked = join(consumer, "node_modules", manifest.name);
     await mkdir(unpacked, { recursive: true });

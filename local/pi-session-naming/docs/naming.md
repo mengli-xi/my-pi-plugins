@@ -25,7 +25,7 @@ configuration 由 `conf` 管理，位于 `<agent-dir>/extensions/pi-session-nami
 本包从 `dist/index.js` 加载，source-only 修改后必须显式 build，并使用 fresh Pi process 验证；不提交 `dist` 或 `node_modules`。
 
 ```sh
-npm ci # 在仓库根运行；以下验证命令在包目录运行
+bun install --frozen-lockfile # 在仓库根运行；以下验证命令在包目录运行
 npm run check
 ```
 

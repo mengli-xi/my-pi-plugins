@@ -7,7 +7,7 @@
 需要 stock Pi 1.5.0。先在仓库根目录安装 workspace 依赖，再构建本包：
 
 ```sh
-npm ci
+bun install --frozen-lockfile
 npm run build -w pi-processes
 pi -e "$PWD/local/pi-processes"
 ```

@@ -19,7 +19,7 @@ Pi 从 `dist/index.js` 加载插件，从 `skills/subagents` 加载技能。`scr
 | `test/unit`、`test/contract` | 本包离线测试 |
 | `test/real` | 仅加载本包和 faux provider 的宿主测试 |
 
-共享库通过根 npm workspace 解析，没有各自的安装步骤。修改共享库或编译源码后，重建直接消费者，再启动新 Pi 进程；`/reload` 只验证生命周期，不代替构建。统一 transport build 为 `mailbox-v1.0.6`，不能混用旧 bundle。
+共享库通过根 workspace 解析，没有各自的安装步骤。修改共享库或编译源码后，重建直接消费者，再启动新 Pi 进程；`/reload` 只验证生命周期，不代替构建。统一 transport build 为 `mailbox-v1.0.6`，不能混用旧 bundle。
 
 ## 排障
 

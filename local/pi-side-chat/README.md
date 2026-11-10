@@ -7,7 +7,7 @@
 需要原版 Pi 1.5.0，在仓库根安装 workspace 依赖后直接加载 TypeScript：
 
 ```sh
-npm ci
+bun install --frozen-lockfile
 pi -e "$PWD/local/pi-side-chat"
 ```
 

@@ -15,7 +15,7 @@
 从 package 目录运行：
 
 ```sh
-npm ci # 在仓库根运行；以下验证命令在包目录运行
+bun install --frozen-lockfile # 在仓库根运行；以下验证命令在包目录运行
 npm run typecheck
 npm test
 ```

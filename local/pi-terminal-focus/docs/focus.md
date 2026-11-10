@@ -29,7 +29,7 @@ npm run check
 npm run check-internals -- /path/to/pi-1.5.0
 ```
 
-支持 Pi 1.5，TypeScript 直接加载，无 build/dist。可先执行 `npm ci # 在仓库根运行；以下验证命令在包目录运行` 安装开发依赖。
+支持 Pi 1.5，TypeScript 直接加载，无 build/dist。可先执行 `bun install --frozen-lockfile # 在仓库根运行；以下验证命令在包目录运行` 安装开发依赖。
 
 验证使用独立 HOME、agent/config/cache 与 session directory，不读取或改动日常 profile。单测和 source/final-host probe 只用假 terminal 捕获控制序列，不操作真实 tmux/终端，不调用模型。probe 不能替代人工 focus、IME 与 child handoff 验收。
 
