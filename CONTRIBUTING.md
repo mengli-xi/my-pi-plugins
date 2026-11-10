@@ -51,24 +51,24 @@ node scripts/pi-upgrade-check.mjs 1.6.0 --apply  # 全部通过才更新版本�
 检查入口只用两个名字：
 
 - `check:internals`：只使用已安装 Pi SDK 的进程内探针，不启动 `pi`。用 `scripts/isolated-agent.mjs` 隔离配置。
-- `check:host`：启动真实 `pi`，统一经 `scripts/check-host.mjs` 传递 `PI_BIN`；缺省为仓库根 `node_modules/.bin/pi`，不用日常 PATH 上的 Pi。CLI 版本必须与已安装 SDK 一致。包可以串联多个子检查，失败后仍继续；该包需要的构建也放在入口中。公共 runner 在启动任何子命令前隔离 HOME、agent、session、XDG 和 npm 配置，不传日常 provider 凭据；子检查继续使用各自临时 profile 和本地 faux provider；macOS 使用短临时路径，避免 Unix socket 长度限制。`PI_OFFLINE` 只禁止 Pi 的自动联网，不能冒充 provider 网络沙箱。
+- `check:host`：启动真实 `pi`，统一经 `scripts/check-host.mjs` 传递 `PI_BIN`；缺省为仓库根 `node_modules/.bin/pi`，不用日常 PATH 上的 Pi。CLI 版本必须与已安装 SDK 一致。包可以串联多个子检查，失败后仍继续；该包需要的构建也放在入口中。公共 runner 在启动任何子命令前隔离 HOME、agent、session、XDG 和 npm 配置，不传日常 provider 凭据；子检查继续使用各自临时 profile 和本地 faux provider；macOS 使用短临时路径，避免 Unix 套接字长度限制。`PI_OFFLINE` 只禁止 Pi 的自动联网，不能冒充 provider 网络沙箱。
 
 可单独运行 `npm run check:internals -w <包名>` 或 `PI_BIN=/absolute/path/to/pi npm run check:host -w <包名>`。当前检查范围与预期耗时如下；时间是量级，不是时限承诺：
 
 | 包 | 进程内检查 | 真实宿主检查 | 耗时量级 |
 | --- | --- | --- | --- |
-| claude-style | prototype catalog | 构建、宿主 identity、child retry、faux provider 错误、PTY 快照、完整历史 | 数分钟；单次 RPC/画面等待通常最多半分钟 |
-| rewind | SessionManager mutation seam | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
-| skills | user-message render seam | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
-| terminal-focus | cursor shape、terminal lifecycle、focus input | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
-| side-chat | 无 | child view 实例探针 | 秒级；宿主进程上限半分钟 |
+| claude-style | 原型依赖目录 | 构建、宿主类身份、子视图重试、本地模拟 provider 错误、PTY 快照、完整历史 | 数分钟；单次 RPC/画面等待通常最多半分钟 |
+| rewind | `SessionManager` 修改接口探针 | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
+| skills | `user-message.render` 探针 | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
+| terminal-focus | 光标渲染结构、终端生命周期、聚焦输入 | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
+| side-chat | 无 | 子视图实例探针 | 秒级；宿主进程上限半分钟 |
 | cc-memory | 无 | faux provider、冻结 system、compact 与 resume | 数十秒；单次等待上限约一分钟 |
 | session-compact | 无 | faux provider、压缩与恢复材料、有效上下文 | 数十秒；单次等待上限半分钟 |
-| mcp-adapter | 无 | 构建、真实 CLI 启动及其 SDK graph 加载生产 dist | 数十秒；子进程上限半分钟 |
+| mcp-adapter | 无 | 构建、真实 CLI 启动及其 SDK 依赖图加载生产 dist | 数十秒；子进程上限半分钟 |
 
 这些检查不调用真实 provider、不读取或修改用户日常配置。它们不能证明真实 provider、人工终端与输入法、没有探针的私有行为兼容。`test:patched-host` 及补丁联测不纳入原版宿主门禁；**只要 Pi 版本改变，`host-patches/` 必须按[补丁 README](host-patches/pi/v1.5.0/README.md#回滚升级与边界)重新 pin 上游及 hashes、重新构建和验证**，不能把旧补丁直接套到新版。
 
-全部检查通过后，`--apply` 在临时副本里更新各包 Pi peers 和 `bun.lock`，再核对当前 HEAD 与工作区没有变化，仅复制根 devDeps、各包 peers 和 lock 到当前工作区；不安装到当前工作区，也不更新日常 Pi。审查 diff 后自行提交，正常开发仍使用 `bun install --frozen-lockfile`。当前版本自检可运行 `node scripts/pi-upgrade-check.mjs 1.5.0`，它需要 registry/安装网络，不放入 `npm test`；后者只包含离线的升级工具单元测试。
+全部检查通过后，`--apply` 在临时副本里更新各包 Pi peers 和 `bun.lock`，再核对当前 HEAD 与工作区没有变化，仅复制根 devDeps、各包 peers 和 lock 到当前工作区；不安装到当前工作区，也不更新日常 Pi。审查 diff 后自行提交，正常开发仍使用 `bun install --frozen-lockfile`。当前版本自检可运行 `node scripts/pi-upgrade-check.mjs 1.5.0`，它需要 registry/安装网络，不放入 `npm test`；升级工具在其中只运行离线单元测试。
 
 ## 文档
 
