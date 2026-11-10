@@ -3,10 +3,10 @@ import test from "node:test";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { SessionManager, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import { createMcpAdapter } from "../fork/pi-mcp-adapter/dist/index.js";
+import { createMcpAdapter } from "../fork/pi-mcp-adapter/index.ts";
 import { appServer } from "./mcp/server.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { frozenTaskResultsFromBranch, frozenTaskResultEntry, pendingTasksFromBranch, taskRecoveryFromSession, taskCheckpointEntry } from "../fork/pi-mcp-adapter/dist/task-entries.js";
+import { frozenTaskResultsFromBranch, frozenTaskResultEntry, pendingTasksFromBranch, taskRecoveryFromSession, taskCheckpointEntry } from "../fork/pi-mcp-adapter/task-entries.ts";
 import { assertDurableFile, assertMailboxAccepted, collaborators, componentProducer, deferred, mcpFixture, until } from "./mcp/harness.ts";
 
 /** The remote execution is the actor fake. Registry, source records, Inject

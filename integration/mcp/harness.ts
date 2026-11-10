@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxProvider, fauxAssistantMessage, type Message } from "@earendil-works/pi-ai";
 import { createAgentSessionServices, createAgentSessionFromServices, createAgentSessionRuntime, SessionManager, SettingsManager, initTheme, type ExtensionAPI, type ExtensionContext, type ExtensionFactory, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import { createMcpMailbox } from "../../fork/pi-mcp-adapter/dist/mailbox.js";
-import { createMcpRuntimeOwner } from "../../fork/pi-mcp-adapter/dist/runtime-owner.js";
-import { ConsentManager } from "../../fork/pi-mcp-adapter/dist/consent-manager.js";
-import { BackgroundTaskRegistry } from "../../fork/pi-mcp-adapter/dist/task-jobs.js";
-import { MCP_TASK_CUSTOM_TYPE, pendingTaskEntry, frozenTaskResultEntry, acceptedTaskResultEntry, taskCheckpointEntry } from "../../fork/pi-mcp-adapter/dist/task-entries.js";
+import { createMcpMailbox } from "../../fork/pi-mcp-adapter/mailbox.ts";
+import { createMcpRuntimeOwner } from "../../fork/pi-mcp-adapter/runtime-owner.ts";
+import { ConsentManager } from "../../fork/pi-mcp-adapter/consent-manager.ts";
+import { BackgroundTaskRegistry } from "../../fork/pi-mcp-adapter/task-jobs.ts";
+import { MCP_TASK_CUSTOM_TYPE, pendingTaskEntry, frozenTaskResultEntry, acceptedTaskResultEntry, taskCheckpointEntry } from "../../fork/pi-mcp-adapter/task-entries.ts";
 
 export const IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aY1cAAAAASUVORK5CYII=";
 export function text(message: { content?: unknown }): string {

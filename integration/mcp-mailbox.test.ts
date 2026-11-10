@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createMcpAdapter } from "../fork/pi-mcp-adapter/dist/index.js";
+import { createMcpAdapter } from "../fork/pi-mcp-adapter/index.ts";
 import { IMAGE, assertDurableFile, assertMailboxAccepted, collaborators, componentProducer, mcpFixture, text, until } from "./mcp/harness.ts";
 import { appServer, uiPost } from "./mcp/server.ts";
 
 for (const order of ["mcp-first", "mcp-last", "without-collaborators"] as const) {
-  test(`full compiled createMcpAdapter App → real Inject projection (${order})`, async () => {
+  test(`full createMcpAdapter App → real Inject projection (${order})`, async () => {
     const f = mcpFixture();
     const server = await appServer();
     const adapter = createMcpAdapter({ config: { mcpServers: { demo: { url: server.url, directTools: false, lifecycle: "eager", approveTools: false } },
