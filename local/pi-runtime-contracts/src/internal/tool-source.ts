@@ -7,3 +7,7 @@ export function sourcePath(source: { readonly path: string; readonly baseDir?: s
   if (!candidate) throw new Error("extension tool source has no canonical base");
   return realpathSync(candidate);
 }
+
+export function isSyntheticToolSourcePath(path: string): boolean {
+  return path.startsWith("<");
+}

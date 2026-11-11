@@ -36,7 +36,7 @@ const registration = registry.register({ version: 1, manifest: {
 
 `owner_id` 是协议 namespace；实际 npm 包身份由冻结的 `package_name`、`package_manifest` 证明，不从 owner 字符串猜包目录。`captureChildFactoryV1` 找 Main 文件最近的实际 `package.json`，读取真实 `name`，冻结 manifest 的文件 descriptor。返回字段为 `{kind,package_name,package_manifest,module,export,artifacts,files}`；`files` 按 `[module,...artifacts]` 顺序存 descriptor。
 
-`child_entrypoint` 也必须在声明方的同一个包内；module/artifacts 必须是包内相对路径；absolute、越界、软链逃逸、落入另一个嵌套包都拒绝。文件必须为当前 UID 的 regular file；descriptor 固定 canonical path、device/inode/size/mtime 与 SHA-256。注册时重验真实包名及全部文件，不能用自报 SHA 给未校验的执行文件背书。已知实际执行文件应列入 artifacts；这不是 JavaScript 传递依赖沙箱。
+`child_entrypoint` 也必须在声明方的同一个包内；module/artifacts 必须是包内相对路径；两个消费者的工具来源处理不同：Subagents 遇到无法证明来源的声明工具直接失败，Side 逐个工具给诊断后跳过（`<...>` 合成来源在两者都先跳过）。absolute、越界、软链逃逸、落入另一个嵌套包都拒绝。文件必须为当前 UID 的 regular file；descriptor 固定 canonical path、device/inode/size/mtime 与 SHA-256。注册时重验真实包名及全部文件，不能用自报 SHA 给未校验的执行文件背书。已知实际执行文件应列入 artifacts；这不是 JavaScript 传递依赖沙箱。
 
 `activation: "mirror"` 的 factory 随有效 Main binding 进入 closure；`required-only` 仍只在工具、provider、命令或显式 required/dependency 需要它时进入。owner/工具来源冲突、重复 child entrypoint、缺 dependency、依赖环或绑定顺序错误沿用 closure 的拒绝语义，不靠加载顺序选择赢家。
 

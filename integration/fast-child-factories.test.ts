@@ -52,7 +52,7 @@ export default function extension(pi) {
   return { f, registerProvider, registerThirdParty, captureApi, get pi() { return pi; }, cleanup() { delete (globalThis as Record<symbol, unknown>)[key]; f.cleanup(); } };
 }
 
-for (const consumer of ["subagents", "side-chat"] as const) for (const reverse of consumer === "subagents" ? [false, true] : [false]) for (const state of ["override-on", "default-on", "override-off", "absent"] as const) {
+for (const consumer of ["subagents", "side-chat"] as const) for (const reverse of consumer === "subagents" ? [false, true] : [false]) for (const state of ["override-on", "default-on", "override-off", "off", "absent"] as const) {
   test(`${consumer}: ${state}, ${reverse ? "consumer first" : "owners first"}, unknown factory is loaded`, { timeout: 30000 }, async () => {
     const source = await fixture(), { f } = source;
     const owners = [source.registerThirdParty, ...(state === "absent" ? [] : [piFast])];
@@ -80,6 +80,8 @@ for (const consumer of ["subagents", "side-chat"] as const) for (const reverse o
         const child = await binding.runtime.childForView(binding.host.snapshot().agents[0]!.agent.agent_id);
         assert.ok(child);
         assert.equal(child.session.sessionManager.getEntries().some(entry => entry.type === "custom" && entry.customType === "pi-fast:session-state-v1"), false);
+        if (state === "absent") assert.equal(binding.host.snapshot().agents[0]!.agent.profile.capabilities.entries.some(entry => entry.owner === "pi-fast"), false);
+        else assert.equal(binding.host.snapshot().agents[0]!.agent.profile.capabilities.entries.find(entry => entry.owner === "pi-fast")!.child_factory!.context.enabled, state === "override-on" || state === "default-on");
       } else {
         await runtime.session.prompt("Main seed");
         const plan = await sideExecutionPlan(source.pi, runtime.session.extensionRunner!.createContext(), f.agentDir);

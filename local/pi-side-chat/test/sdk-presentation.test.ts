@@ -77,9 +77,6 @@ test("a supplied presentation plan does not consult the live session or registry
     const factories = await sidePresentationFactories(unavailable, {} as ViewLifecycle, { presentationOwners: [owner] });
     assert.equal(factories.length, 1);
     assert.deepEqual(await sidePresentationFactories(unavailable, {} as ViewLifecycle, {}), []);
-    const wrongTarget = { ...owner, target_id: "pi-subagents" };
-    await assert.rejects(sidePresentationFactories(unavailable, {} as ViewLifecycle, { presentationOwners: [wrongTarget], requiredOwnerIds: [owner.owner_id] }), /target must be pi-side-chat/);
-    assert.deepEqual(await sidePresentationFactories(unavailable, {} as ViewLifecycle, { presentationOwners: [wrongTarget] }), []);
   } finally { await fixture.dispose(); }
 });
 

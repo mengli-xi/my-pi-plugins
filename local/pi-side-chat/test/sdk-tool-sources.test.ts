@@ -45,4 +45,12 @@ test("Side canonicalizes absolute symlinks and package-relative tool sources, an
   assert.deepEqual(await plan.factories("side"), []);
   assert.ok(warnings.some(message => message.includes("unknown") && message.includes(join(root, "child.ts"))));
   assert.ok(warnings.some(message => message.includes("missing") && message.includes("missing.ts")));
+  warnings.splice(0);
+  const synthetic = { getActiveTools: () => ["sdk-only"], getAllTools: () => [
+    { name: "sdk-only", sourceInfo: { path: "<sdk:sdk-only>", source: "sdk" } },
+  ] } as unknown as ExtensionAPI;
+  const syntheticPlan = await sideExecutionPlan(synthetic, ctx, root);
+  assert.deepEqual(syntheticPlan.tools, []);
+  assert.deepEqual(await syntheticPlan.factories("side"), []);
+  assert.deepEqual(warnings, [], "synthetic tool sources are skipped silently like Subagents closure");
 });

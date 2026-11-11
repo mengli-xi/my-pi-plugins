@@ -36,4 +36,4 @@ export { captureChildFactoryV1, validateChildFactoryV1 } from "#internal/child-f
 export type { ChildFactoryV1 } from "#internal/child-factory";
 export { validateChildFactoryProofV1 } from "#internal/child-factory-proof";
 export type { ChildFactoryProofV1 } from "#internal/child-factory-proof";
-export { sourcePath } from "#internal/tool-source";
+export { isSyntheticToolSourcePath, sourcePath } from "#internal/tool-source";

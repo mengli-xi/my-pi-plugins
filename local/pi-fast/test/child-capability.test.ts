@@ -64,3 +64,26 @@ test("failed binding reports a diagnostic without disabling /fast or request inj
   await f.command.handler("on", ctx as never);
   assert.deepEqual(f.request(ctx), { model: "fixture", service_tier: "priority" });
 });
+
+test("a failed rebind keeps the previous session binding usable", async t => {
+  const f = fixture(), registry = getOrCreateChildCapabilityRegistryV1();
+  const ctx = f.context(randomUUID()), sessionId = ctx.sessionManager.getSessionId();
+  t.after(() => f.emit("session_shutdown", ctx));
+  f.emit("session_start", ctx);
+  await f.command.handler("on", ctx as never);
+  const manifest = registry.snapshot(sessionId).registrations.find(item => item.owner_id === "pi-fast")!.manifest;
+  const conflicting = registry.register({ version: 1, manifest: { ...manifest, targets: {
+    ...manifest.targets, "pi-subagents": { ...manifest.targets["pi-subagents"]!, activation: "required-only" },
+  } } });
+  t.after(() => conflicting.release());
+  f.notifications.splice(0);
+  assert.doesNotThrow(() => f.emit("session_start", ctx));
+  assert.match(f.notifications[0]!, /Fast child capability unavailable/);
+  conflicting.release();
+  // The fake Main branch is static, so restore the fixture state after its replay.
+  await f.command.handler("on", ctx as never);
+  const registration = registry.snapshot(sessionId).registrations.find(item => item.owner_id === "pi-fast");
+  assert.ok(registration, "the original binding survives a rejected replacement");
+  assert.deepEqual(registration.factory_context, { enabled: true });
+  assert.deepEqual(f.request(ctx), { model: "fixture", service_tier: "priority" });
+});

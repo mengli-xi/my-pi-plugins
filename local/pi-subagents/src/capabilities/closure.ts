@@ -1,5 +1,5 @@
 import { VERSION } from "@earendil-works/pi-coding-agent";
-import { sourcePath } from "pi-runtime-contracts/child-capabilities-v1";
+import { isSyntheticToolSourcePath, sourcePath } from "pi-runtime-contracts/child-capabilities-v1";
 import { supportsSdkProviderV1 } from "./sdk-provider.js";
 import type { ResolvedAgentRoleV1 } from "../roles/types.js";
 import {
@@ -98,7 +98,7 @@ export function resolveToolCapabilityClosureV1(input: {
     else if (tool.sourceInfo.path === `<sdk:${name}>`) {
       if (!wildcard) throw new Error(`SDK tool is not reproducible: ${name}`);
       diagnostics.push(Object.freeze({ code: "wildcard-omitted", tool: name, reason: "sdk-tool" })); continue;
-    } else if (!tool.sourceInfo.path.startsWith("<")) {
+    } else if (!isSyntheticToolSourcePath(tool.sourceInfo.path)) {
       const path = sourcePath(tool.sourceInfo);
       const provenanceOwner = byEntrypoint.get(path);
       if (!provenanceOwner) {

@@ -70,17 +70,34 @@ export default function piFast(pi: ExtensionAPI): void {
   const registration = registry.register({ version: 1, manifest: { version: 1, owner_id: "pi-fast", main_entrypoint: captureEntrypointDescriptorV1(join(import.meta.dirname, "index.ts")), targets: { "pi-subagents": target, "pi-side-chat": target } } });
   const bindings = new Map<string, ChildCapabilityBindingHandleV1>();
   let generation = 0;
-  pi.on("session_start", (_event, ctx) => {
+  const bindSession = (ctx: ExtensionContext): void => {
+    const sessionId = ctx.sessionManager.getSessionId();
+    const bind = (): ChildCapabilityBindingHandleV1 => registry.bind({ version: 1,
+      registrationToken: registration.registrationToken, session_id: sessionId, runtime_generation: ++generation,
+      mode: ctx.mode === "json" ? "print" : ctx.mode, capture_context: () => ({ enabled: effective() }) });
     try {
-      const sessionId = ctx.sessionManager.getSessionId();
+      // Bind first: another registration instance may already own the session, so
+      // only release our own handle after proving the replacement was accepted.
+      const binding = bind();
       bindings.get(sessionId)?.release();
-      bindings.delete(sessionId);
-      bindings.set(sessionId, registry.bind({ version: 1, registrationToken: registration.registrationToken, session_id: sessionId, runtime_generation: ++generation, mode: ctx.mode === "json" ? "print" : ctx.mode,
-        capture_context: () => ({ enabled: effective() }) }));
+      bindings.set(sessionId, binding);
+      return;
     } catch (error) {
-      ctx.ui.notify(`Fast child capability unavailable: ${error instanceof Error ? error.message : String(error)}`, "warning");
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("runtime generation must replace the current binding")) {
+        ctx.ui.notify(`Fast child capability unavailable: ${message}`, "warning");
+        return;
+      }
+      const previous = bindings.get(sessionId);
+      if (!previous) { ctx.ui.notify(`Fast child capability unavailable: ${message}`, "warning"); return; }
+      // Cross-instance stale generation: release the previous handle and retry once.
+      previous.release();
+      bindings.delete(sessionId);
+      try { bindings.set(sessionId, bind()); }
+      catch (retry) { ctx.ui.notify(`Fast child capability unavailable: ${retry instanceof Error ? retry.message : String(retry)}`, "warning"); }
     }
-  });
+  };
+  pi.on("session_start", (_event, ctx) => bindSession(ctx));
   pi.on("session_shutdown", () => {
     for (const binding of bindings.values()) binding.release();
     bindings.clear();
