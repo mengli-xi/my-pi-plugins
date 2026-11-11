@@ -39,6 +39,7 @@ export class MainTurnNotificationCoordinatorV1 {
   readonly #cancelled = new Set<string>();
   readonly #projected = new Set<string>();
   #active = false;
+  #sessionManager?: ExtensionContext["sessionManager"];
   #failed = false;
   #revision = 0;
   #flushing?: Promise<void>;
@@ -50,7 +51,7 @@ export class MainTurnNotificationCoordinatorV1 {
     this.#getContext = options.getContext; this.#mailbox = options.mailbox;
     this.#nextId = options.nextId ?? randomUUID; this.#now = options.now ?? Date.now; this.#report = options.report ?? (() => {});
   }
-  activate(_ctx: ExtensionContext): void { this.#active = true; }
+  activate(ctx: ExtensionContext): void { this.#sessionManager ??= ctx.sessionManager; this.#active = true; }
   active(): boolean { return this.#active; }
   captureInput(input: { source: PromptInputSourceV1; streamingBehavior?: "steer" | "followUp" }): void { this.#candidate.capture(input); }
 
@@ -188,7 +189,7 @@ export class MainTurnNotificationCoordinatorV1 {
     this.#host.clearMainTurnPendingBatch(id);
     this.#accepted.delete(id);
     const successor = this.#host.mainTurnNotificationPending();
-    if (successor?.afterBatchId === id) this.#host.setMainTurnNotificationPending({});
+    if (successor?.afterBatchId === id) this.#host.setMainTurnNotificationPending(this.#host.disposed ? undefined : {});
     if (this.#host.mainTurnNotificationReceipt()?.batch.batchId === id) {
       this.#host.setMainTurnNotificationReceipt(undefined);
       this.#host.setNotificationTurnEpochSealed(false);
@@ -339,6 +340,6 @@ export class MainTurnNotificationCoordinatorV1 {
     await source.cancelOwned(ctx, "Side scope destroyed");
   }
   dispose(): void { this.#active = false; this.#candidate.reset(); }
-  #ownsScope(ctx: ExtensionContext): boolean { return this.#active && ctx.sessionManager === this.#getContext()?.sessionManager && ctx.sessionManager.getSessionId() === this.#sessionScopeId; }
+  #ownsScope(ctx: ExtensionContext): boolean { return this.#active && ctx.sessionManager === this.#sessionManager && ctx.sessionManager === this.#getContext()?.sessionManager && ctx.sessionManager.getSessionId() === this.#sessionScopeId; }
   #usable(ctx: ExtensionContext): boolean { return this.#ownsScope(ctx) && !this.#host.disposed; }
 }

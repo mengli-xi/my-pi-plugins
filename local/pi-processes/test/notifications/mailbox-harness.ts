@@ -27,6 +27,7 @@ export async function mailboxHarness(config = defaultProcessesConfig(), limits?:
   const host = new ProcessHost({ sessionScopeId: sessionId, launch: async value => { callbacks = value; return new Transport(); }, ...(limits ? { notificationBroker: createNotificationBrokerV1({ sessionScopeId: sessionId, limits }) } : {}) });
   const puts: Mail[] = [], accepted = new Map<string, Mail>(), imports: any[] = [], reports: string[] = [];
   const ctx = { isIdle: () => idle, sessionManager: { getSessionId: () => sessionId, getLeafId: () => branch.at(-1)?.id ?? null, getBranch: () => branch, getEntries: allEntries } } as unknown as ExtensionContext;
+  let currentContext = ctx;
   const pi = {
     appendEntry(customType: string, data: any) {
       if (markerFault && data.state === "pending") throw new Error("FAULT marker");
@@ -52,14 +53,14 @@ export async function mailboxHarness(config = defaultProcessesConfig(), limits?:
       return { producer: "pi-processes", key: mail.key, terminalId: `terminal:${mail.key}`, scope: { sessionId, anchorEntryId: mail.anchorEntryId }, outcome: "fulfilled", receiptEntryId: "receipt", assistantEntryId: proof.assistantEntryId, nativeEntryIds: [] };
     }, close() {},
   };
-  const source = new ProcessMailboxSourceV1({ pi: pi as any, agentDir: "/tmp/fixture-agent", getContext: () => ctx,
+  const source = new ProcessMailboxSourceV1({ pi: pi as any, agentDir: "/tmp/fixture-agent", getContext: () => currentContext,
     callbacks: {
       checkCurrent: mail => coordinator.checkCurrent(mail), onRecorded: notice => coordinator.recorded(notice), onTerminal: evidence => coordinator.terminal(evidence),
       beforeRun: start => coordinator.beforeRun(start), afterRun: end => coordinator.afterRun(end), settled: event => coordinator.agentSettled(event.aborted),
     },
     bind: () => ({ registerProducer(value) { registration = value; return endpoint; }, close() {} }),
   });
-  const make = () => new MainTurnNotificationCoordinatorV1({ sessionScopeId: sessionId, host, pi: pi as any, mailbox: source, getContext: () => ctx, report: message => reports.push(message) });
+  const make = () => new MainTurnNotificationCoordinatorV1({ sessionScopeId: sessionId, host, pi: pi as any, mailbox: source, getContext: () => currentContext, report: message => reports.push(message) });
   coordinator = make(); coordinator.activate(ctx);
   const bind = () => host.bind({ deliver(_event, delivery) { if (delivery?.modelLane === "turn") return coordinator.accept(); }, appendNotificationEntry(entry) { pi.appendEntry(entry.customType, entry.data); } });
   let binding = bind(); await binding.markReady();
@@ -68,6 +69,7 @@ export async function mailboxHarness(config = defaultProcessesConfig(), limits?:
   const fence = { ...target, ownerEpoch: 1, attemptId: null };
   return {
     host, source, pi, ctx, registration, puts, imports, reports, accepted, root, sessionId,
+    replaceContext(value: ExtensionContext) { currentContext = value; },
     get coordinator() { return coordinator; }, get branch() { return branch; }, setBranch(value: any[]) { allEntries(); branch = value; coordinator.rebranch(value); },
     replaceSessionEntries(value: any[]) { entries.clear(); branch = value; coordinator.rebranch(value); },
     setIdle(value: boolean) { idle = value; }, markerFault(value: boolean) { markerFault = value; },

@@ -151,10 +151,18 @@ test("contained execution still permits current-scope durable cancellation, but 
   try {
     await h.match(); await h.coordinator.turnEnded(h.ctx);
     const mail = h.puts[0]!;
+    await h.record();
+    await h.terminal();
+    const receipt = h.host.mainTurnNotificationReceipt()!;
     await h.host.dispose("scope-ended");
     assert.equal(h.host.disposed, true);
     assert.equal(h.coordinator.checkCurrent(mail).kind, "hold", "containment never grants delivery");
     await assert.rejects(h.coordinator.cancelPending({ ...h.ctx, sessionManager: { ...h.ctx.sessionManager } } as any, h.source), /stale/);
+    // A captured projection can finish annotating after execution containment.
+    // These writes are in-memory source state, not execution authority.
+    h.host.setMainTurnNotificationPending({ afterBatchId: mail.key.slice(6) });
+    h.host.setMainTurnNotificationReceipt(receipt);
+    h.host.setNotificationTurnEpochSealed(true);
     const cancel = h.source.endpoint.cancel.bind(h.source.endpoint);
     h.source.endpoint.cancel = async (...args) => {
       const evidence = await cancel(...args);
@@ -163,7 +171,67 @@ test("contained execution still permits current-scope durable cancellation, but 
     };
     await h.coordinator.cancelPending(h.ctx, h.source);
     assert.equal(h.branch.filter(entry => entry.customType === "process-notification-migration-v1" && entry.data.classification === "cancelled").length, 1);
+    assert.deepEqual(h.host.mainTurnPendingBatches(), []);
+    assert.equal(h.host.mainTurnNotificationPending(), undefined, "disposed Host must not rearm a successor");
+    assert.equal(h.host.mainTurnNotificationReceipt(), undefined);
+    assert.equal(h.host.notificationTurnEpochSealed(), false);
+    const snapshot = h.host.managedSnapshot();
+    assert.equal(snapshot.cleanup, "closed");
+    assert.equal(snapshot.wakePending, false);
+    assert.equal(snapshot.running_count + snapshot.starting_count + snapshot.stopping_count, 0);
+    assert.deepEqual(h.host.preparedNotificationBatches(), []);
+    assert.doesNotThrow(() => {
+      h.host.clearMainTurnPendingBatch(mail.key.slice(6));
+      h.host.setMainTurnNotificationPending(undefined);
+      h.host.setMainTurnNotificationReceipt(undefined);
+      h.host.setNotificationTurnEpochSealed(false);
+    });
+    assert.deepEqual(h.host.managedSnapshot(), snapshot, "idempotent clears never reopen cleanup or create a wake");
+    assert.equal(h.puts.length, 1, "no new mailbox delivery");
+    await assert.rejects(h.host.ensureStarted(), /disposed/);
     h.coordinator.dispose();
     await assert.rejects(h.coordinator.cancelPending(h.ctx, h.source), /stale/);
+  } finally { await h.dispose(); }
+});
+
+test("disposed Host rejects non-cancellation terminal evidence without modifying source state", async () => {
+  const h = await mailboxHarness();
+  try {
+    await h.match(); await h.coordinator.turnEnded(h.ctx); await h.record();
+    const evidence = await h.source.endpoint.cancel(h.puts[0]!.key, "scope ended");
+    await h.host.dispose("scope-ended");
+    const snapshot = h.host.managedSnapshot(), entries = structuredClone(h.branch);
+    for (const outcome of ["fulfilled", "completed"]) {
+      assert.throws(() => h.coordinator.terminal({ ...evidence, outcome,
+        receiptEntryId: "receipt", assistantEntryId: "assistant", nativeEntryIds: [] } as any), /another binding/);
+      assert.deepEqual(h.host.managedSnapshot(), snapshot);
+      assert.deepEqual(h.branch, entries);
+    }
+  } finally { await h.dispose(); }
+});
+
+for (const mismatch of ["evidence session", "manager session", "replaced manager"] as const) test(`cancellation rejects ${mismatch} without modifying source state`, async () => {
+  const h = await mailboxHarness();
+  try {
+    await h.match(); await h.coordinator.turnEnded(h.ctx); await h.record();
+    const evidence = await h.source.endpoint.cancel(h.puts[0]!.key, "scope ended");
+    const snapshot = h.host.managedSnapshot(), entries = structuredClone(h.branch);
+    if (mismatch === "evidence session") {
+      assert.throws(() => h.coordinator.terminal({ ...evidence, scope: { ...evidence.scope, sessionId: "foreign" } }), /another binding/);
+    } else {
+      const replacement = { ...h.ctx, sessionManager: { ...h.ctx.sessionManager } } as any;
+      if (mismatch === "manager session") h.ctx.sessionManager.getSessionId = () => "foreign";
+      else h.replaceContext(replacement);
+      assert.throws(() => h.coordinator.terminal(evidence), /another binding/);
+      await assert.rejects(h.coordinator.cancelPending(h.ctx, h.source), /stale/);
+      // Activation must not turn an old coordinator into a new manager's owner.
+      if (mismatch === "replaced manager") {
+        h.coordinator.activate(replacement);
+        assert.throws(() => h.coordinator.terminal(evidence), /another binding/);
+        await assert.rejects(h.coordinator.cancelPending(replacement, h.source), /stale/);
+      }
+    }
+    assert.deepEqual(h.host.managedSnapshot(), snapshot);
+    assert.deepEqual(h.branch, entries);
   } finally { await h.dispose(); }
 });

@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces && tsc -p integration/tsconfig.json",
-    "test": "node --test scripts/*.test.mjs && node scripts/check-doc-links.mjs && node scripts/isolated-agent.mjs npm run test --workspaces",
+    "test": "node --test --test-timeout=300000 scripts/*.test.mjs && node scripts/check-doc-links.mjs && node scripts/isolated-agent.mjs npm run test --workspaces",
     "test:integration": "npm run build -w pi-claude-style && npm run build -w pi-subagents && npm run build -w pi-processes && npm run build -w @narumitw/pi-goal && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-transform-types --test --test-timeout=300000 integration/*.test.ts",
     "test:integration:side-chat": "npm run build -w pi-claude-style && node scripts/isolated-agent.mjs bun integration/side-chat/sdk-view-e2e.mjs && PI_S2_NATIVE_PRESENTATION=1 node scripts/isolated-agent.mjs bun integration/side-chat/sdk-view-e2e.mjs",
     "test:integration:stock-host": "npm run build -w pi-subagents && bun integration/subagent-no-presentation.mjs",
