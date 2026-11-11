@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
-import { getOrCreateChildCapabilityRegistryV1 } from "pi-runtime-contracts/child-capabilities-v1";
+import { captureEntrypointDescriptorV1, getOrCreateChildCapabilityRegistryV1 } from "pi-runtime-contracts/child-capabilities-v1";
 import { memoryHttp, searchFixture, searchPath, until } from "./search/fixtures/harness.ts";
 import { discoverSearchBackends } from "../fork/pi-native-search/extensions/backends.ts";
 
@@ -60,7 +60,7 @@ for (const cc of [undefined, "before", "after"] as const) {
   });
 }
 
-test("actual Subagents Host approves Native Search factory, preserves a search-only SDK allowlist, and passes only its Main backend bus", { timeout: 60000 }, async () => {
+test("actual Subagents Host loads the declared Native Search factory, preserves a search-only SDK allowlist, and passes only its Main backend bus", { timeout: 60000 }, async () => {
   const http = memoryHttp();
   const f = await searchFixture({ subagents: true, backendFirst: true, label: "PARENT_ONLY" });
   let sibling: Awaited<ReturnType<typeof searchFixture>> | undefined;
@@ -86,8 +86,14 @@ test("actual Subagents Host approves Native Search factory, preserves a search-o
     assert.deepEqual(profile.capabilities.active_tools.filter(name => name.startsWith("web_")), ["web_search"]);
     assert.equal(profile.capabilities.tool_definitions.find(tool => tool.name === "web_search")?.owner_id, "pi-native-search");
     const capability = profile.capabilities.entries.find(entry => entry.owner === "pi-native-search");
-    assert.ok(capability?.execution_factory, "the real closure captures the audited physical factory proof");
-    assert.equal(capability.execution_factory.canonical_path, searchPath);
+    assert.ok(capability?.child_factory, "the real closure captures the declared factory and physical execution proof");
+    assert.equal(capability.child_factory.target_id, "pi-subagents");
+    const factory = capability.child_factory.manifest.targets["pi-subagents"]!.child_factory!;
+    assert.equal(factory.module, "extensions/child.ts");
+    assert.equal(factory.export, "createRegisteredSearchChildFactory");
+    assert.deepEqual(factory.artifacts, ["extensions/index.ts"]);
+    assert.equal(factory.files[1]!.canonical_path, searchPath);
+    assert.equal(factory.files[1]!.sha256, captureEntrypointDescriptorV1(searchPath).sha256);
     const child = await binding.runtime.childForView(item()!.agent.agent_id);
     assert.ok(child);
     assert.equal(child.session.getActiveToolNames().includes("web_search"), true);
