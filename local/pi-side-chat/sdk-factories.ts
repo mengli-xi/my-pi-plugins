@@ -4,7 +4,7 @@ import type { ViewLifecycle } from "pi-session-runtime/managed-interactive";
 import { loadChildFactoryV1 } from "pi-session-runtime/child-factory";
 import { approvedSdkProviderRegistrationsV1, approveSdkProviderV1, loadSdkProviderFactoryV1, revalidateSdkProviderProofV1, sdkProviderBindingFenceV1 } from "pi-session-runtime/sdk-provider";
 import { contextFingerprint } from "pi-session-runtime/effective-context";
-import { resolveChildCapabilityClosureV1, getOrCreateChildCapabilityRegistryV1, type ResolvedChildCapabilityOwnerV1 } from "pi-runtime-contracts/child-capabilities-v1";
+import { sourcePath, resolveChildCapabilityClosureV1, getOrCreateChildCapabilityRegistryV1, type ResolvedChildCapabilityOwnerV1 } from "pi-runtime-contracts/child-capabilities-v1";
 
 async function factoryPublicModules() {
   const assembly = await import("pi-session-runtime/session-assembly");
@@ -13,16 +13,26 @@ async function factoryPublicModules() {
 const BUILTINS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
 export async function sidePresentationFactories(ctx: agent.ExtensionContext, lifecycle: ViewLifecycle, plan?: { presentationOwners?: readonly ResolvedChildCapabilityOwnerV1[]; requiredOwnerIds?: readonly string[] }): Promise<agent.ExtensionFactory[]> {
-  const snapshot = getOrCreateChildCapabilityRegistryV1().snapshot(ctx.sessionManager.getSessionId());
   const result: agent.ExtensionFactory[] = [];
-  const closure = resolveChildCapabilityClosureV1({ snapshot, target_id: "pi-side-chat", required_owner_ids: [], active_commands: [], active_tools: [], active_providers: [], required_capabilities: [] });
-  for (const owner of plan?.presentationOwners ?? closure.owners) {
+  const owners = plan ? plan.presentationOwners ?? [] : resolveChildCapabilityClosureV1({
+    snapshot: getOrCreateChildCapabilityRegistryV1().snapshot(ctx.sessionManager.getSessionId()), target_id: "pi-side-chat", required_owner_ids: [], active_commands: [], active_tools: [], active_providers: [], required_capabilities: [],
+  }).owners;
+  for (const owner of owners) {
+    if (!sideTarget(owner, plan?.requiredOwnerIds?.includes(owner.owner_id))) continue;
     if (owner.target.child_factory?.kind !== "presentation") continue;
     const factory = await loadChildFactoryV1({ proof: { version: 1, manifest: owner.manifest, target_id: owner.target_id, context: owner.factory_context ?? {} }, publicModules: await factoryPublicModules(), required: plan?.requiredOwnerIds?.includes(owner.owner_id),
       options: { target: "side-chat", taskName: "Side", returnLabel: "Alt+/ Main", readOnlyStatusline: true, viewLifecycle: lifecycle } });
     if (factory) result.push(factory);
   }
   return result;
+}
+
+function sideTarget(owner: ResolvedChildCapabilityOwnerV1, required = false): boolean {
+  if (owner.target_id === "pi-side-chat") return true;
+  const message = `Side child factory ${owner.owner_id}: proof/entry mismatch: target must be pi-side-chat`;
+  if (required) throw new Error(message);
+  console.warn(`${message}; skipped`);
+  return false;
 }
 
 function toolFingerprint(tool: { name: string; description: string; parameters: unknown; promptGuidelines?: readonly string[]; exposure?: string }): string {
@@ -37,8 +47,21 @@ export async function sideExecutionPlan(pi: agent.ExtensionAPI, ctx: agent.Exten
   const factories: Array<(sessionId: string) => agent.ExtensionFactory | Promise<agent.ExtensionFactory>> = [];
   const mainTools = new Set(pi.getActiveTools());
   const tools = [...mainTools].filter(name => BUILTINS.includes(name));
-  const mainBash = mainTools.has("bash") ? pi.getAllTools().find(tool => tool.name === "bash") : undefined;
-  const bashOwner = mainBash && mainBash.sourceInfo.source !== "builtin" ? registry.registrations.find(item => item.manifest.main_entrypoint.canonical_path === mainBash.sourceInfo.path && item.manifest.targets["pi-side-chat"]?.tools.includes("bash")) : undefined;
+  const allTools = pi.getAllTools();
+  const toolOwners = new Map<string, typeof registry.registrations[number]>();
+  for (const tool of allTools) {
+    if (!mainTools.has(tool.name) || tool.sourceInfo.source === "builtin") continue;
+    try {
+      const path = sourcePath(tool.sourceInfo);
+      const owner = registry.registrations.find(item => item.manifest.main_entrypoint.canonical_path === path && item.manifest.targets["pi-side-chat"]?.tools.includes(tool.name));
+      if (owner) { toolOwners.set(tool.name, owner); continue; }
+    } catch (error) {
+      console.warn(`Side tool ${tool.name}: source unavailable at ${tool.sourceInfo.path}: ${String(error)}`); continue;
+    }
+    console.warn(`Side tool ${tool.name}: no declared owner for ${tool.sourceInfo.path}; skipped`);
+  }
+  const mainBash = mainTools.has("bash") ? allTools.find(tool => tool.name === "bash") : undefined;
+  const bashOwner = toolOwners.get("bash");
   if (mainTools.has("bash") && (!mainBash || mainBash.sourceInfo.source !== "builtin" && !bashOwner)) throw new Error("The active Main bash has no approved Side factory");
   const approvedProviders = approvedSdkProviderRegistrationsV1(registry, agentDir, "pi-side-chat");
   const counts = new Map<string, number>();
@@ -67,15 +90,15 @@ export async function sideExecutionPlan(pi: agent.ExtensionAPI, ctx: agent.Exten
   }
   const cancellations = new Set<() => Promise<void>>();
   const requiredOwners = new Set<string>();
-  for (const tool of pi.getAllTools()) {
-    if (!mainTools.has(tool.name) || tool.sourceInfo.source === "builtin") continue;
-    const owner = registry.registrations.find(item => item.manifest.main_entrypoint.canonical_path === tool.sourceInfo.path && item.manifest.targets["pi-side-chat"]?.tools.includes(tool.name));
-    if (owner) { requiredOwners.add(owner.owner_id); if (!tools.includes(tool.name)) tools.push(tool.name); }
+  for (const [name, owner] of toolOwners) {
+    requiredOwners.add(owner.owner_id);
+    if (!tools.includes(name)) tools.push(name);
   }
-  const closure = resolveChildCapabilityClosureV1({ snapshot: { ...registry, registrations: registry.registrations.filter(item => !item.manifest.targets["pi-side-chat"]?.sdk_provider_factory) }, target_id: "pi-side-chat", required_owner_ids: [...requiredOwners], active_commands: [], active_tools: [...mainTools].filter(name => pi.getAllTools().find(tool => tool.name === name)?.sourceInfo.source !== "builtin"), active_providers: [], required_capabilities: [] });
+  const closure = resolveChildCapabilityClosureV1({ snapshot: { ...registry, registrations: registry.registrations.filter(item => !item.manifest.targets["pi-side-chat"]?.sdk_provider_factory) }, target_id: "pi-side-chat", required_owner_ids: [...requiredOwners], active_commands: [], active_tools: [...mainTools].filter(name => allTools.find(tool => tool.name === name)?.sourceInfo.source !== "builtin"), active_providers: [], required_capabilities: [] });
   for (const owner of closure.owners) {
     if (owner.target.child_factory?.kind === "presentation") continue;
     const required = requiredOwners.has(owner.owner_id) || closure.owners.some(other => other.target.requires.includes(owner.owner_id));
+    if (!sideTarget(owner, required)) continue;
     if (!owner.target.child_factory) {
       if (required) throw new Error(`Side factory unavailable: ${owner.owner_id}`);
       console.warn(`child factory ${owner.owner_id}: declaration missing; skipped`); continue;

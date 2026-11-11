@@ -27,7 +27,7 @@ export function createClaudeStyleChildExtension() { return pi => pi.capture(codi
   const profile = { capabilities: { entries: [
     { owner: "pi-pinned-layout", providers: [], tools: [], hooks: ["presentation/pinned-layout-v1"],
       child_entrypoint: join(root, "retired/dist/child.js"), sha256: "0".repeat(64) },
-    { owner: "pi-claude-style", providers: [], tools: [], child_factory: childFactory, factory_required: true,
+    { owner: "pi-claude-style", main_entrypoint: path, providers: [], tools: [], child_factory: childFactory, factory_required: true,
       hooks: ["presentation/claude-style-v1"], child_entrypoint: path,
       sha256: createHash("sha256").update(source).digest("hex") },
   ] } } as unknown as FrozenProfileV1;
@@ -115,7 +115,7 @@ test("absent presentation uses native Pi while a differently named owner can pro
   const source = `export function createClaudeStyleChildExtension(options) { return pi => pi.capture(options); }`;
   const path = join(root, "dist/child.ts"); await writeFile(path, source);
   const childFactory = { version: 1 as const, target_id: "pi-subagents", context: {}, manifest: { version: 1 as const, owner_id: "presentation-standin", main_entrypoint: capture(path), targets: { "pi-subagents": { child_entrypoint: capture(path), child_factory: captureChildFactoryV1(path, { module: "dist/child.ts", export: "createClaudeStyleChildExtension", kind: "presentation" }), activation: "mirror" as const, commands: [], tools: [], providers: [], hooks: ["presentation/claude-style-v1"], requires: [] } } } };
-  const profile = { capabilities: { entries: [{ child_factory: childFactory, owner: "presentation-standin", providers: [], tools: [], hooks: ["presentation/claude-style-v1"], child_entrypoint: path, sha256: createHash("sha256").update(source).digest("hex") }] } } as unknown as FrozenProfileV1;
+  const profile = { capabilities: { entries: [{ child_factory: childFactory, main_entrypoint: path, owner: "presentation-standin", providers: [], tools: [], hooks: ["presentation/claude-style-v1"], child_entrypoint: path, sha256: createHash("sha256").update(source).digest("hex") }] } } as unknown as FrozenProfileV1;
   const lifecycle = new ViewLifecycle(), factories = await childPresentationFactories(profile, lifecycle, "child");
   let options: any; await factories[0]!({ capture: (value: any) => { options = value; } } as never);
   assert.equal(options.target, "subagent"); assert.equal(options.taskName, "child"); assert.equal(options.viewLifecycle, lifecycle);

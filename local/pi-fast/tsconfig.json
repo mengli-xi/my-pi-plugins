@@ -11,5 +11,5 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["index.ts", "state.ts", "test/*.ts"]
+  "include": ["index.ts", "state.ts", "child.ts", "test/*.ts"]
 }

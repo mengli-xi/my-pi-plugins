@@ -28,7 +28,9 @@ async function presentationFixture(options: { source?: string; target?: string; 
       tools: [], providers: [], commands: [], hooks: ["presentation/claude-style-v1"], requires: [] } } };
   const registration = registry.register({ version: 1, manifest });
   const binding = registry.bind({ version: 1, registrationToken: registration.registrationToken, session_id: sessionId, runtime_generation: 1, mode: "rpc" });
-  return { ctx: { sessionManager: { getSessionId: () => sessionId } } as ExtensionContext, manifest, path,
+  const owner = registry.snapshot(sessionId).registrations.find(item => item.owner_id === "pi-claude-style")!;
+  const presentationOwners = [{ ...owner, target_id: "pi-side-chat", target: owner.manifest.targets["pi-side-chat"]! }];
+  return { ctx: { sessionManager: { getSessionId: () => sessionId } } as ExtensionContext, manifest, path, presentationOwners,
     async dispose() { binding.release(); registration.release(); await rm(root, { recursive: true, force: true }); } };
 }
 
@@ -66,11 +68,26 @@ test("Side loads the display-only factory with independent view lifecycle option
   } finally { await fixture.dispose(); }
 });
 
+test("a supplied presentation plan does not consult the live session or registry", async () => {
+  const fixture = await presentationFixture({ source: "export function createClaudeStyleChildExtension() { return pi => pi.on('session_start', () => {}); }" });
+  try {
+    const registration = getOrCreateChildCapabilityRegistryV1().snapshot(fixture.ctx.sessionManager.getSessionId()).registrations.find(item => item.owner_id === "pi-claude-style")!;
+    const owner = { ...registration, target_id: "pi-side-chat", target: registration.manifest.targets["pi-side-chat"]! };
+    const unavailable = { sessionManager: { getSessionId() { throw new Error("live session must not be read"); } } } as unknown as ExtensionContext;
+    const factories = await sidePresentationFactories(unavailable, {} as ViewLifecycle, { presentationOwners: [owner] });
+    assert.equal(factories.length, 1);
+    assert.deepEqual(await sidePresentationFactories(unavailable, {} as ViewLifecycle, {}), []);
+    const wrongTarget = { ...owner, target_id: "pi-subagents" };
+    await assert.rejects(sidePresentationFactories(unavailable, {} as ViewLifecycle, { presentationOwners: [wrongTarget], requiredOwnerIds: [owner.owner_id] }), /target must be pi-side-chat/);
+    assert.deepEqual(await sidePresentationFactories(unavailable, {} as ViewLifecycle, { presentationOwners: [wrongTarget] }), []);
+  } finally { await fixture.dispose(); }
+});
+
 test("Side rejects a changed required presentation file rather than falling back to native", async () => {
   const fixture = await presentationFixture();
   try {
     await writeFile(fixture.path, "throw new Error('Drifted factories must not load');\n");
-    await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle, { requiredOwnerIds: ["pi-claude-style"] }), /capability-drift|live file identity/);
+    await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle, { presentationOwners: fixture.presentationOwners, requiredOwnerIds: ["pi-claude-style"] }), /capability-drift|live file identity/);
   } finally { await fixture.dispose(); }
 });
 
@@ -95,7 +112,7 @@ test("Side rejects an invalid presentation package identity", async () => {
 
 test("Side rejects a presentation module without the approved factory export", async () => {
   const fixture = await presentationFixture({ source: "export const createClaudeStyleChildExtension = null;\n" });
-  try { await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle, { requiredOwnerIds: ["pi-claude-style"] }), /Approved factory export is missing/); }
+  try { await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle, { presentationOwners: fixture.presentationOwners, requiredOwnerIds: ["pi-claude-style"] }), /Approved factory export is missing/); }
   finally { await fixture.dispose(); }
 });
 

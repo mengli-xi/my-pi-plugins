@@ -1,7 +1,7 @@
 {
   "name": "pi-fast",
   "version": "0.1.0",
-  "description": "/fast \u2014 a Claude Code-style fast-output toggle: priority service tier on the OpenAI Codex (ChatGPT OAuth) provider.",
+  "description": "/fast — a Claude Code-style fast-output toggle: priority service tier on the OpenAI Codex (ChatGPT OAuth) provider.",
   "type": "module",
   "license": "MIT",
   "keywords": [

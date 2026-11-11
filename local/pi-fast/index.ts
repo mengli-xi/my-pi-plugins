@@ -66,15 +66,26 @@ export default function piFast(pi: ExtensionAPI): void {
   const registry = getOrCreateChildCapabilityRegistryV1();
   const target = { child_entrypoint: captureEntrypointDescriptorV1(join(import.meta.dirname, "child.ts")),
     child_factory: captureChildFactoryV1(join(import.meta.dirname, "index.ts"), { module: "child.ts", export: "createFastChildFactory", artifacts: ["state.ts"] }),
-    activation: "mirror" as const, commands: [], tools: [], providers: [], hooks: ["request/fast-v1"], requires: [] };
+    activation: "mirror" as const, commands: [], tools: [], providers: [], hooks: [], requires: [] };
   const registration = registry.register({ version: 1, manifest: { version: 1, owner_id: "pi-fast", main_entrypoint: captureEntrypointDescriptorV1(join(import.meta.dirname, "index.ts")), targets: { "pi-subagents": target, "pi-side-chat": target } } });
-  let binding: ChildCapabilityBindingHandleV1 | undefined, generation = 0;
+  const bindings = new Map<string, ChildCapabilityBindingHandleV1>();
+  let generation = 0;
   pi.on("session_start", (_event, ctx) => {
-    binding?.release();
-    binding = registry.bind({ version: 1, registrationToken: registration.registrationToken, session_id: ctx.sessionManager.getSessionId(), runtime_generation: ++generation, mode: ctx.mode === "json" ? "print" : ctx.mode,
-      capture_context: () => ({ enabled: effective() }) });
+    try {
+      const sessionId = ctx.sessionManager.getSessionId();
+      bindings.get(sessionId)?.release();
+      bindings.delete(sessionId);
+      bindings.set(sessionId, registry.bind({ version: 1, registrationToken: registration.registrationToken, session_id: sessionId, runtime_generation: ++generation, mode: ctx.mode === "json" ? "print" : ctx.mode,
+        capture_context: () => ({ enabled: effective() }) }));
+    } catch (error) {
+      ctx.ui.notify(`Fast child capability unavailable: ${error instanceof Error ? error.message : String(error)}`, "warning");
+    }
   });
-  pi.on("session_shutdown", () => { binding?.release(); binding = undefined; });
+  pi.on("session_shutdown", () => {
+    for (const binding of bindings.values()) binding.release();
+    bindings.clear();
+    registration.release();
+  });
 
   pi.on("before_provider_request", (event, ctx) =>
     applyFastTier(event.payload, ctx.model?.provider, effective()),

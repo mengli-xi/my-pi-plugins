@@ -30,6 +30,17 @@ for (const spec of [
   assert.equal(factories.length, 1);
   const loaded = factories[0]!; await (typeof loaded === "function" ? loaded : loaded.factory)({ registerTool: (tool: unknown) => registered.push(tool) } as never);
   assert.deepEqual(registered, [definition]);
+  for (const change of [{ providers: ["undeclared-provider"] }, { owner: "other-owner" }, { child_factory: { ...entry.child_factory, target_id: "pi-side-chat", manifest: { ...entry.child_factory.manifest, targets: { ...entry.child_factory.manifest.targets, "pi-side-chat": entry.child_factory.manifest.targets["pi-subagents"]! } } } }]) {
+    const changed = { ...entry, ...change };
+    await assert.rejects(childExecutionFactories({ ...input, profile: { capabilities: { entries: [changed] } } as unknown as FrozenProfileV1 }), /proof\/entry mismatch/);
+    const warnings: string[] = [];
+    t.mock.method(console, "warn", (message: string) => { warnings.push(message); });
+    const optional = { ...changed, factory_required: false };
+    const survivors = await childExecutionFactories({ ...input, profile: { capabilities: { entries: [optional, entry] } } as unknown as FrozenProfileV1 });
+    assert.equal(survivors.length, 1, "a mismatched optional proof cannot block the next factory");
+    assert.equal(warnings.length, 1); assert.match(warnings[0]!, /proof\/entry mismatch/);
+    t.mock.restoreAll();
+  }
   const frozenFingerprint = capabilityFingerprint(profile.capabilities);
   await writeFile(factory, "throw new Error('modified factory must not be evaluated');\n");
   assert.equal(capture(child).sha256, entry.sha256);

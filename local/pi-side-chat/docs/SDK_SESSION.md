@@ -12,6 +12,7 @@ Side 优先采用 Main 最后实际 model-visible request，包括晚到的转�
 
 Main active tool list 与已绑定 owner 的声明共同投影，不复制未声明的 Main extension。普通 execution/presentation 的格式、冻结、校验、失败与 required 语义只写在 [child 合同](../../pi-runtime-contracts/docs/child-capabilities-v1.md)；Side 与 Subagents 共用 Session Runtime loader。
 
+- 工具来源先经共享 `sourcePath` realpath 规范化再匹配 owner；找不到 owner 时诊断工具名与路径并跳过，bash override 仍拒绝不安全降级。presentation 已有 plan 时仅消费冻结 owner，不重新取 live closure。
 - 同名 bash override 必须匹配 Main 的真实来源和工具定义指纹；失败不能恢复成宽松 builtin，Main 未启用 bash 时不激活 required-only owner。
 - execution factory 的 session scope 属于 Side，不借 Subagent Task bridge；声明的 durable cancellation 在销毁边界等待，失败保留 cleanup ownership。
 - 父 backend event bus 由 Side 显式传入，不隐式发现其他插件或读取其存储。

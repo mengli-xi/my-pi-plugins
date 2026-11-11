@@ -13,6 +13,23 @@ function isPresentationEntry(entry: FrozenProfileV1["capabilities"]["entries"][n
   return entry.child_factory?.manifest.targets[entry.child_factory.target_id]?.child_factory?.kind === "presentation"
     || !entry.child_factory && entry.hooks.length > 0 && entry.hooks.every(hook => hook.startsWith("presentation/")) && entry.providers.length === 0 && entry.tools.length === 0;
 }
+function matchesDeclaredFactory(entry: FrozenProfileV1["capabilities"]["entries"][number]): boolean {
+  const proof = entry.child_factory;
+  if (!proof || proof.target_id !== "pi-subagents") return false;
+  const declared = proof.manifest.targets[proof.target_id];
+  return !!declared && proof.manifest.owner_id === entry.owner
+    && proof.manifest.main_entrypoint.canonical_path === entry.main_entrypoint
+    && declared.child_entrypoint.canonical_path === entry.child_entrypoint
+    && declared.child_entrypoint.sha256 === entry.sha256
+    && JSON.stringify(declared.tools) === JSON.stringify(entry.tools)
+    && JSON.stringify(declared.providers.map(provider => provider.provider_id)) === JSON.stringify(entry.providers)
+    && JSON.stringify(declared.hooks) === JSON.stringify(entry.hooks);
+}
+function factoryMismatch(entry: FrozenProfileV1["capabilities"]["entries"][number], reason: string): void {
+  const message = `capability-unavailable: ${reason}`;
+  if (entry.factory_required) throw new Error(message);
+  console.warn(`child factory ${entry.owner}: ${message}; skipped`);
+}
 async function factoryPublicModules() {
   const assembly = await import("pi-session-runtime/session-assembly");
   return { ...assembly.getSessionAssemblyPublicModules(), "@earendil-works/pi-agent-core": piAgentCore, typebox };
@@ -21,11 +38,8 @@ export async function childPresentationFactories(profile: FrozenProfileV1, lifec
   const result: ExtensionFactory[] = [];
   for (const entry of profile.capabilities.entries.filter(isPresentationEntry)) {
     if (!entry.child_factory) continue; // Retired presentation remains readable, not executable.
-    const declared = entry.child_factory.manifest.targets[entry.child_factory.target_id]!;
-    if (entry.owner !== entry.child_factory.manifest.owner_id || entry.child_entrypoint !== declared.child_entrypoint.canonical_path || entry.sha256 !== declared.child_entrypoint.sha256 || JSON.stringify(entry.tools) !== JSON.stringify(declared.tools) || JSON.stringify(entry.providers) !== JSON.stringify(declared.providers.map(provider => provider.provider_id)) || JSON.stringify(entry.hooks) !== JSON.stringify(declared.hooks)) {
-      const message = "capability-unavailable: invalid child presentation proof/entry mismatch";
-      if (entry.factory_required) throw new Error(message);
-      console.warn(`child factory ${entry.owner}: ${message}`); continue;
+    if (!matchesDeclaredFactory(entry)) {
+      factoryMismatch(entry, "invalid child presentation proof/entry mismatch"); continue;
     }
     const factory = await loadChildFactoryV1({ proof: entry.child_factory, publicModules: await factoryPublicModules(), required: entry.factory_required,
       options: { target: "subagent", taskName, returnLabel: "Alt+/ Main", readOnlyStatusline: true, viewLifecycle: lifecycle } });
@@ -39,7 +53,7 @@ export async function childExecutionFactories(input: { profile: FrozenProfileV1;
   const factories: InlineExtension[] = [], builtins = new Set<string>();
   for (const entry of input.profile.capabilities.entries) {
     if (isPresentationEntry(entry)) {
-      if (entry.tools.length || entry.providers.length || entry.child_factory && JSON.stringify(entry.hooks) !== JSON.stringify(entry.child_factory.manifest.targets[entry.child_factory.target_id]!.hooks)) throw new Error("capability-unavailable: invalid child presentation proof/entry mismatch");
+      if (entry.child_factory && !matchesDeclaredFactory(entry)) factoryMismatch(entry, "invalid child presentation proof/entry mismatch");
       continue;
     }
     if ([entry.owner, entry.main_entrypoint, entry.child_entrypoint].some(value => typeof value === "string" && value.startsWith("builtin:"))) {
@@ -74,8 +88,9 @@ export async function childExecutionFactories(input: { profile: FrozenProfileV1;
       console.warn(`child factory ${entry.owner}: declaration missing; skipped`);
       continue;
     }
-    const declared = entry.child_factory.manifest.targets[entry.child_factory.target_id]!;
-    if (entry.child_factory.manifest.owner_id !== entry.owner || entry.main_entrypoint !== entry.child_factory.manifest.main_entrypoint.canonical_path || entry.child_entrypoint !== declared.child_entrypoint.canonical_path || entry.sha256 !== declared.child_entrypoint.sha256 || JSON.stringify(entry.tools) !== JSON.stringify(declared.tools) || JSON.stringify(entry.hooks) !== JSON.stringify(declared.hooks)) throw new Error("capability-unavailable: child factory proof/entry mismatch");
+    if (!matchesDeclaredFactory(entry)) {
+      factoryMismatch(entry, "child factory proof/entry mismatch"); continue;
+    }
     const factory = await loadChildFactoryV1({ proof: entry.child_factory, publicModules: await factoryPublicModules(), required: entry.factory_required,
       options: { target: "subagent", agentDir: input.agentDir, sessionScopeId: input.sessionId, getBridge: input.getBridge, backendEvents: input.parentEvents },
       onCancel: cancel => input.onTaskCancel?.(cancel, entry.owner) });

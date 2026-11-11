@@ -169,7 +169,7 @@ CC execution assembly 安装轻 recorder，Detached 仍写真实 run metrics；U
 
 profile/工具/factory snapshot 是 admission proof，prepare/native artifact/hash 与 Task owner/lease proof 在 Host 事务验证；closed 不清持久权限。generation 是 Host runtime fence，不是 OS PID。正常 SDK agent_settled 才读 native result/usage；cold owner loss 不能从 tail 证明成功。
 
-验证包括 codemode/tool-search canonical factory 前后端一致装配、role/tools fences、Pi.VERSION 与 builtin_proof 匹配、其他 builtin 默认禁用且 llama.cpp 不启服务、adapter MCP 无声明时不继承、非 builtin Search/Processes 实际 execution_factory 文件漂移在 import 前拒绝、closure/wildcard 与 explicit unknown、source canonical identity、schema hash/conflict、scope 缩窄、maxDepth 1/2 完整去 spawn、model/effort/tier/credential drift、resume 零请求、native compaction、真实 CC/Processes/Search/Timeout 装配与中性外部 provider factory；缺 grant、实际执行文件/observer/delegate drift、target 混用、await 撤销和 code-cache fence 必须在 import/request 前拒绝。public Pi API 由 typecheck/行为 test，CC 的独立 private catalog 与 Side 两项 probe 使用 stock Pi 1.5；faux 不证明真实 cache/provider 质量，见 [维护与测试](maintenance.md)。
+验证包括 codemode/tool-search canonical factory 前后端一致装配、role/tools fences、Pi.VERSION 与 builtin_proof 匹配、其他 builtin 默认禁用且 llama.cpp 不启服务、adapter MCP 无声明时不继承、普通插件 `child_factory` 证明覆盖实际包身份、模块与执行 artifacts，并在注册、import 前、await 后、extension 安装前四处重验，漂移按 required 语义拒绝或诊断跳过、closure/wildcard 与 explicit unknown、source canonical identity、schema hash/conflict、scope 缩窄、maxDepth 1/2 完整去 spawn、model/effort/tier/credential drift、resume 零请求、native compaction、真实 CC/Processes/Search/Timeout 装配与中性外部 provider factory；缺 grant、实际执行文件/observer/delegate drift、target 混用、await 撤销和 code-cache fence 必须在 import/request 前拒绝。public Pi API 由 typecheck/行为 test，CC 的独立 private catalog 与 Side 两项 probe 使用 stock Pi 1.5；faux 不证明真实 cache/provider 质量，见 [维护与测试](maintenance.md)。
 
 ## 上下文 Fork 接线
 
