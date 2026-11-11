@@ -11,6 +11,14 @@ import type { McpExtensionState } from "../state.ts";
 
 vi.mock("open", () => ({ default: vi.fn(async () => undefined) }));
 
+// The Executor fixture is a stdio child process, and the full repo suite runs other workspaces
+// alongside this file. One JSON-RPC round trip can then take seconds, and the Manager's request
+// timeout also bounds the pinned `server/discover` probe, where a stdio timeout is read as "no
+// modern evidence": the same window surfaces as "Request timed out" or as "Version negotiation
+// failed". These bounds are hang guards, wide enough that only a stuck fixture trips them.
+const REQUEST_TIMEOUT_MS = 15_000;
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 type Calls = { path: string; input: unknown } | Array<{ path: string; input: unknown }>;
 
 function request(calls: Calls) {
@@ -185,7 +193,7 @@ async function connectAccountExecutor({ mode = "local", select = [], env = {}, s
     ...(approve ? { approveTools: ["call"] } : {}),
   };
   const manager = new McpServerManager();
-  manager.setDefaultRequestTimeoutMs(2_000);
+  manager.setDefaultRequestTimeoutMs(REQUEST_TIMEOUT_MS);
   if (session !== "headless") manager.setElicitationConfig({ ui, allowUrl: session === "tui" });
   await manager.connect("executor", definition);
   managers.push(manager);
