@@ -1,13 +1,32 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { createProjectResolver, resolveProject } from "../src/identity.ts";
 import { readIndex, scanTopics, TopicWarnings, truncateIndex } from "../src/files.ts";
+
+const exec = promisify(execFile);
+
+/**
+ * Ask the real `execFile` to kill a sleeping child, so the timeout tests use the exact
+ * error shape Git discovery sees: `killed: true`, `signal: "SIGTERM"`, no exit code.
+ */
+async function realTimeoutError(): Promise<Error> {
+  try {
+    await exec("sleep", ["5"], { timeout: 150 });
+  } catch (error) {
+    const failure = error as Error & { killed?: boolean; signal?: string | null };
+    assert.equal(failure.killed, true);
+    assert.equal(failure.signal, "SIGTERM");
+    return failure;
+  }
+  throw new Error("the probe command should have timed out");
+}
 
 async function withCountingGit(run: (fixture: { root: string; git: (...args: string[]) => void; calls: () => Promise<number> }) => Promise<void>) {
   const root = await mkdtemp(join(tmpdir(), "pi-memory-cache-review-"));
@@ -301,6 +320,66 @@ test("Git failures fail closed; missing Git uses directory with warning", async 
     else process.env.PATH = previousPath;
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("a Git timeout is retried once and the retried discovery succeeds", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-memory-git-timeout-retry-"));
+  try {
+    const repo = join(root, "repo");
+    execFileSync("git", ["init", repo], { stdio: "pipe" });
+    const timeout = await realTimeoutError();
+    const attempts: { args: readonly string[]; timeout: number }[] = [];
+    const project = await resolveProject(repo, join(root, "agent"), {
+      runGit: async (file, args, options) => {
+        attempts.push({ args, timeout: options.timeout });
+        // Only the first rev-parse times out; the retry and the marker verification really run.
+        if (attempts.length === 1) throw timeout;
+        return exec(file, args, options);
+      },
+    });
+    assert.ok(project.available, JSON.stringify(project));
+    assert.equal(project.identity, `git:${await realpath(join(repo, ".git"))}`);
+    assert.equal(attempts.length, 3, "timed-out attempt, its retry, then the marker verification");
+    assert.deepEqual(attempts[0]!.args, attempts[1]!.args);
+    assert.deepEqual(attempts.map((attempt) => attempt.timeout), [15_000, 15_000, 15_000]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("two Git timeouts warn about the timeout and still stop injection", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-memory-git-timeout-"));
+  try {
+    const repo = join(root, "repo");
+    execFileSync("git", ["init", repo], { stdio: "pipe" });
+    const timeout = await realTimeoutError();
+    let attempts = 0;
+    const project = await resolveProject(repo, join(root, "agent"), {
+      runGit: async () => { attempts += 1; throw timeout; },
+    });
+    assert.equal(attempts, 2, "one retry, then give up");
+    assert.equal(project.available, false);
+    assert.equal("memoryDir" in project, false);
+    assert.equal(project.warning, "pi-cc-memory：Git 超时（15 秒），暂不注入记忆。");
+    assert.doesNotMatch(project.warning, /Command failed|无法识别项目/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a non-timeout Git failure is not retried", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-memory-git-no-retry-"));
+  try {
+    const repo = join(root, "repo");
+    execFileSync("git", ["init", repo], { stdio: "pipe" });
+    let attempts = 0;
+    const project = await resolveProject(repo, join(root, "agent"), {
+      // A real non-timeout child failure: exit code 128 with stderr.
+      runGit: async (_file, _args, options) => {
+        attempts += 1;
+        return exec("/bin/sh", ["-c", "echo 'fatal: permission denied' >&2; exit 128"], options);
+      },
+    });
+    assert.equal(attempts, 1, "only a timeout is worth another attempt");
+    assert.equal(project.available, false);
+    assert.match(project.warning ?? "", /无法识别项目，暂不注入记忆。/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("index keeps at most 200 lines, with and without trailing newline", () => {
