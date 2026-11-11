@@ -68,7 +68,7 @@ npm run typecheck
 npm test
 ```
 
-包内检查使用离线 HTTP fixture 和 faux provider，覆盖本包工具、配置、凭据、backend 协议及 Main/SDK child 合同；不需要真实 provider 请求。跨插件协作与缺失协作方的联测放在仓库 `integration/`，不能用本包测试替代。
+包内检查使用离线 HTTP fixture 和 faux provider，覆盖本包工具、配置、凭据、backend 协议及 Main/SDK child 合同（含 Subagents/Side 双 target 与执行文件完整性证明）；不需要真实 provider 请求。跨插件协作与缺失协作方的联测放在仓库 `integration/`，不能用本包测试替代。
 
 启动新的 Pi process 后，按需检查这些使用路径；真实搜索和抓取会外传数据并可能计费，先确认目标和授权：
 
