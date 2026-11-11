@@ -161,6 +161,13 @@
         "@earendil-works/pi-tui": "^1.5.0",
       },
     },
+    "local/pi-fast": {
+      "name": "pi-fast",
+      "version": "0.1.0",
+      "peerDependencies": {
+        "@earendil-works/pi-coding-agent": "^1.5.0",
+      },
+    },
     "local/pi-li-uikit": {
       "name": "pi-li-uikit",
       "version": "0.1.0",
@@ -848,6 +855,8 @@
     "pi-claude-style": ["pi-claude-style@workspace:local/pi-claude-style"],
 
     "pi-effort": ["pi-effort@workspace:local/pi-effort"],
+
+    "pi-fast": ["pi-fast@workspace:local/pi-fast"],
 
     "pi-li-uikit": ["pi-li-uikit@workspace:local/pi-li-uikit"],
 
