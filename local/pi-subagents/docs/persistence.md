@@ -471,7 +471,7 @@ interface TaskRecordV1 {
 - `starting | running | waiting`：必须有 `started_at`、`deadline_at_ms`、正的 `runtime_generation`；不能有 settlement 字段；lease disposition 为 `required`；Finish/Interaction generation 在存在时必须等于该 runtime generation；
 - `waiting`：必须有`waiting_on`，SDK session 继续存在但释放 active execution 位；依赖或用户输入通过 activation_order 重新排位，满位保持等待，同 generation/Task/owner/lease/start/deadline 不变。输入轮结束且依赖未满足回 waiting；
 - `admitted|settled`不能有 waiting/activation 字段。`settled` 必须有 outcome/reason/settled/completion；lease disposition 必须是 release-pending 或 released；
-- deadline 在 `starting` 提交时只分配一次。其值为 `Date.now() + frozen task_timeout_ms`，并贯穿 startup、provider retry、compaction 和 waiting；`starting` 之前的排队时间不计入其中。系统 sleep 不会暂停它。force-close/replacement 取消的未启动 Task 合法 settled，不要求 started_at/deadline，usage 为 0。
+- deadline 在 `starting` 提交时只分配一次。其值为 `Date.now() + frozen task_timeout_ms`，并贯穿 startup、provider retry、compaction 和 waiting；`starting` 之前的排队时间不计入其中。系统 sleep 不会暂停它。execution owner 按这份 deadline 设置定时器；回调若因计时精度或 wall clock 调整仍未到期，须按原 deadline 重新设定，异步检查期间的取消或替换不得恢复旧定时器。force-close/replacement 取消的未启动 Task 合法 settled，不要求 started_at/deadline，usage 为 0。
 
 settlement race 由当前 Task revision 上第一个提交成功的 transaction 决定。之后发生的 timeout/interrupt/provider/runtime event 都是过时的，不能改变 outcome。
 

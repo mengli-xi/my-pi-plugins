@@ -1,3 +1,5 @@
+import { TaskDeadlines } from "../../src/host/task-deadlines.js";
+import { ProcessAdmissionOwner } from "../../src/host/process-admission.js";
 import { SdkRuntimeControllerV1 } from "../../src/runtime/sdk-controller.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -212,6 +214,91 @@ test("timeout intent is durable before abort, waiting keeps its deadline, and se
   assert.equal(settled.ok, true);
   const completion = fx.state().agents.find(item => item.agent.agent_id === A)!.completions[0]!;
   assert.equal(completion.outcome, "failed"); assert.equal(completion.reason, "timeout");
+});
+
+test("an early deadline timer rechecks the same Task and revokes its cached Process grant", async t => {
+  const f = await fixture(t);
+  const deadline = f.state().agents.find(item => item.agent.agent_id === A)!.tasks[0]!.deadline_at_ms!;
+  let clock = deadline - 10;
+  const errors: unknown[] = [];
+  const host = new AgentHostCoreV1({ ...f.host.options, now: () => new Date(clock), reportOperationalError: ({ error }) => errors.push(error) });
+  const task = () => host.snapshot().agents.find(item => item.agent.agent_id === A)!.tasks[0]!;
+  const admission = new ProcessAdmissionOwner({ task, phase: () => task().phase,
+    resume: async () => { throw new Error("unexpected resume"); }, requestGrant: () => { throw new Error("unexpected grant"); } });
+  // Process admission has its own wall-clock guard; only the timer uses the
+  // separately controlled host clock so it can wake 1ms before the deadline.
+  t.mock.method(Date, "now", () => clock);
+  const input = { admissionId: uuid(810), taskId: TA, childIdle: false, continuationSignal: false, settledBoundary: false };
+  assert.equal(await admission.admit(input), "trigger");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let aborts = 0;
+  const deadlines = new TaskDeadlines(host, async identity => {
+    aborts++;
+    assert.equal(task().interrupt_requested_at, new Date(deadline).toISOString(), "persist timeout intent before abort");
+    assert.equal(await admission.admit(input), "record-only");
+    assert.equal((await host.settleTask({ ...identity, completedAt: new Date(clock).toISOString(),
+      outcome: "interrupted", reason: "user-interrupt", finalText: "aborted", summary: "aborted" })).ok, true);
+  });
+  t.after(() => deadlines.dispose());
+  deadlines.arm({ agentId: A, taskId: TA, runtimeGeneration: 1 });
+  clock = deadline - 1;
+  t.mock.timers.tick(10);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(task().phase, "running"); assert.equal(task().interrupt_requested_at, undefined); assert.equal(aborts, 0);
+  clock = deadline;
+  t.mock.timers.tick(1);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(task().phase, "settled", "the first early callback must not discard deadline enforcement");
+  assert.equal(task().deadline_at_ms, deadline); assert.equal(task().outcome, "failed"); assert.equal(task().reason, "timeout");
+  assert.equal(aborts, 1); assert.deepEqual(errors, []);
+  assert.deepEqual(f.commits.map(commit => commit.operation), ["timeout-task", "settle-task"]);
+  t.mock.timers.tick(100); await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(aborts, 1);
+});
+
+test("an in-flight early deadline check cannot revive a cancelled or replaced timer", async t => {
+  const f = await fixture(t);
+  const deadline = f.state().agents.find(item => item.agent.agent_id === A)!.tasks[0]!.deadline_at_ms!;
+  for (const action of ["cancel", "dispose", "replace"] as const) await t.test(action, async t => {
+    let clock = deadline - 10, release!: () => void, checks = 0, aborts = 0;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const host = new AgentHostCoreV1({ ...f.host.options, now: () => new Date(clock) });
+    t.mock.method(host, "requestTaskTimeout", async () => {
+      checks++;
+      if (checks === 1) { await pending; return { ok: true, value: { interrupt: false } }; }
+      return { ok: true, value: { interrupt: true } };
+    });
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const deadlines = new TaskDeadlines(host, async () => { aborts++; });
+    t.after(() => deadlines.dispose());
+    const identity = { agentId: A, taskId: TA, runtimeGeneration: 1 };
+    deadlines.arm(identity); clock = deadline - 1; t.mock.timers.tick(10);
+    assert.equal(checks, 1);
+    if (action === "dispose") deadlines.dispose();
+    else if (action === "cancel") deadlines.cancel(A, TA);
+    else deadlines.arm(identity);
+    release(); await new Promise<void>(resolve => setImmediate(resolve));
+    clock = deadline; t.mock.timers.tick(100); await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(checks, action === "replace" ? 2 : 1);
+    assert.equal(aborts, action === "replace" ? 1 : 0);
+  });
+});
+
+test("a deadline check does not retry a Task already interrupted before its deadline", async t => {
+  const f = await fixture(t);
+  const deadline = f.state().agents.find(item => item.agent.agent_id === A)!.tasks[0]!.deadline_at_ms!;
+  let clock = deadline - 10, aborts = 0;
+  const host = new AgentHostCoreV1({ ...f.host.options, now: () => new Date(clock) });
+  const check = t.mock.method(host, "requestTaskTimeout");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const deadlines = new TaskDeadlines(host, async () => { aborts++; });
+  t.after(() => deadlines.dispose());
+  deadlines.arm({ agentId: A, taskId: TA, runtimeGeneration: 1 });
+  assert.equal((await host.interruptAgent({ request_id: uuid(811), caller: f.caller, input: { target: A } })).ok, true);
+  clock = deadline; t.mock.timers.tick(10); await new Promise<void>(resolve => setImmediate(resolve));
+  t.mock.timers.tick(100); await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(check.mock.callCount(), 1); assert.equal(aborts, 0);
+  const task = host.snapshot().agents.find(item => item.agent.agent_id === A)!.tasks[0]!;
+  assert.equal(task.interrupt_requested_at, new Date(deadline - 10).toISOString());
 });
 
 test("open cap counts queued and closing Agents, excludes closed, and concurrent resumes reserve one slot", async t => {
