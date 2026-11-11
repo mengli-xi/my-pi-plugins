@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mailboxHarness } from "./mailbox-harness.ts";
+import { readProcessMailIntentsV1 } from "../../src/notifications/mailbox-source.ts";
 import { isolatedProcessesConfig as defaultProcessesConfig } from "../isolation-fixture.ts";
 
 for (const idle of [false, true]) test(`Main ${idle ? "idle" : "active"} handoff waits for native proof and marker before source ACK`, async () => {
@@ -233,5 +234,30 @@ for (const mismatch of ["evidence session", "manager session", "replaced manager
     }
     assert.deepEqual(h.host.managedSnapshot(), snapshot);
     assert.deepEqual(h.branch, entries);
+  } finally { await h.dispose(); }
+});
+
+for (const contained of [false, true]) test(`matcher startup failure survives source ACK and scope cancellation (contained=${contained})`, async () => {
+  const h = await mailboxHarness();
+  try {
+    // Scheduler pressure can produce this complete fact instead of watchMatch.
+    await h.matcherError(); await h.coordinator.turnEnded(h.ctx);
+    const mail = h.puts[0]!;
+    assert.match(mail.messages[0]!.content as string, /matcher failed \(matcher-startup-timeout\)/);
+    assert.equal(readProcessMailIntentsV1(h.branch, h.sessionId).get(mail.key), h.branch.find(e => e.customType === "process-notification-intent-v1").data.mail);
+    assert.equal(h.coordinator.checkCurrent(mail).kind, "allow");
+    await h.record(mail);
+    if (contained) await h.host.dispose("protocol-failure");
+    const cancelled: string[] = [];
+    const cancel = h.source.endpoint.cancel.bind(h.source.endpoint);
+    h.source.endpoint.cancel = async (...args) => {
+      cancelled.push(args[0]);
+      const evidence = await cancel(...args); h.coordinator.terminal(evidence); return evidence;
+    };
+    await h.coordinator.cancelPending(h.ctx, h.source);
+    assert.deepEqual(cancelled, [mail.key]);
+    assert.deepEqual(h.coordinator.pendingBatchIds(), []);
+    assert.equal(h.branch.filter(e => e.customType === "process-notification-migration-v1" && e.data.classification === "cancelled").length, 1);
+    assert.equal(h.branch.some(e => e.data?.state === "turn-settled"), false);
   } finally { await h.dispose(); }
 });

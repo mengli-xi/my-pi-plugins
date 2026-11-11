@@ -1,6 +1,7 @@
 import { prepareFreshProfile, piBinary } from "../../../local/pi-subagents/test/fixtures/fresh-profile.ts";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,7 +10,9 @@ import { mainKey } from "../../../local/pi-subagents/src/domain/ids.ts";
 
 const pi = piBinary;
 
-test("real Subagent child rejects missing bash timeout and executes a corrected call", { timeout: 120_000 }, async (t) => {
+test("real Subagent child rejects missing bash timeout and executes a corrected call", { timeout: 180_000 }, async (t) => {
+  const startedAt = performance.now();
+  const phase = (label: string) => t.diagnostic(`${label}: ${Math.round(performance.now() - startedAt)}ms since start`);
   const cwd = process.cwd();
   const extension = resolve(cwd, "../pi-bash-timeout/extensions/index.ts");
   const home = await realpath(await mkdtemp(join(tmpdir(), "pi-subagents-bash-timeout-")));
@@ -25,25 +28,30 @@ test("real Subagent child rejects missing bash timeout and executes a corrected 
     env: { ...process.env, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: agentDir, HOME: home, PI_SUBAGENTS_TEST_TIMEOUT_MS: "30000", PI_SUBAGENTS_TEST_MESSAGE: "BASH_TIMEOUT_CHILD" },
     stdio: ["pipe", "pipe", "pipe"],
   });
-  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolvePromise => child.once("exit", (code, signal) => resolvePromise({ code, signal })));
+  // close also fires after spawn failure; exit does not. Cleanup must never
+  // wait forever for an ENOENT child that never acquired a pid.
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolvePromise => child.once("close", (code, signal) => resolvePromise({ code, signal })));
   t.after(async () => {
     // Reap before deleting the live session/store; cleanup must also run after assertion/RPC failure.
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    if (child.pid && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
     await exited;
     await rm(home, { recursive: true, force: true });
   });
   const records: any[] = []; const stderr: Buffer[] = []; let buffer = "";
   child.stdout.on("data", (chunk) => { buffer += chunk.toString("utf8"); for (let at; (at = buffer.indexOf("\n")) >= 0;) { const line = buffer.slice(0, at); buffer = buffer.slice(at + 1); if (line) records.push(JSON.parse(line)); } });
   child.stderr.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
-  const response = async (id: string, timeout = 60_000) => { const deadline = Date.now() + timeout; for (;;) { const record = records.find((item) => item.id === id && item.type === "response"); if (record) return record; if (Date.now() > deadline) throw new Error(`RPC ${id} timed out: ${Buffer.concat(stderr)}`); await new Promise((resolvePromise) => setTimeout(resolvePromise, 20)); } };
+  await once(child, "spawn"); // Reject ENOENT immediately, with cleanup already installed.
+  phase("Pi spawned");
+  const response = async (id: string, timeout = 60_000) => { const deadline = Date.now() + timeout; for (;;) { const record = records.find((item) => item.id === id && item.type === "response"); if (record) return record; if (Date.now() > deadline || child.exitCode !== null || child.signalCode !== null) throw new Error(`RPC ${id} unavailable: ${Buffer.concat(stderr)}`); await new Promise((resolvePromise) => setTimeout(resolvePromise, 20)); } };
   child.stdin.write(`${JSON.stringify({ id: "spawn", type: "prompt", message: "/subagents-test-spawn" })}\n`);
   await response("spawn");
+  phase("Task spawn RPC acknowledged");
   let entries: any[] = []; let card: any;
   const deadline = Date.now() + 45_000;
   for (let attempt = 0; Date.now() < deadline; attempt++) {
     const id = `entries-${attempt}`;
     child.stdin.write(`${JSON.stringify({ id, type: "get_entries" })}\n`);
-    entries = (await response(id)).data.entries;
+    entries = (await response(id, Math.max(1, deadline - Date.now()))).data.entries;
     card = entries.find((entry: any) => entry.type === "custom_message" && entry.customType === "subagent-completion-v1" && String(entry.content).includes("BASH_TIMEOUT_CHILD_OK"));
     if (card) break;
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
@@ -53,6 +61,7 @@ test("real Subagent child rejects missing bash timeout and executes a corrected 
     console.error(JSON.stringify(summary));
     throw new Error("bash timeout completion missing");
   }
+  phase("Corrected child call completed and delivered");
   const owner = JSON.parse(await readFile(join(storeRoot, "owner.json"), "utf8"));
   assert.equal(owner.main_session_id, sessionId);
   const conversations = await import("node:fs/promises").then(({ readdir }) => readdir(join(storeRoot, "conversations")));
@@ -64,8 +73,10 @@ test("real Subagent child rejects missing bash timeout and executes a corrected 
   assert.match(JSON.stringify(childResults[0].message.content), /timeout/);
   assert.equal(childResults[1].message.isError, false);
   assert.match(JSON.stringify(childResults[1].message.content), /BASH_TIMEOUT_EXECUTED/);
+  phase("Child transcript verified; sending EOF");
   child.stdin.end();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const exit = await Promise.race([exited, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("bash-timeout Main did not exit")), 60_000); })]).finally(() => clearTimeout(timer));
+  phase("Pi closed");
   assert.deepEqual(exit, { code: 0, signal: null }, Buffer.concat(stderr).toString("utf8"));
 });

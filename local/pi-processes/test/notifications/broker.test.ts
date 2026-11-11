@@ -6,6 +6,7 @@ import {
   createProcessTuiEntryEnvelopeV1,
   measureNotificationBrokerStateV1,
   measureNotificationControlPlaneStateV1,
+  parseProcessNotificationBatchV1,
   restoreNotificationBrokerV1 as restoreRawNotificationBrokerV1,
   type NotificationBrokerV1,
   type NotificationBrokerOptionsV1,
@@ -850,5 +851,20 @@ test("deterministic generated operation traces preserve invariants across restor
       assert.ok(health.serializedBytes <= NOTIFICATION_BROKER_LIMITS_V1.serializedBytes);
       assert.equal(canonicalNotificationStateJsonV1(broker.exportState()), canonicalNotificationStateJsonV1(restoreNotificationBrokerV1(structuredClone(broker.exportState()), { sessionScopeId }).exportState()));
     }
+  }
+});
+
+test("prepared matcher-error retains watch identity through parsing and broker restore", () => {
+  const broker = createNotificationBrokerV1({ sessionScopeId });
+  broker.observe({ target, fact: watchFact(1, { kind: "matcher-error", stableCode: "matcher-startup-timeout", attention: "turn" }) });
+  const prepared = broker.prepare({ target, lane: "turn", batchId: "matcher-failure", epochId: "epoch", reason: "main-admission", createdAt: new Date().toISOString() })!;
+  const batch = prepared.batch;
+  assert.equal(batch.items[0]!.watchKey, "progress");
+  assert.equal(batch.items[0]!.watchGeneration, 1);
+  assert.deepEqual(parseProcessNotificationBatchV1(JSON.parse(JSON.stringify(batch)), sessionScopeId), batch);
+  const state = broker.exportState();
+  assert.deepEqual(restoreNotificationBrokerV1(state, { sessionScopeId }).exportState(), state);
+  for (const change of [{ watchKey: undefined }, { watchGeneration: undefined }, { stableCode: undefined }, { matchedCount: 1 }, { suppressedCount: 0 }, { kind: "operational" }]) {
+    assert.throws(() => parseProcessNotificationBatchV1({ ...batch, items: [{ ...batch.items[0], ...change }] }, sessionScopeId), JSON.stringify(change));
   }
 });

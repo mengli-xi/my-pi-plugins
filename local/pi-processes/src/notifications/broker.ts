@@ -1708,8 +1708,11 @@ function validateStateBatchItem(value: unknown, index: number, fenceObserved: Ma
   const suppressed = item.suppressedCount === undefined ? undefined : stateInteger(item.suppressedCount, `${label}.suppressedCount`);
   const kind = item.kind as NotificationKindV1;
   if ((item.processId === undefined) !== (item.processName === undefined) || (kind !== "operational" && item.processId === undefined)) fail("state-corrupt", `${label} process identity is invalid`);
-  if (kind === "watch-match") { if (item.watchKey === undefined || item.watchGeneration === undefined || matched === undefined || suppressed === undefined || matched + suppressed !== count || item.terminal !== undefined) fail("state-corrupt", `${label} watch semantics are invalid`); }
-  else if (item.watchKey !== undefined || item.watchGeneration !== undefined || matched !== undefined || suppressed !== undefined) fail("state-corrupt", `${label} has inapplicable watch fields`);
+  if (kind === "watch-match" || kind === "matcher-error") {
+    if (item.watchKey === undefined || item.watchGeneration === undefined) fail("state-corrupt", `${label} watch identity is missing`);
+  } else if (item.watchKey !== undefined || item.watchGeneration !== undefined) fail("state-corrupt", `${label} has inapplicable watch fields`);
+  if (kind === "watch-match") { if (matched === undefined || suppressed === undefined || matched + suppressed !== count || item.terminal !== undefined) fail("state-corrupt", `${label} watch semantics are invalid`); }
+  else if (matched !== undefined || suppressed !== undefined) fail("state-corrupt", `${label} has inapplicable watch counts`);
   if ((kind === "terminal") !== (item.terminal !== undefined)) fail("state-corrupt", `${label} terminal semantics are invalid`);
   if ((kind === "operational" || kind === "matcher-error") !== (item.stableCode !== undefined)) fail("state-corrupt", `${label} stableCode semantics are invalid`);
   if (item.terminal !== undefined) validateIdentity({ kind: "terminal", attention: "context", terminal: item.terminal, process: { id: String(item.processId), name: String(item.processName), kind: "process" } }, `${label}.terminal-wrapper`);

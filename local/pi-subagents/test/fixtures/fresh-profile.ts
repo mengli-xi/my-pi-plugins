@@ -1,9 +1,12 @@
 import { mkdir, writeFile, symlink } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-export const piBinary = process.env.PI_BIN ?? (() => {
+const configuredPi = process.env.PI_BIN ?? (() => {
   throw new Error("用 PI_BIN 指定 stock Pi CLI 用于隔离 fresh-host 测试。");
 })();
+// Test entrypoints may chdir to the workspace before importing this fixture.
+export const piBinary = resolve(fileURLToPath(new URL("../../../../", import.meta.url)), configuredPi);
 export async function prepareFreshProfile(home: string, maxDepth: 1 | 2 = 1, order: "default" | "reverse" = "default"): Promise<string> {
   if (process.env.PI_MAILBOX_FULL_PROFILE === "1") {
     const { prepareFullProfile } = await import(new URL("../../../../scripts/mailbox/release-profile.mjs", import.meta.url).href);

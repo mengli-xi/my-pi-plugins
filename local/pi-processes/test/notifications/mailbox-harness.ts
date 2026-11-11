@@ -75,6 +75,7 @@ export async function mailboxHarness(config = defaultProcessesConfig(), limits?:
     setIdle(value: boolean) { idle = value; }, markerFault(value: boolean) { markerFault = value; },
     async match() { eventSequence++; callbacks.onEvent({ type: "watchMatch", eventSequence, payload: { id: record.id, key: "ready", generation: 1, sequence: eventSequence, text: "READY" } }); await tick(); },
     async terminal(classification = "natural") { callbacks.onEvent({ type: "terminal", eventSequence: ++eventSequence, payload: { id: record.id, classification, exitCode: classification === "natural" ? 0 : null, signal: classification === "timeout" ? "SIGTERM" : null, ...(classification === "timeout" ? { timeoutMs: 1000 } : {}) } }); await tick(); },
+    async matcherError(code = "matcher-startup-timeout") { callbacks.onEvent({ type: "matcherError", eventSequence: ++eventSequence, payload: { id: record.id, key: "ready", generation: 1, sequence: eventSequence, code } }); await tick(); },
     async rearm() { await host.configure({ action: "configure", target: record.id, continuation: { mode: "wait", until: { kind: "watch", key: "ready" } } }); },
     async record(mail = puts.at(-1)!) {
       if (!branch.some(e => e.type === "custom_message" && e.details?.batchId === mail.key.slice(6))) branch.push({ id: crypto.randomUUID(), parentId: branch.at(-1)?.id, type: "custom_message", ...mail.messages[0] });

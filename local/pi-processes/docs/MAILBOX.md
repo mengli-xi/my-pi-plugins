@@ -112,6 +112,8 @@ factory 的方法，然后才 retire policy、interrupt、dispose 和删除 ephe
 
 ## Notification 模型投影
 
+`matcher-error` batch item 与 `watch-match` 一样保留 `watchKey/watchGeneration`，用于定位失效的 watch；只有 `watch-match` 带 `matchedCount/suppressedCount`。包括 worker 启动超时在内的 matcher 故障必须通过同一严格 carrier 校验、恢复与取消流程，不能把完整的错误通知当成损坏 intent。
+
 ProcessHost-owned Notification Broker 按 owner/process/watch generation 聚合 repeat watch；`context` 在下一 external user boundary 注入一批，`turn` 经 Main wake 或 Subagent Host admission。`process-event-v2` 只服务 TUI/history renderer，模型只消费 `process-notification-batch-v1`。每个 blocking lease 另有独立、隐藏的 `process-notification-receipt-v1` 持久凭据。
 
 Main 在处理上一批通知的 run 中显式创建或重新 arm 的 wait，仍拥有一次 `turn` 唤醒机会。完成信号若在最后回复生成期间到达，先保留 successor，等当前 run settled、旧 receipt 清理后再投递新 batch 并唤醒。每个 run 仍最多一批；没有重新 arm 的 repeat watch 和 detached 通知保持原有 successor 限流，`context` 与 abort fence 不变。`process start` 的 wait 提示只要求模型结束本轮等唤醒，不改变调度。
