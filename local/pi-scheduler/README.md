@@ -51,7 +51,6 @@ pi -e "$PWD/local/pi-scheduler"
 | `PI_CODING_AGENT_DIR` | profile 根目录；extension 使用公开 `getAgentDir()`，独立 daemon 必填 |
 | `PI_SCHEDULER_BINARY` | 任务执行用的 Pi 绝对路径；独立 daemon 必填 |
 | `PI_SCHEDULER_CONCURRENCY` | daemon 并发上限，默认 5 |
-| `PI_SCHEDULER_INJECTION_POLL_INTERVAL_MS` | live offer 轮询，默认 30000，最小 5000 毫秒 |
 
 extension 默认解析当前 Pi package 的公开 CLI bin；编译版保留实际 Pi executable。证据缺失时明确报错，可显式指定 `PI_SCHEDULER_BINARY`，不猜 PATH 上的日常 Pi。daemon 由真实 Node/Bun 运行，不由编译 Pi executable 充当 runtime。
 
@@ -67,6 +66,8 @@ extension 默认解析当前 Pi package 的公开 CLI bin；编译版保留实�
 - `occupancy.json`、`daemon.log`、`daemon.lock`：占用、日志与 advisory lock 诊断。
 
 工具与命令仅走本地 Unix socket。占用登记使用 session ID、PID、token、generation，持久恢复并检查 PID 存活；多个 live holder 不互相接管。holder 拒绝后每 5 秒重试原身份登记，同一原因警告去重。daemon 不与 live Pi 并发写 session。
+
+会话空闲时，真实会话活动（`agent_settled`）和 session_start 会立即拉取 daemon 的 offer；完全静默的会话每 30 秒轮询一次，因此新到期的会话任务最多晚约 30 秒被 pickup。
 
 新 Pi 对比 bundle SHA-256 与 daemon build ID。不同则请求 drain：接受任务变更但不启动新执行，等待已有子进程记录落盘，关闭 socket、释放内核锁后启动替代者并重新登记占用。不支持 drain 的旧 daemon 不自动强杀，须人工确认无执行后停止旧进程。服务与 socket 按 agentDir 隔离，不互相替换。
 

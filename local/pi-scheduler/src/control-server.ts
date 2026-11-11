@@ -6,7 +6,7 @@
  */
 
 import { createServer, type Server, type Socket } from "node:net";
-import { rmSync } from "node:fs";
+import { chmodSync, rmSync } from "node:fs";
 import {
   encodeFrame,
   FrameDecoder,
@@ -51,7 +51,14 @@ export function startControlServer(options: ControlServerOptions): Server {
     // best effort
   }
   const server = createServer((socket) => handleConnection(socket, options));
-  server.listen(options.socketPath);
+  // A Unix socket inherits the process umask (commonly 0755). Bind is synchronous,
+  // so tighten it immediately: a shared /tmp or multi-user agent dir must not let
+  // another local user drive this profile's daemon.
+  const restrict = () => {
+    try { chmodSync(options.socketPath, 0o600); } catch { /* best effort */ }
+  };
+  server.listen(options.socketPath, restrict);
+  restrict();
   return server;
 }
 

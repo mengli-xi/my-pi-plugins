@@ -12,6 +12,7 @@ import { normalizeSchedulerRollback, schedulerRollbackInventory } from "../../sr
 import { SchedulerStore } from "../../src/store.ts";
 import { schedulerPaths } from "../../src/paths.ts";
 import { request } from "../../src/client.ts";
+import { installedPiVersion } from "../../../../scripts/pi-checks.mjs";
 import { waitForDaemonLockRelease } from "../../tests/fixtures/daemon-lock.ts";
 import { injectionMail } from "../../src/mailbox-adapter.ts";
 
@@ -23,7 +24,8 @@ assert.ok(!existsSync(artifact) || readdirSync(artifact).length === 0, "Joint ar
 mkdirSync(artifact, { recursive: true });
 const versionAgent = join(artifact, "version-agent"), versionHome = join(artifact, "version-home");
 mkdirSync(versionAgent); mkdirSync(versionHome);
-assert.equal(execFileSync(binary, ["--version"], { cwd: artifact, env: { ...process.env, HOME: versionHome, PI_CODING_AGENT_DIR: versionAgent, PI_OFFLINE: "1" }, encoding: "utf8" }).trim(), "1.5.0");
+const version = execFileSync(binary, ["--version"], { cwd: artifact, env: { ...process.env, HOME: versionHome, PI_CODING_AGENT_DIR: versionAgent, PI_OFFLINE: "1" }, encoding: "utf8" }).trim();
+assert.equal(version, installedPiVersion(), "test CLI matches the installed Pi SDK");
 const bundle = join(artifact, "extension.js");
 execFileSync("bun", ["build", join(pkg, "scripts/mailbox-joint/extension.ts"), "--target=node", "--format=esm", "--external=@earendil-works/pi-coding-agent", "--external=@earendil-works/pi-ai", "--outfile", bundle], { stdio: "pipe" });
 // The test bundles the extension, so preserve its relative daemon artifact.
@@ -95,7 +97,7 @@ for (const scenario of scenarios) {
   }
   if ((!full && !recovery) || ["full-normal", "full-batch", "full-recovered-source"].includes(scenario)) store.writeOccupancy([{ sessionId: marker.sessionId, pid: process.pid, holderToken: "driver", bindingGen: 1 }]);
   const env = { PATH: process.env.PATH, HOME: join(directory, "home"), PI_CODING_AGENT_DIR: agent, PI_SCHEDULER_BINARY: binary,
-    TMPDIR: tmpdir(), PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_SCHEDULER_INJECTION_POLL_INTERVAL_MS: "5000" };
+    TMPDIR: tmpdir(), PI_OFFLINE: "1", PI_TELEMETRY: "0" };
   let daemonStderr = "";
   const spawnDaemon = () => {
     const child = spawn(process.execPath, [join(pkg, "dist/daemon.js")], { env, stdio: ["ignore", "ignore", "pipe"] });
@@ -193,7 +195,11 @@ for (const scenario of scenarios) {
         schedule: { kind: "once", at }, timeZone: "UTC", toleranceMs: 60000, status: "active", createdAt: at, origin: "user",
         target: { kind: "session", sessionId: f.snapshot.session.id, cwd, sessionDir: directory } } }, { socketPath: paths.socket });
       assert.equal(created.ok, true);
-      await until(done, "live idle automatic delivery"); assert.equal(requests().length, 2);
+      // The extension offers on real session activity; the idle poll would take
+      // up to 30s. Drive a real turn so its agent_settled pumps the offer.
+      send("PUMP_AFTER_CREATE");
+      await until(done, "live idle automatic delivery");
+      assert.equal(requests().length, 3, "warmup + pump turn + delivered injection");
     } else if (scenario === "full-normal" || scenario === "full-batch" || scenario === "full-recovered-source") {
       await until(() => snapshot()?.pending.length === (scenario === "full-batch" ? 2 : 1), "durable cold pending"); await delay(100); assert.equal(requests().length, 0);
       send("/mailbox status");
@@ -329,6 +335,6 @@ for (const scenario of scenarios) {
   writeFileSync(join(directory, "daemon-stderr.log"), daemonStderr);
   results.push(result); console.log(JSON.stringify(result));
 }
-writeFileSync(join(artifact, "summary.json"), JSON.stringify({ binary, version: "1.5.0", realRequests: 0, artifact,
+writeFileSync(join(artifact, "summary.json"), JSON.stringify({ binary, version, realRequests: 0, artifact,
   extensionSha256: createHash("sha256").update(readFileSync(bundle)).digest("hex"), results }, null, 2));
 console.log(`Artifacts: ${artifact}`); process.exitCode = results.every(r => r.passed) ? 0 : 1;

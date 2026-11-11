@@ -136,17 +136,28 @@ test("bundled daemon recovers the shared A/E final-ACK fixture over real IPC aft
   const forbiddenPi = join(home, "pi-forbidden");
   writeFileSync(forbiddenPi, `#!/bin/sh\nprintf unexpected > '${spawnEvidence}'\nexit 99\n`);
   chmodSync(forbiddenPi, 0o755);
-  let daemon = spawn(process.execPath, [daemonJs], { env: { ...process.env, HOME: home,
-    PI_CODING_AGENT_DIR: agentDir, PI_SCHEDULER_BINARY: forbiddenPi }, stdio: "ignore" });
+  const startDaemon = () => {
+    const child = spawn(process.execPath, [daemonJs], { env: { ...process.env, HOME: home,
+      PI_CODING_AGENT_DIR: agentDir, PI_SCHEDULER_BINARY: forbiddenPi }, stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    child.stderr!.setEncoding("utf8");
+    child.stderr!.on("data", (chunk: string) => { stderr += chunk; });
+    return { child, stderr: () => stderr };
+  };
+  let daemon = startDaemon();
   t.after(async () => {
-    const exited = new Promise(resolve => daemon.once("exit", resolve));
-    daemon.kill("SIGTERM"); await exited;
+    const exited = new Promise(resolve => daemon.child.once("exit", resolve));
+    daemon.child.kill("SIGTERM"); await exited;
     await waitForDaemonLockRelease(paths.lock);
     rmSync(home, { recursive: true, force: true });
   });
   const waitUp = async () => {
-    for (let i = 0; i < 100; i++) { if (await ping(paths.socket)) return; await delay(50); }
-    assert.fail("mailbox daemon did not become ready");
+    for (let i = 0; i < 200; i++) {
+      if (await ping(paths.socket)) return;
+      if (daemon.child.exitCode !== null) break;
+      await delay(50);
+    }
+    assert.fail(`mailbox daemon did not become ready: ${daemon.stderr()}`);
   };
   await waitUp();
   let loseReply = true;
@@ -159,12 +170,11 @@ test("bundled daemon recovers the shared A/E final-ACK fixture over real IPC aft
     bindingGeneration: 1, ownerEpoch: 1, producerToken: Symbol("scheduler-test"), attemptId: null };
   await assert.rejects(async () => source.onTerminal!(f.evidence, fence), /lost callback reply/);
   assert.equal(store.getInjectionReceipt(f.injectionId)?.evidence.terminalId, f.evidence.terminalId);
-  const exited = new Promise<void>((resolve) => daemon.once("exit", () => resolve()));
-  daemon.kill("SIGKILL");
+  const exited = new Promise<void>((resolve) => daemon.child.once("exit", () => resolve()));
+  daemon.child.kill("SIGKILL");
   await exited;
   await waitForDaemonLockRelease(paths.lock);
-  daemon = spawn(process.execPath, [daemonJs], { env: { ...process.env, HOME: home,
-    PI_CODING_AGENT_DIR: agentDir, PI_SCHEDULER_BINARY: forbiddenPi }, stdio: "ignore" });
+  daemon = startDaemon();
   await waitUp();
   await source.onTerminal!(f.evidence, { ...fence, ownerEpoch: 2 });
   assert.equal(store.listRuns(f.taskId).length, f.expected.terminalTransitions);

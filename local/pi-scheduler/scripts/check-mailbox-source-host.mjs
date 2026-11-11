@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { fulfilledFinalAckLostFixture } from "../tests/fixtures/fulfilled-final-ack-lost.ts";
 import { ping } from "../src/client.ts";
+import { installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import { schedulerPaths } from "../src/paths.ts";
 import { SchedulerStore } from "../src/store.ts";
 
@@ -32,7 +33,7 @@ const extension = join(root, "source-check.ts");
 const resultPath = join(root, "result.json");
 const moduleUrl = (p) => pathToFileURL(join(pkg, p)).href;
 writeFileSync(extension, `import { writeFileSync } from "node:fs";
-import { fauxProvider } from ${JSON.stringify(moduleUrl("../../node_modules/@earendil-works/pi-ai/dist/providers/faux.js"))};
+import { fauxProvider } from ${JSON.stringify(import.meta.resolve("@earendil-works/pi-ai/providers/faux"))};
 import { schedulerProducer } from ${JSON.stringify(moduleUrl("src/mailbox-adapter.ts"))};
 import { request } from ${JSON.stringify(moduleUrl("src/client.ts"))};
 export default function(pi) {
@@ -53,7 +54,7 @@ const env = { ...process.env, HOME: home, PI_CODING_AGENT_DIR: agent, PI_OFFLINE
   PI_SCHEDULER_BINARY: binary, XDG_CONFIG_HOME: join(root, "config") };
 const version = spawnSync(binary, ["--version"], { cwd, env, encoding: "utf8" });
 assert.equal(version.status, 0, version.stderr);
-assert.equal(version.stdout.trim(), "1.5.0", "stock Pi 1.5.0 executable");
+assert.equal(version.stdout.trim(), installedPiVersion(), "test CLI matches the installed Pi SDK");
 const daemon = spawn(process.execPath, [join(pkg, "dist/daemon.js")], { env, stdio: "ignore" });
 try {
   let ready = false;

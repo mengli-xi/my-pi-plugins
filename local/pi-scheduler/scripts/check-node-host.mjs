@@ -3,8 +3,9 @@ import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import { ping, request } from "../src/client.ts";
 import { schedulerPaths } from "../src/paths.ts";
 
@@ -25,7 +26,7 @@ delete env.PI_SCHEDULER_BINARY;
 delete env.PI_PACKAGE_DIR;
 const paths = schedulerPaths(agent), parentEvidence = join(root, "parent.json"), childEvidence = join(root, "execution.json");
 const fixture = join(root, "faux.ts");
-const fauxUrl = pathToFileURL(join(pkg, "../../node_modules/@earendil-works/pi-ai/dist/providers/faux.js")).href;
+const fauxUrl = import.meta.resolve("@earendil-works/pi-ai/providers/faux");
 writeFileSync(fixture, `import {writeFileSync} from "node:fs";
 import {fauxProvider,fauxAssistantMessage} from ${JSON.stringify(fauxUrl)};
 export default function(pi) {
@@ -49,7 +50,7 @@ async function until(get, label, timeout = 30000) {
 }
 try {
   const version = execFileSync(process.execPath, [resolve(cli), "--version"], { cwd, env, encoding: "utf8" }).trim();
-  assert.equal(version, "1.5.0", "official CLI runs on Node 1.5.0");
+  assert.equal(version, installedPiVersion(), "test CLI matches the installed Pi SDK");
   host = spawn(process.execPath, [resolve(cli), "--offline", "--no-extensions", "-e", join(pkg, "index.ts"), "-e", fixture,
     "--mode", "rpc", "--no-session", "--provider", "scheduler-node-faux", "--model", "task", "--thinking", "off", "--no-skills", "--no-prompt-templates", "--no-themes"], { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
   host.stdout.on("data", data => stdout += data); host.stderr.on("data", data => stderr += data);
@@ -74,7 +75,7 @@ try {
   const execution = JSON.parse(readFileSync(childEvidence, "utf8"));
   assert.ok(execution.piBinary && execution.piBinary !== execution.execPath, "daemon receives Pi CLI, not Node");
   assert.equal(realpathSync(execution.piBinary), realpathSync(cli));
-  assert.equal(execFileSync(execution.piBinary, ["--version"], { cwd, env, encoding: "utf8" }).trim(), "1.5.0");
+  assert.equal(execFileSync(execution.piBinary, ["--version"], { cwd, env, encoding: "utf8" }).trim(), installedPiVersion());
   assert.equal(execution.providerCalls, 1);
   const evidence = { version, realRequests: 0, fauxRequests: 1, defaultAutostart: true, parent, execution, runs };
   writeFileSync(join(root, "result.json"), JSON.stringify(evidence, null, 2));

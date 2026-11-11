@@ -15,7 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
-import { Box, Text, type Component } from "@earendil-works/pi-tui";
+import { Box, type Component } from "@earendil-works/pi-tui";
 import { renderCollapsibleRows } from "pi-li-uikit/collapsible-block";
 import { bindMailbox, type ProducerEndpoint } from "pi-session-inject/mailbox-v1/light";
 import { forgetSchedulerIntent, putSchedulerIntent, type SchedulerDeliveryIntent } from "./src/mailbox-delivery.ts";
@@ -65,9 +65,8 @@ async function send(body: SchedulerRequest): Promise<SchedulerResponse> {
   return requestWithAutostart(body, ensureOptions());
 }
 
-const MIN_POLL_INTERVAL_MS = 5_000;
-const DEFAULT_POLL_INTERVAL_MS = 30_000;
-const MAX_TIMER_DELAY_MS = 2_147_483_647;
+/** Idle offer cadence. Real session activity and agent_settled pump earlier. */
+const OFFER_POLL_MS = 30_000;
 const OCCUPANCY_RETRY_MS = 5_000;
 const BINDING_GENERATION_KEY = Symbol.for("pi.scheduler.binding-generation.v1");
 
@@ -101,14 +100,6 @@ interface LiveInjectionBinding {
   registerInFlight: Set<number>;
   endpoint: ProducerEndpoint;
   intents: Map<string, SchedulerDeliveryIntent>;
-}
-
-function pollIntervalMs(): number {
-  const raw = process.env.PI_SCHEDULER_INJECTION_POLL_INTERVAL_MS;
-  if (!raw?.trim()) return DEFAULT_POLL_INTERVAL_MS;
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0 || value > MAX_TIMER_DELAY_MS) return DEFAULT_POLL_INTERVAL_MS;
-  return Math.max(MIN_POLL_INTERVAL_MS, Math.floor(value));
 }
 
 function bindingCurrent(bindings: Map<string, LiveInjectionBinding>, binding: LiveInjectionBinding): boolean {
@@ -553,6 +544,19 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
     });
   };
   pi.on("session_start", async (_event, ctx) => {
+    // Resolve the runtime and built entry before creating any binding. A missing
+    // build or Node/Bun runtime cannot be repaired by occupancy retries, so
+    // report it once and stay inert instead of throwing from session_start.
+    let options: EnsureOptions;
+    try {
+      options = ensureOptions();
+    } catch (error) {
+      ctx.ui.notify(
+        `Scheduler 不可用：${error instanceof Error ? error.message : String(error)}`,
+        "warning",
+      );
+      return;
+    }
     const sessionId = ctx.sessionManager.getSessionId();
     const prior = bindings.get(sessionId);
     if (prior) retire(prior);
@@ -576,7 +580,7 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
         void pumpInjection(pi, bindings, binding);
       }
       if (bindingCurrent(bindings, binding) && !binding.registered) retryOccupancy(pi, bindings, binding);
-    }, pollIntervalMs());
+    }, OFFER_POLL_MS);
     binding.poller.unref?.();
     const registered = await registerOccupancy(binding);
     if (!registered) retryOccupancy(pi, bindings, binding);
@@ -586,7 +590,7 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
     // real subprocess, so session_start must never hold Pi's first frame. Once
     // the rebuilt daemon owns the socket, register this live holder again—the
     // previous daemon's occupancy format may have been legacy-only.
-    void reconcileDaemonBuild(ensureOptions()).then(() => {
+    void reconcileDaemonBuild(options).then(() => {
       if (!bindingCurrent(bindings, binding)) return;
       binding.registered = false;
       void registerOccupancy(binding).then((current) => {

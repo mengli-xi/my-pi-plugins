@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { request } from "../src/client.ts";
+import { ping, request } from "../src/client.ts";
 import { startControlServer, type ControlServerOptions } from "../src/control-server.ts";
 import { OccupancyRegistry } from "../src/occupancy.ts";
 import { SchedulerStore } from "../src/store.ts";
@@ -55,6 +55,13 @@ async function withServer(
     rmSync(root, { recursive: true, force: true });
   }
 }
+
+test("the control socket is private to the profile owner", async () => {
+  await withServer(base => base, async ({ socketPath }) => {
+    assert.equal(statSync(socketPath).mode & 0o777, 0o600, "another local user cannot drive this daemon");
+    assert.equal(await ping(socketPath), true, "the owner can still connect");
+  });
+});
 
 test("daemon status reports build identity and update starts drain", async () => {
   let draining = false;

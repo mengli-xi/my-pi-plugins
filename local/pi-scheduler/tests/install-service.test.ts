@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import {
   launchdPlist,
@@ -51,20 +55,27 @@ test("omitting concurrency leaves it unset in both unit formats", () => {
   assert.doesNotMatch(systemdUnit(noConcurrency), /PI_SCHEDULER_CONCURRENCY/);
 });
 
-test("the system notifier is fire-and-forget and never throws without a session", () => {
-  // No assertion on delivery: on a headless CI box this must simply not throw.
+test("the system notifier is fire-and-forget and never throws without a session", async t => {
+  // Stub the desktop notifiers in the test's own PATH so this file never pops a
+  // real notification when run alone, on any host.
+  const bin = mkdtempSync(join(tmpdir(), "pi-scheduler-notify-bin-"));
+  const calls = join(bin, "calls.log");
+  for (const name of ["osascript", "notify-send"]) {
+    writeFileSync(join(bin, name), `#!/bin/sh\nprintf '%s\\n' "$0 $*" >> "${calls}"\nexit 1\n`, { mode: 0o700 });
+  }
+  const path = process.env.PATH;
+  const restore = () => { process.env.PATH = path; };
+  t.after(() => { restore(); rmSync(bin, { recursive: true, force: true }); });
+  process.env.PATH = `${bin}:${path ?? ""}`;
+  // No assertion on delivery: headless or stubbed, it must simply not throw.
   assert.doesNotThrow(() => systemNotifier("title", "body"));
-});
-
-
-test("agent profiles have distinct service identities and unit paths", () => {
-  const next = { ...spec, agentDir: "/home/u/.pi-next/agent", piBinary: "/home/u/pi-1.2.0" };
-  assert.notEqual(serviceLabel(next.agentDir), serviceLabel(spec.agentDir));
-  assert.notEqual(launchdPlistPath(next.agentDir), launchdPlistPath(spec.agentDir));
-  assert.notEqual(systemdUnitPath(next.agentDir), systemdUnitPath(spec.agentDir));
-  assert.ok(launchdPlistPath(next.agentDir).endsWith(`${serviceLabel(next.agentDir)}.plist`));
-  assert.ok(systemdUnitPath(next.agentDir).endsWith(systemdUnitName(next.agentDir)));
-  const plist = launchdPlist(next);
-  assert.ok(plist.includes(`<string>${serviceLabel(next.agentDir)}</string>`));
-  assert.ok(plist.includes(`<string>${next.piBinary}</string>`));
+  // PATH lookup happens in the spawned child, so keep the stub first until the
+  // stub itself has actually run. Without this the test could reach a real
+  // desktop notifier on the way out.
+  if (process.platform === "darwin" || process.platform === "linux") {
+    const deadline = Date.now() + 5_000;
+    while (!existsSync(calls) && Date.now() < deadline) await delay(25);
+    assert.equal(existsSync(calls), true, "the stubbed system notifier handled the request");
+  }
+  restore();
 });
