@@ -16,6 +16,10 @@ Processes 使用 producer 的真实 beforeRun/afterRun/settled callback：可信
 
 Pi 加载 `dist/index.js`。构建还生成 `dist/supervisor.js`、`dist/matcher-worker.js`、独立 child/factory entry 和 `dist/manager-view.js`。空会话只建立 Host/binding，不启动 Supervisor；首次 process tool 操作等待 runtime selection 和完整握手。并发首次操作共用一次启动，失败不发送请求，后续操作可以重试。
 
+helper runtime 每个候选探测最多等待 10 秒，只有 `timeout` 重试一次；第二次失败才继续下一个候选。not-found/not-executable、spawn-error、输出不合法和版本不符不重试。超时会停止探测进程组并等待进程回收、pipe 关闭；成功也等 stdout/stderr 完整关闭后验证 nonce 与版本，避免 exit 先于末尾输出造成误判。诊断保留最终失败及 timeout retry 信息。
+
+不缓存跨 Host 的成功探测：同一个 Host 已有 transport 或启动中的 promise 会复用，无需重复探测；fresh scope 重新验证实际 executable 和 Supervisor entry，避免 runtime 路径、符号链接目标或构建产物替换后复用过期结果。普通二进制的探测通常只需毫秒，10 秒是高负载的等待预算，不是固定延迟。
+
 普通配置下，已有 transport、启动中的任务或 record 在 reload/rebind 时沿用原 readiness 流程；managed/isolated 不 reclaim 旧 Host，执行与 cleanup 规则见[执行合同](MANAGED_EXECUTION.md#reload-与-scope-cleanup)。源码或 source-only library 依赖变更后须重建并新开 Pi process，不用 reload 替代构建验证。
 
 `/ps`、strip 与 status protocol 同步注册，管理面板和 UIKit overlay 首次打开时才 dynamic import。`verify-dist` 防止 manager view 重返首帧静态图。加载期间关闭面板或替换 session，会使旧 generation 失效，不会迟到重开旧 UI；导入失败显示错误。

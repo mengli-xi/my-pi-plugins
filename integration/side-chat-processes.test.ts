@@ -8,7 +8,7 @@ import { SideRuntime } from "../local/pi-side-chat/sdk-runtime.ts";
 import type { EffectiveContextSelection } from "pi-session-runtime/native-child-context";
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
-test("new ephemeral Side consumes one Process wait wake and cancels before destroying its directory", async () => {
+for (const loseSupervisor of [false, true]) test(`new ephemeral Side consumes one Process wait wake and cancels before destroying its directory${loseSupervisor ? " after Supervisor loss" : ""}`, async () => {
   const root = await mkdtemp(join(process.env.PI_PROCESSES_TEST_OUTPUT ?? tmpdir(), "side-process-mailbox-"));
   const agentDir = join(root, "agent"); await mkdir(agentDir);
   const gate = join(root, "ready");
@@ -39,6 +39,14 @@ test("new ephemeral Side consumes one Process wait wake and cancels before destr
     assert.equal(faux.state.callCount, 3);
     assert.equal(requests.filter(body => body.includes("matched watch 'ready'")).length, 1);
     const directory = side.directory;
+    if (loseSupervisor) {
+      const { getProcessHost } = await import("../local/pi-processes/src/host/registry.ts");
+      const host = getProcessHost(sessionId)!;
+      const supervisor = host.managedSnapshot().groups.find(group => group.kind === "supervisor")!;
+      process.kill(supervisor.pid, "SIGKILL");
+      await host.dispose("protocol-failure");
+      assert.equal(host.runtimeContainmentComplete, true);
+    }
     await side.destroy("main-shutdown");
     await assert.rejects(stat(directory), { code: "ENOENT" });
     process.stdout.write(JSON.stringify({ root, providerCalls: faux.state.callCount, watchRequests: 1 }) + "\n");

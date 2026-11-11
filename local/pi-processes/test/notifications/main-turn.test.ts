@@ -145,3 +145,25 @@ test("durable cancellation releases the source window without claiming a success
     assert.equal(h.branch.some(e => e.data?.state === "turn-settled"), false);
   } finally { await h.dispose(); }
 });
+
+test("contained execution still permits current-scope durable cancellation, but not stale owners", async () => {
+  const h = await mailboxHarness();
+  try {
+    await h.match(); await h.coordinator.turnEnded(h.ctx);
+    const mail = h.puts[0]!;
+    await h.host.dispose("scope-ended");
+    assert.equal(h.host.disposed, true);
+    assert.equal(h.coordinator.checkCurrent(mail).kind, "hold", "containment never grants delivery");
+    await assert.rejects(h.coordinator.cancelPending({ ...h.ctx, sessionManager: { ...h.ctx.sessionManager } } as any, h.source), /stale/);
+    const cancel = h.source.endpoint.cancel.bind(h.source.endpoint);
+    h.source.endpoint.cancel = async (...args) => {
+      const evidence = await cancel(...args);
+      h.coordinator.terminal(evidence);
+      return evidence;
+    };
+    await h.coordinator.cancelPending(h.ctx, h.source);
+    assert.equal(h.branch.filter(entry => entry.customType === "process-notification-migration-v1" && entry.data.classification === "cancelled").length, 1);
+    h.coordinator.dispose();
+    await assert.rejects(h.coordinator.cancelPending(h.ctx, h.source), /stale/);
+  } finally { await h.dispose(); }
+});

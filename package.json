@@ -9,16 +9,16 @@
   "scripts": {
     "typecheck": "npm run typecheck --workspaces && tsc -p integration/tsconfig.json",
     "test": "node --test scripts/*.test.mjs && node scripts/check-doc-links.mjs && node scripts/isolated-agent.mjs npm run test --workspaces",
-    "test:integration": "npm run build -w pi-claude-style && npm run build -w pi-subagents && npm run build -w pi-processes && npm run build -w @narumitw/pi-goal && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-transform-types --test integration/*.test.ts",
+    "test:integration": "npm run build -w pi-claude-style && npm run build -w pi-subagents && npm run build -w pi-processes && npm run build -w @narumitw/pi-goal && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-transform-types --test --test-timeout=300000 integration/*.test.ts",
     "test:integration:side-chat": "npm run build -w pi-claude-style && node scripts/isolated-agent.mjs bun integration/side-chat/sdk-view-e2e.mjs && PI_S2_NATIVE_PRESENTATION=1 node scripts/isolated-agent.mjs bun integration/side-chat/sdk-view-e2e.mjs",
     "test:integration:stock-host": "npm run build -w pi-subagents && bun integration/subagent-no-presentation.mjs",
     "test:integration:patched-host": "node integration/run-patched-host.mjs",
     "test:integration:subagents": "npm run build -w pi-subagents && node integration/run-subagents.mjs",
     "check:goal": "node scripts/isolated-agent.mjs npm --prefix fork/pi-goal run check",
     "test:integration:goal-ui": "npm run build -w @narumitw/pi-goal && npm run build -w pi-claude-style && node scripts/isolated-agent.mjs bun integration/goal/ui-e2e.mjs",
-    "test:integration:mcp": "npm run build -w pi-claude-style && npm run build -w @narumitw/pi-goal && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-transform-types --test integration/mcp*.test.ts",
-    "test:integration:search": "npm run build -w pi-claude-style && npm run build -w pi-subagents && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/search*.test.ts",
-    "test:integration:ask": "npm run build -w pi-claude-style && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/ask*.test.ts"
+    "test:integration:mcp": "npm run build -w pi-claude-style && npm run build -w @narumitw/pi-goal && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-transform-types --test --test-timeout=300000 integration/mcp*.test.ts",
+    "test:integration:search": "npm run build -w pi-claude-style && npm run build -w pi-subagents && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test --test-timeout=300000 integration/search*.test.ts",
+    "test:integration:ask": "npm run build -w pi-claude-style && node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test --test-timeout=300000 integration/ask*.test.ts"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.5.0",

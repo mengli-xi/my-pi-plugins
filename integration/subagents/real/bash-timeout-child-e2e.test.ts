@@ -20,13 +20,18 @@ test("real Subagent child rejects missing bash timeout and executes a corrected 
   const session = join(home, "main.jsonl");
   await writeFile(session, `${JSON.stringify({ type: "session", version: 3, id: sessionId, timestamp: new Date().toISOString(), cwd })}\n`, { mode: 0o600 });
   const storeRoot = join(agentDir, "pi-subagents", "store-v2", "mains", mainKey(sessionId));
-  t.after(async () => { await rm(home, { recursive: true, force: true }); });
   const child = spawn(pi, ["--mode", "rpc", "--session", session, "--no-extensions", "-e", join(cwd, "test/fixtures/test-commands.ts"), "-e", extension, "-e", join(cwd, "test", "fixtures", "faux-subagent-provider.ts"), "--provider", "fixture", "--model", "faux-1", "--thinking", "off"], {
     cwd,
     env: { ...process.env, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: agentDir, HOME: home, PI_SUBAGENTS_TEST_TIMEOUT_MS: "30000", PI_SUBAGENTS_TEST_MESSAGE: "BASH_TIMEOUT_CHILD" },
     stdio: ["pipe", "pipe", "pipe"],
   });
-  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolvePromise => child.once("exit", (code, signal) => resolvePromise({ code, signal })));
+  t.after(async () => {
+    // Reap before deleting the live session/store; cleanup must also run after assertion/RPC failure.
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await exited;
+    await rm(home, { recursive: true, force: true });
+  });
   const records: any[] = []; const stderr: Buffer[] = []; let buffer = "";
   child.stdout.on("data", (chunk) => { buffer += chunk.toString("utf8"); for (let at; (at = buffer.indexOf("\n")) >= 0;) { const line = buffer.slice(0, at); buffer = buffer.slice(at + 1); if (line) records.push(JSON.parse(line)); } });
   child.stderr.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
@@ -60,6 +65,7 @@ test("real Subagent child rejects missing bash timeout and executes a corrected 
   assert.equal(childResults[1].message.isError, false);
   assert.match(JSON.stringify(childResults[1].message.content), /BASH_TIMEOUT_EXECUTED/);
   child.stdin.end();
-  const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise, reject) => { const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("bash-timeout Main did not exit")); }, 15_000); child.once("exit", (code, signal) => { clearTimeout(timer); resolvePromise({ code, signal }); }); });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const exit = await Promise.race([exited, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("bash-timeout Main did not exit")), 60_000); })]).finally(() => clearTimeout(timer));
   assert.deepEqual(exit, { code: 0, signal: null }, Buffer.concat(stderr).toString("utf8"));
 });

@@ -20,7 +20,7 @@ export function createProcessHost(sessionScopeId: string, config: () => Processe
       const supervisorPath = join(distDirectory, "supervisor.js");
       const resolved = await resolveHelperRuntime({ helperRuntime: snapshot.execution.helperRuntime, supervisorPath, processExecPath: process.execPath });
       if (!resolved.runtime) {
-        const attempts = resolved.attempts.map(attempt => `${attempt.path}: ${attempt.outcome}`).join("; ");
+        const attempts = resolved.attempts.map(attempt => `${attempt.path}: ${attempt.outcome}${attempt.detail ? ` (${attempt.detail})` : ""}`).join("; ");
         throw new Error(`[process/helper-runtime-unavailable] no compatible Node/Bun runtime${attempts ? ` (${attempts})` : ""}`);
       }
       await assertProcessesExecutionIsolationCurrent(snapshot);

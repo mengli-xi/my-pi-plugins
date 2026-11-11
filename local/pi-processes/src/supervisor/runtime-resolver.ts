@@ -28,7 +28,8 @@ export interface ResolveRuntimeResult {
 }
 
 const MAX_OUTPUT_BYTES = 65_536;
-const PROBE_TIMEOUT_MS = 2_000;
+// Cold runtime startup can be delayed by scheduler pressure. Only a timeout is transient.
+const PROBE_TIMEOUT_MS = 10_000;
 
 function basenameKind(path: string): "node" | "bun" | undefined {
   const base = path.split(/[\\/]/).at(-1)?.toLowerCase();
@@ -86,12 +87,13 @@ export async function collectRuntimeCandidates(options: {
   return candidates;
 }
 
-export async function probeRuntime(candidate: RuntimeCandidate, supervisorPath: string): Promise<RuntimeProbeSuccess | RuntimeProbeAttempt> {
+async function probeRuntimeOnce(candidate: RuntimeCandidate, supervisorPath: string, timeoutMs: number): Promise<RuntimeProbeSuccess | RuntimeProbeAttempt> {
   const nonce = randomBytes(16).toString("hex");
   return await new Promise((resolveResult) => {
     let stdout: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let stderr: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let settled = false;
+    let timedOut = false;
     const settle = (value: RuntimeProbeSuccess | RuntimeProbeAttempt): void => {
       if (settled) return;
       settled = true;
@@ -101,6 +103,7 @@ export async function probeRuntime(candidate: RuntimeCandidate, supervisorPath: 
     const child = spawn(candidate.path, [supervisorPath, "--runtime-probe", nonce], {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
+      detached: process.platform !== "win32",
       shell: false,
     });
     const append = (current: Buffer<ArrayBufferLike>, chunk: Buffer<ArrayBufferLike>): Buffer<ArrayBufferLike> => {
@@ -110,8 +113,12 @@ export async function probeRuntime(candidate: RuntimeCandidate, supervisorPath: 
     child.stdout.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
     child.stderr.on("data", (chunk: Buffer) => { stderr = append(stderr, chunk); });
     child.on("error", (error) => settle({ path: candidate.path, source: candidate.source, outcome: "spawn-error", detail: error.message }));
-    child.on("exit", (code, signal) => {
+    child.on("close", (code, signal) => {
       if (settled) return;
+      if (timedOut) {
+        settle({ path: candidate.path, source: candidate.source, outcome: "timeout" });
+        return;
+      }
       const line = stdout.toString("utf8");
       const match = new RegExp(`^pi-processes-runtime-v1 ${nonce} (node|bun) ([^\\s]+)\\n?$`).exec(line);
       if (code !== 0 || signal || !match || stderr.length > 0) {
@@ -127,11 +134,24 @@ export async function probeRuntime(candidate: RuntimeCandidate, supervisorPath: 
       settle({ candidate, engine, version });
     });
     const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      settle({ path: candidate.path, source: candidate.source, outcome: "timeout" });
-    }, PROBE_TIMEOUT_MS);
+      timedOut = true;
+      // Wrappers may have children holding the probe pipes open. Kill the probe
+      // group, then wait for close (reap + drained output) before retrying.
+      if (child.pid && process.platform !== "win32") {
+        try { process.kill(-child.pid, "SIGKILL"); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") child.kill("SIGKILL"); }
+      } else child.kill("SIGKILL");
+    }, timeoutMs);
     timer.unref?.();
   });
+}
+
+export async function probeRuntime(candidate: RuntimeCandidate, supervisorPath: string): Promise<RuntimeProbeSuccess | RuntimeProbeAttempt> {
+  const first = await probeRuntimeOnce(candidate, supervisorPath, PROBE_TIMEOUT_MS);
+  if ("candidate" in first || first.outcome !== "timeout") return first;
+  const second = await probeRuntimeOnce(candidate, supervisorPath, PROBE_TIMEOUT_MS);
+  if ("candidate" in second) return second;
+  return { ...second, detail: `${second.detail ? `${second.detail}; ` : ""}after timeout retry` };
 }
 
 export async function resolveHelperRuntime(options: {

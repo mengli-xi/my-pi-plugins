@@ -9,7 +9,7 @@ import type { TestContext } from "node:test";
 import { piBinary, prepareFreshProfile } from "../../../local/pi-subagents/test/fixtures/fresh-profile.js";
 
 export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-export async function freshHost(t: TestContext, message = "Reply exactly SUBAGENT_OK", fullSettings = false, maxDepth: 1 | 2 = 1, extensions: string[] = [], order: "default" | "reverse" = "default") {
+export async function freshHost(t: TestContext, message = "Reply exactly SUBAGENT_OK", fullSettings = false, maxDepth: 1 | 2 = 1, extensions: string[] = [], order: "default" | "reverse" = "default", quitTimeoutMs = 60_000) {
   const root = await mkdtemp(join(tmpdir(), "subagents-sdk-host-")), agentDir = await prepareFreshProfile(root, maxDepth, order);
   const session = join(root, "main.jsonl"), sessionId = `sdk-host-${Date.now()}`;
   await writeFile(session, JSON.stringify({ type: "session", version: 3, id: sessionId, timestamp: new Date().toISOString(), cwd: root }) + "\n");
@@ -30,7 +30,7 @@ export async function freshHost(t: TestContext, message = "Reply exactly SUBAGEN
   main.stdout.on("data", data => { if (capture) appendFileSync(join(capture, "stdout.jsonl"), data); pending += data; for (let at; (at = pending.indexOf("\n")) >= 0;) { const line = pending.slice(0, at); pending = pending.slice(at + 1); if (line) records.push(JSON.parse(line)); } });
   main.stderr.on("data", data => { stderr += data; if (capture) appendFileSync(join(capture, "stderr.txt"), data); });
   const exit = new Promise<{ code: number | null; signal: string | null }>(resolve => main.once("exit", (code, signal) => resolve({ code, signal })));
-  let stopped = false;
+  let eofSent = false;
   async function until<T>(get: () => Promise<T> | T, accept: (value: T) => boolean, label: string, timeout = 25_000): Promise<T> {
     const end = Date.now() + timeout;
     for (;;) { const result = await get(); if (accept(result)) return result; if (Date.now() > end || main.exitCode !== null || main.signalCode !== null) throw new Error(`${label}: ${stderr}\n${JSON.stringify(records.slice(-6)).slice(-4000)}`); await delay(20); }
@@ -47,9 +47,26 @@ export async function freshHost(t: TestContext, message = "Reply exactly SUBAGEN
   }
   const snapshot = () => control("snapshot");
   const settled = (count = 1) => until(snapshot, value => value.snapshot?.agents.reduce((n: number, item: any) => n + item.tasks.filter((task: any) => task.phase === "settled").length, 0) >= count, "settled", Math.max(25_000, count * 4_000));
-  async function stop() { if (!stopped) { stopped = true; main.stdin.end(); } let timer: ReturnType<typeof setTimeout> | undefined; const result = await Promise.race([exit, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error(`quit timed out: ${stderr}`)), 15_000); })]).finally(() => clearTimeout(timer)); assert.deepEqual(result, { code: 0, signal: null }, stderr); return result; }
+  async function stop() {
+    const quitAt = performance.now();
+    if (!eofSent) { eofSent = true; main.stdin.end(); }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const result = await Promise.race([exit, new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`quit timed out: ${stderr}`)), quitTimeoutMs);
+    })]).finally(() => {
+      clearTimeout(timer);
+      t.diagnostic(`Pi quit wait: ${Math.round(performance.now() - quitAt)}ms`);
+    });
+    assert.deepEqual(result, { code: 0, signal: null }, stderr);
+    return result;
+  }
   t.after(async () => {
-    if (!stopped && main.exitCode === null && main.signalCode === null) { try { await stop(); } catch { main.kill("SIGKILL"); await exit; } }
+    // A sent EOF is not proof of exit: stop() may have timed out in the test body.
+    if (main.exitCode === null && main.signalCode === null) {
+      try { if (eofSent) main.kill("SIGKILL"); else await stop(); }
+      catch { main.kill("SIGKILL"); }
+      await exit;
+    }
     if (capture) for (const [source, destination] of [["provider.jsonl", "provider.jsonl"], ["profile-metadata.json", "profile-metadata.json"], ["joint-cutoff.json", "joint-cutoff.json"], ["joint-cutoff-accepted.json", "joint-cutoff-accepted.json"]]) {
       try { await writeFile(join(capture, destination!), await readFile(join(root, source!))); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     }
