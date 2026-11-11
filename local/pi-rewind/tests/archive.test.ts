@@ -366,3 +366,59 @@ test("archive removes corrupt records in its own namespace", async () => {
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+test("archive retries the lock owner identity when the first ps read times out", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pi-rewind-identity-retry-"));
+	try {
+		const root = join(dir, "archive");
+		const source = join(dir, "source.jsonl");
+		const text = sessionText("identity-retry");
+		await writeFile(source, text, "utf8");
+		let reads = 0;
+		const archive = new RewindArchive(root, {
+			readProcessStartIdentity: async () => {
+				reads += 1;
+				// A timed-out `ps` reports no identity; the retry is expected to succeed.
+				return reads === 1 ? undefined : "Wed Jan  1 00:00:00 2031";
+			},
+		});
+		const result = await archive.create(input(source, text, "identity-retry"));
+		assert.equal(result.retained, true);
+		assert.equal(reads, 2);
+		assert.equal((await readdir(root)).includes(".retention.lock"), false);
+		// The start time of this process cannot change, so later locks reuse it.
+		const next = await archive.list();
+		assert.deepEqual(next.map(({ id }) => id), [result.record!.id]);
+		assert.equal(reads, 2);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("archive refuses to lock when the owner identity stays unknown", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pi-rewind-identity-unknown-"));
+	try {
+		const root = join(dir, "archive");
+		const source = join(dir, "source.jsonl");
+		const text = sessionText("identity-unknown");
+		await writeFile(source, text, "utf8");
+		let reads = 0;
+		const archive = new RewindArchive(root, {
+			readProcessStartIdentity: async () => {
+				reads += 1;
+				// Both real shapes of a failed `ps`: a refused spawn rejects, a
+				// timeout reports no identity. Neither may be treated as an owner.
+				if (reads === 1) throw new Error("spawn EPERM");
+				return undefined;
+			},
+		});
+		await assert.rejects(
+			archive.create(input(source, text, "identity-unknown")),
+			/Could not determine rewind archive lock owner identity/,
+		);
+		assert.equal(reads, 2);
+		assert.deepEqual(await readdir(root), []);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});

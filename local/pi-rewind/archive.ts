@@ -109,9 +109,14 @@ export interface RewindArchiveRemovalResult {
 	readonly failures: readonly { id: string; message: string }[];
 }
 
+/** One `ps` read of a process start time; `undefined` means the read produced no identity. */
+export type ProcessStartIdentityReader = (pid: number) => Promise<string | undefined>;
+
 export interface RewindArchiveOptions {
 	readonly limits?: Partial<RewindArchiveLimits>;
 	readonly now?: () => number;
+	/** One lock owner identity attempt; defaults to `/bin/ps`, replaced by tests. */
+	readonly readProcessStartIdentity?: ProcessStartIdentityReader;
 }
 
 interface ParsedSession {
@@ -327,21 +332,79 @@ function processIsAlive(pid: number): boolean {
 	}
 }
 
-function processStartIdentity(pid: number): Promise<string | undefined> {
+// `ps -p <pid> -o lstart=` answers in a few milliseconds on an idle machine, but
+// spawning and running it can take over a second when the machine is loaded, and
+// a 1s budget turned that load into a failed archive operation. 5s keeps roughly
+// two orders of magnitude of headroom for scheduler and process-table pressure
+// while still bounding one read; the retry below caps an acquisition at about
+// 10s, well under LOCK_TIMEOUT_MS, so a stalled `ps` cannot eat the whole wait.
+const PROCESS_START_IDENTITY_TIMEOUT_MS = 5_000;
+// A stalled or refused spawn is usually transient (load spike, no free process
+// slot), so one short-delay retry recovers it. Both attempts failing still
+// reports an unknown owner identity, so nothing skips the identity check.
+const PROCESS_START_IDENTITY_ATTEMPTS = 2;
+const PROCESS_START_IDENTITY_RETRY_MS = 100;
+
+function readProcessStartIdentityWithPs(pid: number): Promise<string | undefined> {
 	return new Promise((resolvePromise) => {
-		execFile(
-			"/bin/ps",
-			["-p", String(pid), "-o", "lstart="],
-			{ encoding: "utf8", timeout: 1_000, maxBuffer: 4_096 },
-			(error, stdout) => resolvePromise(error ? undefined : stdout.trim() || undefined),
-		);
+		try {
+			execFile(
+				"/bin/ps",
+				["-p", String(pid), "-o", "lstart="],
+				{ encoding: "utf8", timeout: PROCESS_START_IDENTITY_TIMEOUT_MS, maxBuffer: 4_096 },
+				(error, stdout) => resolvePromise(error ? undefined : stdout.trim() || undefined),
+			);
+		} catch {
+			// `execFile` throws synchronously when the spawn itself is refused
+			// (e.g. EPERM): an unread identity, not a crash.
+			resolvePromise(undefined);
+		}
 	});
 }
 
-async function processMatches(pid: number, expectedDigest: string, token?: string): Promise<boolean> {
+async function processStartIdentity(
+	read: ProcessStartIdentityReader,
+	pid: number,
+): Promise<string | undefined> {
+	for (let attempt = 1; attempt <= PROCESS_START_IDENTITY_ATTEMPTS; attempt += 1) {
+		let identity: string | undefined;
+		try {
+			identity = await read(pid);
+		} catch {
+			identity = undefined;
+		}
+		if (identity) return identity;
+		if (attempt < PROCESS_START_IDENTITY_ATTEMPTS) await delay(PROCESS_START_IDENTITY_RETRY_MS);
+	}
+	return undefined;
+}
+
+// A process start time never changes, so the first successful read of this
+// process is reused for every later lock. The cache is keyed by reader so an
+// injected test reader cannot leak a fake identity into archives that use `ps`.
+// Failures are not cached: a later operation may find `ps` responsive again.
+const ownProcessStartIdentities = new WeakMap<ProcessStartIdentityReader, Promise<string | undefined>>();
+
+function ownProcessStartIdentity(read: ProcessStartIdentityReader): Promise<string | undefined> {
+	const cached = ownProcessStartIdentities.get(read);
+	if (cached) return cached;
+	const pending = processStartIdentity(read, process.pid).then((identity) => {
+		if (identity === undefined) ownProcessStartIdentities.delete(read);
+		return identity;
+	});
+	ownProcessStartIdentities.set(read, pending);
+	return pending;
+}
+
+async function processMatches(
+	read: ProcessStartIdentityReader,
+	pid: number,
+	expectedDigest: string,
+	token?: string,
+): Promise<boolean> {
 	if (!processIsAlive(pid)) return false;
 	if (pid === process.pid && token !== undefined) return activeLockTokens().has(token);
-	const observed = await processStartIdentity(pid);
+	const observed = await processStartIdentity(read, pid);
 	return observed === undefined || digest(observed) === expectedDigest;
 }
 
@@ -349,11 +412,13 @@ export class RewindArchive {
 	readonly root: string;
 	readonly limits: RewindArchiveLimits;
 	readonly now: () => number;
+	private readonly readProcessStartIdentity: ProcessStartIdentityReader;
 
 	constructor(root: string, options: RewindArchiveOptions = {}) {
 		this.root = resolve(root);
 		this.limits = { ...REWIND_ARCHIVE_LIMITS, ...options.limits };
 		this.now = options.now ?? Date.now;
+		this.readProcessStartIdentity = options.readProcessStartIdentity ?? readProcessStartIdentityWithPs;
 		if (
 			!finiteInteger(this.limits.maxAgeMs, 1)
 			|| !finiteInteger(this.limits.maxEntries, 1)
@@ -480,7 +545,7 @@ export class RewindArchive {
 	private async withLock<T>(action: () => Promise<T>): Promise<T> {
 		const lockDir = join(this.root, LOCK_DIRECTORY);
 		const token = randomUUID();
-		const startIdentity = await processStartIdentity(process.pid);
+		const startIdentity = await ownProcessStartIdentity(this.readProcessStartIdentity);
 		if (!startIdentity) throw new Error("Could not determine rewind archive lock owner identity");
 		const startDigest = digest(startIdentity);
 		const ownerName = `owner-${process.pid}-${startDigest}-${token}`;
@@ -591,8 +656,8 @@ export class RewindArchive {
 		const ownerStartDigest = match[3]!;
 		// An active owner or claimant keeps exclusive ownership. A dead claimant
 		// can be claimed again, so crashes remain recoverable without a stale timer.
-		if (await processMatches(ownerPid, ownerStartDigest, match[4]!)) return;
-		const startIdentity = await processStartIdentity(process.pid);
+		if (await processMatches(this.readProcessStartIdentity, ownerPid, ownerStartDigest, match[4]!)) return;
+		const startIdentity = await ownProcessStartIdentity(this.readProcessStartIdentity);
 		if (!startIdentity) return;
 		const startDigest = digest(startIdentity);
 		const claimName = `claim-${process.pid}-${startDigest}-${token}`;
@@ -622,7 +687,15 @@ export class RewindArchive {
 			const candidate = LOCK_CANDIDATE.exec(entry.name);
 			if (TEMP_NAME.test(entry.name) || LOCK_RESIDUE.test(entry.name)) {
 				abandoned.push(join(this.root, entry.name));
-			} else if (candidate && !await processMatches(Number.parseInt(candidate[1]!, 10), candidate[2]!, candidate[3]!)) {
+			} else if (
+				candidate
+				&& !await processMatches(
+					this.readProcessStartIdentity,
+					Number.parseInt(candidate[1]!, 10),
+					candidate[2]!,
+					candidate[3]!,
+				)
+			) {
 				abandoned.push(join(this.root, entry.name));
 			}
 		}

@@ -25,7 +25,7 @@
 - 选中的 root-to-message path 会原子写回同一 JSONL file。session ID、file path 与 display name 保持稳定；被丢弃的 branch 不再占据 active transcript。
 - 裁剪前会创建 sibling backup。普通裁剪在第一次异步 I/O 前记录文件 inode/size/mtime，提交前比较并在同一 event-loop turn 内替换；准备期间追加或替换文件会中止裁剪并保留新状态，不自动重试或导航回过期 leaf。这不是防住任意外部写入的跨进程文件锁。
 - session 重新绑定成功后，读取稳定 backup inode，在内存中生成 gzip，再进入有界的跨进程归档发布临界区。普通准备失败会尝试导航回原 leaf；重绑失败后的文件恢复先检查预期字节，不覆盖后来追加的内容。回滚/导航恢复失败会同时保留原始错误和恢复错误，并报告恢复文件线索，不冒充已恢复成功。undo 也通过临时 sibling 恢复，导航被 `session_before_tree` 取消时会恢复 rewind 后的文件和 leaf，undo 点仍可重试。
-- archive 每次按原文件 SHA-256 校验压缩输入，读取恢复前还会校验解压长度和 digest。目录与文件权限分别为 `0700`、`0600`。保留规则是 7 天、100 条、总存储 500 MiB，任一条件超限就从最旧记录开始删；总量同时计算 gzip payload 和 metadata。清理在 archive create/list 时执行，不启动常驻 timer。确认损坏的记录仍会清理；权限或临时 I/O 错误则保留记录并报错，不能当成损坏删除或假装列表为空。
+- archive 每次按原文件 SHA-256 校验压缩输入，读取恢复前还会校验解压长度和 digest。目录与文件权限分别为 `0700`、`0600`。保留规则是 7 天、100 条、总存储 500 MiB，任一条件超限就从最旧记录开始删；总量同时计算 gzip payload 和 metadata。清理在 archive create/list 时执行，不启动常驻 timer。确认损坏的记录仍会清理；权限或临时 I/O 错误则保留记录并报错，不能当成损坏删除或假装列表为空。跨进程归档锁按持有者 PID 加 `ps -o lstart=` 的进程启动时间识别持有者，避免 PID 复用后认错人；身份读不到（单次 `ps` 给 5s，仍未成功则短暂等待后重试一次）时拒绝操作，不跳过校验，也不假定持有者还活着。
 - race-safe 自动恢复要求 session 目录支持 hard link。文件系统不支持时，rewind 仍按 copy fallback 完成并保留 gzip history，但自动恢复会 fail closed。archive 写入失败时沿用 system Trash fallback；Trash 也拒绝时，sibling backup 留在原地并显示文件名。测试用 `piRewind(pi, { trashBackup, archive })` 注入确定性策略。
 - picker 中的 user-message image 始终显示为不含路径的 `[Image]`。写回 editor 时，rewind 把原始 `pi-clipboard-*` source 交给 editor owner；CC Style 若确认临时文件仍存在，会重建带 path 映射、可原子编辑的 `[Image #n]`，因此可直接删改或重新提交。owner 缺失、版本不兼容、文件失效，或多图只有部分可恢复时，rewind 会整体回退为无映射的 `[Image]`，绝不把临时路径留在 editor。`/rewind undo`、history restore 和 rollback 保存 source text，并在每次写回时重新执行同一恢复规则。
 
