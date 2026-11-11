@@ -302,7 +302,9 @@ interface BuiltinExtensionProofV1 { version: 1; pi_version: string }
 
 interface CapabilityEntryV1 {
   builtin_proof?: BuiltinExtensionProofV1;
-  execution_factory?: ExecutionFactoryProofV1;
+  execution_factory?: ExecutionFactoryProofV1; // legacy read only
+  child_factory?: import("pi-runtime-contracts/child-capabilities-v1").ChildFactoryProofV1;
+  factory_required?: boolean;
   sdk_provider?: import("pi-session-runtime/sdk-provider").SdkProviderProofV1;
   owner: string;
   main_entrypoint: string;
@@ -344,7 +346,7 @@ interface FrozenProfileV1 {
 }
 ```
 
-三个可选 proof 都进入能力指纹。`builtin_proof` 核对 canonical Pi.VERSION，不读物理文件；`execution_factory` 校验实际 factory 文件和导出；`sdk_provider` 保存独立 grant 对应的完整批准证明（见 [SDK provider](sdk-providers.md)）。旧 profile 缺 proof 仍能读历史，但不能补授权执行。Capability/path 语义由 [架构合同](architecture.md) 定义；persistence 会验证其封闭的序列化形状和 digests，但不会重新发现 capabilities。
+所有 proof 及 `factory_required` 都进入能力指纹。`builtin_proof` 核对 canonical Pi.VERSION，不读物理文件；`child_factory` 冻结普通 factory 声明和创建时 context，格式只定义在 [child 合同](../../pi-runtime-contracts/docs/child-capabilities-v1.md)；`execution_factory` 只保留旧记录读取，不作为新装配依据；`sdk_provider` 保存独立 grant 对应的完整批准证明（见 [SDK provider](sdk-providers.md)）。旧 profile 缺 proof 仍能读历史，但不能补授权执行。Capability/path 语义由 [架构合同](architecture.md) 定义；persistence 会验证其封闭的序列化形状和 digests，但不会重新发现 capabilities。
 
 ### 7.2 Agent
 

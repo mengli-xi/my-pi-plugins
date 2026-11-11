@@ -5,7 +5,7 @@
 ## 导出
 
 - `continuation-v1`：协调 session-scoped blocking lease 与 wake delivery。规范 API 与 state-machine contract 参见 [continuation-v1](continuation-v1.md)。
-- `child-capabilities-v1`：让 Main runtime 按 child target 发现受限 entrypoint，并冻结 capability closure。声明本身不授予 provider/tool 执行权限，实际执行方仍须独立批准与验证。
+- `child-capabilities-v1`：Main 按 target 声明并冻结 child factory 与 capability closure；普通 factory 按已加载 binding 信任，provider/tool 执行授权仍独立。完整格式、校验与失败规则只写在 [child 合同](child-capabilities-v1.md)。
 - `provider-activity-v1`：共享 provider/session-scoped activity DTO 与 validator，描述 attempt、queue 和 load；它只提供观测，不调度模型、不修改权限。
 - `process-wait-bridge-v1`：保留原有 session-scoped process continuation bridge。
 - `process-wait-bridge-v2`：共享 Subagent Task 的 process wait admission 与 lifecycle 通知。

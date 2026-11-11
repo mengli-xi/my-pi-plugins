@@ -1,3 +1,5 @@
+import { captureChildFactoryV1, captureEntrypointDescriptorV1, getOrCreateChildCapabilityRegistryV1, type ChildCapabilityBindingHandleV1 } from "pi-runtime-contracts/child-capabilities-v1";
+import { join } from "node:path";
 /**
  * pi-fast — `/fast`, a Claude Code-style fast-output toggle for the OpenAI
  * Codex (ChatGPT OAuth) provider.
@@ -60,6 +62,19 @@ export default function piFast(pi: ExtensionAPI): void {
 
   const globalEnabled = (): boolean => loadEnabled(statePath);
   const effective = (): boolean => sessionOverride ?? globalEnabled();
+
+  const registry = getOrCreateChildCapabilityRegistryV1();
+  const target = { child_entrypoint: captureEntrypointDescriptorV1(join(import.meta.dirname, "child.ts")),
+    child_factory: captureChildFactoryV1(join(import.meta.dirname, "index.ts"), { module: "child.ts", export: "createFastChildFactory", artifacts: ["state.ts"] }),
+    activation: "mirror" as const, commands: [], tools: [], providers: [], hooks: ["request/fast-v1"], requires: [] };
+  const registration = registry.register({ version: 1, manifest: { version: 1, owner_id: "pi-fast", main_entrypoint: captureEntrypointDescriptorV1(join(import.meta.dirname, "index.ts")), targets: { "pi-subagents": target, "pi-side-chat": target } } });
+  let binding: ChildCapabilityBindingHandleV1 | undefined, generation = 0;
+  pi.on("session_start", (_event, ctx) => {
+    binding?.release();
+    binding = registry.bind({ version: 1, registrationToken: registration.registrationToken, session_id: ctx.sessionManager.getSessionId(), runtime_generation: ++generation, mode: ctx.mode === "json" ? "print" : ctx.mode,
+      capture_context: () => ({ enabled: effective() }) });
+  });
+  pi.on("session_shutdown", () => { binding?.release(); binding = undefined; });
 
   pi.on("before_provider_request", (event, ctx) =>
     applyFastTier(event.payload, ctx.model?.provider, effective()),

@@ -10,15 +10,15 @@ Side 优先采用 Main 最后实际 model-visible request，包括晚到的转�
 
 ## 工具、provider 与 presentation
 
-Main active tool list 投影到 builtin、Bash Timeout、Processes Side factory、Search 和显式批准的 provider catalog，不复制未知 Main extension。
+Main active tool list 与已绑定 owner 的声明共同投影，不复制未声明的 Main extension。普通 execution/presentation 的格式、冻结、校验、失败与 required 语义只写在 [child 合同](../../pi-runtime-contracts/docs/child-capabilities-v1.md)；Side 与 Subagents 共用 Session Runtime loader。
 
-- Bash Timeout 使用自己的 `pi-side-chat` required-only target 和 `extensions/child.ts`，核对 Main ownership、factory artifacts 与 tool definition fingerprint。已启用 override 后 drift 必须拒绝，不能换成无必填 timeout 的 builtin；Main 未启用 bash 时不激活它。
-- Processes 使用具名 `createProcessesSideFactory`，scope 属于 Side session，不创建 Subagent Task bridge；factory 必须提供 `cancelPending()`。
-- Search 接 Main event bus 发现明确安装的 backend contribution，不隐式启用其他扩展。
-- 外部 provider 必须声明独立 Side target，并取得实际 `<agent-dir>/sdk-provider-grants.json` 的精确批准。Subagents 的 target/grant 不代表 Side 授权。冻结模型 scope、factory/artifact/observer 指纹与后续 binding revalidation 都保留。
-- CC Style 的 `target: "side-chat"` factory 仅提供 presentation，tools/providers/commands 为空，不提供 `sdk_provider_factory`。没有该 target 时用原生 view；已发布但非法、冲突或 hash 漂移时仍拒绝。注册不等于执行批准。
+- 同名 bash override 必须匹配 Main 的真实来源和工具定义指纹；失败不能恢复成宽松 builtin，Main 未启用 bash 时不激活 required-only owner。
+- execution factory 的 session scope 属于 Side，不借 Subagent Task bridge；声明的 durable cancellation 在销毁边界等待，失败保留 cleanup ownership。
+- 父 backend event bus 由 Side 显式传入，不隐式发现其他插件或读取其存储。
+- 外部 provider 仍必须声明独立 Side target，并取得实际 agentDir 的精确 grant；Subagents target/grant 不代表 Side 授权，原有 scope、observer 与 binding 重验不变。
+- presentation 不授工具、provider 或命令；可选 factory 缺席/失败使用原生 view，required capability 仍拒绝。
 
-共享 provider 装配机制见 Session Runtime；Side 不 import Subagents 或其他插件的生产模块，不读取其私有存储。
+Side 不 import 另一个插件的生产模块，Main settings、override 和磁盘配置不因 child factory 被改写。
 
 ## 模型、压缩与设置
 

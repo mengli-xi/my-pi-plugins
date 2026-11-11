@@ -114,7 +114,7 @@ export class SdkSideCoordinator {
     // The plan is independent of the seed id except the process scope factory.
     const plan = await sideExecutionPlan(this.pi, ctx, options.agentDir);
     const view = new SideView(() => this.destroy(), error => ctx.ui.notify(`Side: ${error instanceof Error ? error.message : String(error)}`, "error"));
-    const presentation = await sidePresentationFactories(ctx, view.managed.lifecycle);
+    const presentation = await sidePresentationFactories(ctx, view.managed.lifecycle, plan);
     if (generation !== this.generation) throw new Error("Main session changed while planning Side");
     return SideRuntime.create({ ...options, tools: plan.tools, modelScope: plan.modelScope,
       beforeDispose: plan.beforeDispose, beforeExecution: plan.beforeExecution,

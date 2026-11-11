@@ -44,7 +44,7 @@ export function fastFixture() {
     return outer;
   };
   const provider: Provider = { ...faux.provider, stream, streamSimple: stream };
-  const start = (extensions: ExtensionFactory[]) => createAgentSessionRuntime(async ({ sessionManager, sessionStartEvent }) => {
+  const start = (extensions: ExtensionFactory[], tools: string[] = []) => createAgentSessionRuntime(async ({ sessionManager, sessionStartEvent }) => {
     const services = await createAgentSessionServices({ cwd: root, agentDir,
       settingsManager: SettingsManager.inMemory({ packages: [], extensions: [], retry: { enabled: false },
         compaction: { enabled: false, reserveTokens: 4096, keepRecentTokens: 64 }, cacheWarming: "off" }),
@@ -54,11 +54,11 @@ export function fastFixture() {
     });
     assert.deepEqual(services.resourceLoader.getExtensions().errors, []);
     const result = await createAgentSessionFromServices({ services, sessionManager, sessionStartEvent,
-      model: services.modelRuntime.getModel("openai-codex", "fast-fixture"), tools: [], thinkingLevel: "off" });
+      model: services.modelRuntime.getModel("openai-codex", "fast-fixture"), tools, thinkingLevel: "off" });
     await result.session.bindExtensions({ mode: "print", onError: error => errors.push(error) });
     return { ...result, services, diagnostics: services.diagnostics };
   }, { cwd: root, agentDir, sessionManager: SessionManager.create(root, join(root, "sessions")) });
-  return { root, agentDir, requests, errors, faux, start,
+  return { root, agentDir, requests, errors, faux, provider, start,
     cleanup() {
       if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = previous;

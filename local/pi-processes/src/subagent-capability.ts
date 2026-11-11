@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   captureEntrypointDescriptorV1,
+  captureChildFactoryV1,
   getOrCreateChildCapabilityRegistryV1,
   type ChildCapabilityBindingHandleV1,
 } from "pi-runtime-contracts/child-capabilities-v1";
@@ -14,9 +15,15 @@ export function installProcessChildCapability(distDirectory: string) {
     main_entrypoint: captureEntrypointDescriptorV1(join(distDirectory, "index.js")),
     targets: {
       "pi-subagents": {
+        child_factory: captureChildFactoryV1(join(distDirectory, "index.js"), { module: "dist/child-factory.js", export: "createProcessesChildFactory" }),
         child_entrypoint: captureEntrypointDescriptorV1(join(distDirectory, "child.js")),
         activation: "required-only",
-        commands: [], tools: ["process"], providers: [], hooks: [], requires: [],
+        commands: [], tools: ["process"], providers: [], hooks: ["execution/cancel-pending-v1", "execution/process-wait-v2"], requires: [],
+      },
+      "pi-side-chat": {
+        child_factory: captureChildFactoryV1(join(distDirectory, "index.js"), { module: "dist/index.js", export: "createProcessesSideFactory", artifacts: ["dist/child-factory.js"] }),
+        child_entrypoint: captureEntrypointDescriptorV1(join(distDirectory, "child.js")),
+        activation: "required-only", commands: [], tools: ["process"], providers: [], hooks: ["execution/cancel-pending-v1"], requires: [],
       },
     },
   } });

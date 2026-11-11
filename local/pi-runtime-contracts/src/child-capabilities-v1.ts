@@ -31,3 +31,8 @@ export type {
   ResolveChildCapabilityClosureInputV1,
   ResolvedChildCapabilityOwnerV1,
 } from "#internal/child-capability-closure";
+
+export { captureChildFactoryV1, validateChildFactoryV1 } from "#internal/child-factory";
+export type { ChildFactoryV1 } from "#internal/child-factory";
+export { validateChildFactoryProofV1 } from "#internal/child-factory-proof";
+export type { ChildFactoryProofV1 } from "#internal/child-factory-proof";

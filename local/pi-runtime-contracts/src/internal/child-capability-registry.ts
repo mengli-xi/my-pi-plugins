@@ -22,6 +22,7 @@ export interface ChildCapabilityBindingV1 {
   readonly session_id: string;
   readonly runtime_generation: number;
   readonly mode: "tui" | "rpc" | "print";
+  readonly capture_context?: () => Readonly<Record<string, unknown>>;
 }
 
 export interface ChildCapabilityRegistrationHandleV1 {
@@ -43,6 +44,7 @@ export interface ChildCapabilityRegistrySnapshotV1 {
     owner_generation: number;
     bind_ordinal: number;
     manifest: ChildCapabilityManifestV1;
+    factory_context?: Readonly<Record<string, unknown>>;
   }>[];
   readonly conflicts: readonly Readonly<{
     owner_id: string;
@@ -75,6 +77,7 @@ interface BindingRecord {
   runtimeGeneration: number;
   mode: "tui" | "rpc" | "print";
   bindOrdinal: number;
+  captureContext?: () => Readonly<Record<string, unknown>>;
 }
 
 interface OwnerSlot {
@@ -161,11 +164,12 @@ export function createChildCapabilityRegistryV1(): ChildCapabilityRegistryV1 {
   };
 
   const bind = (input: ChildCapabilityBindingV1): ChildCapabilityBindingHandleV1 => {
-    if (!input || input.version !== 1 || Object.keys(input).some((key) => !["version", "registrationToken", "session_id", "runtime_generation", "mode"].includes(key))) {
+    if (!input || input.version !== 1 || Object.keys(input).some((key) => !["version", "registrationToken", "session_id", "runtime_generation", "mode", "capture_context"].includes(key))) {
       throw new Error("child capability binding must be a closed version 1 object");
     }
     const sessionId = validateSessionId(input.session_id);
     if (!Number.isSafeInteger(input.runtime_generation) || input.runtime_generation <= 0) throw new Error("runtime_generation must be a positive safe integer");
+    if (input.capture_context !== undefined && typeof input.capture_context !== "function") throw new Error("capture_context must be a function");
     if (input.mode !== "tui" && input.mode !== "rpc" && input.mode !== "print") throw new Error("binding mode is invalid");
     let ownerId: string | undefined;
     let slot: OwnerSlot | undefined;
@@ -195,6 +199,7 @@ export function createChildCapabilityRegistryV1(): ChildCapabilityRegistryV1 {
       runtimeGeneration: input.runtime_generation,
       mode: input.mode,
       bindOrdinal: ++bindOrdinal,
+      captureContext: input.capture_context,
     };
     bindings.set(bindingToken, record);
     revision++;
@@ -225,11 +230,17 @@ export function createChildCapabilityRegistryV1(): ChildCapabilityRegistryV1 {
       if (!current) continue;
       const binding = [...bindings.values()].find((item) => item.registrationToken === current.token && item.sessionId === sessionId);
       if (!binding) continue;
+      let context: Readonly<Record<string, unknown>> | undefined;
+      if (binding.captureContext) {
+        try { context = structuredClone(binding.captureContext()); if (!context || typeof context !== "object" || Array.isArray(context) || Buffer.byteLength(JSON.stringify(context)) > 32768) throw new Error("invalid factory context"); }
+        catch (error) { console.warn(`child factory ${ownerId}: context capture failed: ${String(error)}`); context = {}; }
+      }
       registrations.push({
         owner_id: ownerId,
         owner_generation: current.generation,
         bind_ordinal: binding.bindOrdinal,
         manifest: current.manifest,
+        ...(context ? { factory_context: context } : {}),
       });
     }
     registrations.sort((left, right) => left.bind_ordinal - right.bind_ordinal || left.owner_id.localeCompare(right.owner_id));

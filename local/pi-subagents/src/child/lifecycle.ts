@@ -10,6 +10,7 @@ export interface ChildLifecyclePort {
   identity(): { ownerKey: string; agentId: string; generation: number; sessionId: string };
   frozenModel(): { provider: string; modelId: string; reasoningEffort: string; serviceTier?: string };
   taskId(): string;
+  processWaitOwnerIds(): readonly string[];
   processAdmission(input: ProcessWaitAdmissionRequestV2): Promise<HostProcessWaitAdmissionV2>;
   recordProcessWait(input: { taskId: string; blocking: readonly { leaseId: string; generation: number; logicalKey: string }[] }): Promise<void>;
   settled(input: { taskId: string; aborted: boolean; sessionFile: string }): Promise<void>;
@@ -48,7 +49,7 @@ export function installChildLifecycle(pi: ExtensionAPI, port: ChildLifecyclePort
     if (!port.ready()) return;
     const taskId = port.taskId(); if (!taskId) return;
     try {
-      const blocking = getContinuationRegistryV1().snapshot(port.identity().sessionId).blocking.filter(item => item.ownerId === "pi-processes")
+      const blocking = getContinuationRegistryV1().snapshot(port.identity().sessionId).blocking.filter(item => port.processWaitOwnerIds().includes(item.ownerId))
         .map(({ leaseId, generation, logicalKey }) => ({ leaseId, generation, logicalKey }));
       if (blocking.length) await port.recordProcessWait({ taskId, blocking });
       if (port.taskId() !== taskId) return;

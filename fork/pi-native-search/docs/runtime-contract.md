@@ -78,7 +78,7 @@ child 只注册工具与必要执行逻辑，不注册 `/search`、设置 UI、�
 
 ## 可选 child 能力
 
-Main 通过 `pi-runtime-contracts/child-capabilities-v1` 共享 registry 声明 owner `pi-native-search`。`pi-subagents` target 使用 `extensions/child.ts` 作为 descriptor，`activation` 为 `required-only`，公开工具为 `web_fetch` 和 `web_search`，不声明 child 命令或 provider。
+Main 通过 `pi-runtime-contracts/child-capabilities-v1` 共享 registry 声明 owner `pi-native-search`。`pi-subagents` 与 `pi-side-chat` target 使用 `extensions/child.ts` 作为 descriptor，`activation` 为 `required-only`，公开工具为 `web_fetch` 和 `web_search`，不声明 child 命令或 provider。`createRegisteredSearchChildFactory` 适配共享 options，创建时读取并复制配置，并显式接收父 backend emitter；声明同时冻结 `extensions/index.ts` 的执行 SHA。完整声明/校验规则只写在 [child 合同](../../../local/pi-runtime-contracts/docs/child-capabilities-v1.md)。
 
 Main 负责绑定 session、更新 runtime generation 并在 shutdown 释放自己的 binding/registration。SDK child 不重新声明 owner，避免替换 Main 的 capability。没有消费者时 Main 工具照常可用；本包不加载 child Host，也不 import 它的插件实现。
 

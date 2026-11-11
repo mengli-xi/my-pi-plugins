@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   captureEntrypointDescriptorV1,
+  captureChildFactoryV1,
   getOrCreateChildCapabilityRegistryV1,
   type ChildCapabilityBindingHandleV1,
 } from "pi-runtime-contracts/child-capabilities-v1";
@@ -16,6 +17,7 @@ export function installNativeSearchChildCapability(directory: string) {
       main_entrypoint: captureEntrypointDescriptorV1(join(directory, "index.ts")),
       targets: {
         "pi-subagents": {
+          child_factory: captureChildFactoryV1(join(directory, "index.ts"), { module: "extensions/child.ts", export: "createRegisteredSearchChildFactory", artifacts: ["extensions/index.ts"] }),
           child_entrypoint: captureEntrypointDescriptorV1(join(directory, "child.ts")),
           activation: "required-only",
           commands: [],
@@ -23,6 +25,10 @@ export function installNativeSearchChildCapability(directory: string) {
           providers: [],
           hooks: [],
           requires: [],
+        },
+        "pi-side-chat": {
+          child_factory: captureChildFactoryV1(join(directory, "index.ts"), { module: "extensions/child.ts", export: "createRegisteredSearchChildFactory", artifacts: ["extensions/index.ts"] }),
+          child_entrypoint: captureEntrypointDescriptorV1(join(directory, "child.ts")), activation: "required-only", commands: [], tools: ["web_fetch", "web_search"], providers: [], hooks: [], requires: [],
         },
       },
     },

@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   captureEntrypointDescriptorV1,
+  captureChildFactoryV1,
   getOrCreateChildCapabilityRegistryV1,
   type ChildCapabilityBindingHandleV1,
 } from "pi-runtime-contracts/child-capabilities-v1";
@@ -9,6 +10,7 @@ import {
 export function installBashTimeoutChildCapability(directory: string) {
   const registry = getOrCreateChildCapabilityRegistryV1();
   const childTarget = {
+    child_factory: captureChildFactoryV1(join(directory, "index.ts"), { module: "extensions/child.ts", export: "createBashTimeoutChildFactory", artifacts: ["extensions/tool.ts"] }),
     child_entrypoint: captureEntrypointDescriptorV1(join(directory, "child.ts")),
     activation: "required-only" as const,
     commands: [],

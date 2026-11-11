@@ -128,7 +128,7 @@ delivery-failed 当前处于隔离，公开 retry endpoint 尚未实现（Delive
 
 ### 1. Authority 与显式 factory
 
-公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0、唯一 SDK。capabilities/{closure,registry,fingerprint}.ts 和 runtime/factory-catalog.ts 定义准入。pi-runtime-contracts 拥有 versioned registry；Main package 注册 owner/target descriptor，Subagents 冻结 target=pi-subagents 的 closure，Side 直接解析 target=pi-side-chat。SDK factory 自身不注册 capability、不做 OS attestation；这层 SDK factory/provider 准入仍无 marker/nonce/ready handshake 前置。managed native thread UI 另有 [界面合同 §5](ui.md#5-主题与终端释放) 的 UI host-capability 检查；它只约束 handoff，不改变 provider grant、tool/model scope 或上述 attestation 边界。
+公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0、唯一 SDK。capabilities/{closure,registry,fingerprint}.ts 和 runtime/factory-catalog.ts 定义准入。pi-runtime-contracts 拥有 versioned registry；Main package 注册 owner/target descriptor，Subagents 冻结 target=pi-subagents 的 closure，Side 直接解析 target=pi-side-chat。普通 factory 的声明、校验和失败规则见 [child 合同](../../pi-runtime-contracts/docs/child-capabilities-v1.md)，不按插件名字或目录识别；SDK factory 自身不注册 capability、不做 OS attestation；这层 SDK factory/provider 准入仍无 marker/nonce/ready handshake 前置。managed native thread UI 另有 [界面合同 §5](ui.md#5-主题与终端释放) 的 UI host-capability 检查；它只约束 handoff，不改变 provider grant、tool/model scope 或上述 attestation 边界。
 
 registry conflict、target/package/export/hash 不匹配拒绝，不能扫描 Main extension paths 或复制未知 pure hooks。外部 provider 只通过已声明、独立批准的 `sdk_provider_factory` 装配，沿用实际 assembly 的 canonical 公开 Pi namespaces；loader 只 cache 模块/identity，不 cache instance/options。同路径代码或明确 delegates 变更要求 fresh process，不拿新磁盘 hash 给旧 Jiti cache 背书。
 
@@ -142,15 +142,14 @@ Main active tools、registered definitions 与 role allowlist 共同决定 child
 
 mandatory collaboration tools 包含 send_input/wait/list/model/role 查询及允许 depth 的 spawn，child finish_task。close/resume 永远 Main-only；达到 ceiling 从 registered definitions、active tools、profile、fingerprint 与 prompt 同时去 spawn，Host 复核 persistent 结构 depth 和 min(frozen ceiling,current maxDepth)。默认 maxDepth 1，可配置 2，孙 Agent 始终不能再 spawn。
 
-fingerprint 包含 canonical tool schema/description/promptGuidelines 及 owner、target hash 和完整 allowed tool 顺序/definition digest；dynamic ambient 插件新增不自动进入旧 Agent。未知/冲突 definition 不能靠同名工具替换。factory catalog 保留 Processes child、native-search、pi-bash-timeout、CC presentation 与经独立 grant 批准的外部 provider；非 builtin Search/Processes 的 `execution_factory` proof 必须覆盖实际 import 的物理 factory 文件及 export，直接读该文件做 SHA 校验，不能只校验转发 wrapper 后执行未校验文件；旧 frozen Pinned presentation 仅忽略、不加载，其它 Main 插件不复制。
+fingerprint 包含 canonical tool schema/description/promptGuidelines 及 owner、target hash 和完整 allowed tool 顺序/definition digest；dynamic ambient 插件新增不自动进入旧 Agent。未知/冲突 definition 不能靠同名工具替换。已加载且绑定的 owner 使用声明的 `child_factory`，文件/export/实际包身份与已知执行 artifacts 进入冻结证明；可选 factory 失败独立降级，明确需要的工具或 capability 失败仍拒绝。旧 frozen presentation 无新证明时只忽略、不加载，工具证明不从当前环境自动补齐。bash override 仍按 Main/child 同一工具定义指纹校验，不能回退宽松 builtin；普通 builtin bash 不受可选 owner 缺席影响。
 
-`pi-bash-timeout` 是 source-only required-only tool owner，Main 的同名 `bash` override 归该 package；catalog 只接受匹配 owner/package、`extensions/child.ts`、target hash 和 `createBashTimeoutChildFactory` export。Main/child 共用同一个 definition factory，description/schema/promptGuidelines 指纹不匹配拒绝，不退回内置 bash；包未加载时 bash 仍归 builtin。本包只改 timeout 必填契约，child factory 不注册 capability 或读 ambient identity，执行仍用 child 的公开冻结 settings 和 Pi bash 实现。
 
 ### 3. FrozenProfileV1
 
 profile.version 仍 1，store namespace 是 v2。持久字段包括 role{name,source,provenance,body,sha256}、provider/model/model_scope/reasoning_effort/service_tier?、task_timeout_ms/cwd/project_trusted、allowlisted 公开 settings_snapshot、delegation_max_depth、capabilities{version,fingerprint,active_tools,tool_definitions,entries}、prompt options/hash/assembler version/system-prompt path/bytes/hash 和 created_at。
 
-builtin entry 使用 `builtin_proof={version,pi_version}`，核对 assembly 的 canonical Pi.VERSION；不对 builtin 标识做物理文件 SHA 读取。非 builtin Search/Processes 使用实际 `execution_factory` proof；旧 profile 仍可读历史，缺少对应 proof 不执行，不从当前环境自动补齐。
+builtin entry 使用 `builtin_proof={version,pi_version}`，核对 assembly 的 canonical Pi.VERSION；不对 builtin 标识做物理文件 SHA 读取。普通插件使用完整 `child_factory` proof；`execution_factory` 仅为旧记录的读取兼容保留，不能自动升级为新执行证明。旧 profile 仍可读历史，缺证明不执行，不从当前环境自动补齐。
 
 role 优先 trusted project > user > builtin，model/effort/tier 解析与范围见 [工具合同](usage.md)；child scope 只能是父 scope 子集，nested artifact/profile 重新复核 cwd/trust/model/tool/entry owner subset。model scope 冻结为授权 canonical IDs，credentials 通过 public ModelRuntime/Auth，不持久 secret。provider proof 包含完整批准 manifest 与确切 model_scope，并进入 fingerprint；nested 只能缩窄，旧无 proof 的外部 provider profile 只读历史，不自动补授权执行。
 
@@ -162,7 +161,7 @@ execution 使用 public services/session runtime，独立 SettingsManager.inMemo
 
 resume 核对 frozen artifact/hash/model/credential/factory，只恢复目标 idle，零 Task/lease/provider/compact。超窗 preflight 必须在真实 Task grant 后，无法安全 summarize 拒绝并推荐 none；用户打开 closed history 可以用 provider-only/presentation 和 tools=[]的 in-memory runtime，不允许 fallback model 执行旧 Agent。
 
-CC execution assembly 安装轻 recorder，Detached 仍写真实 run metrics；UI 每 view attach/detach。CC 只接受 `dist/child.ts` 与空 tools/providers/commands 的纯 presentation descriptor，不注册 builtin execution；标准 Main profile 显式选择七个内置工具。CC presentation 可选；有合法能力时装配其显式 factory，缺席时使用 Pi 原生消息渲染，输入、历史与生命周期不变。Main completion append 只用公开 branch API 与 mailbox，没有旧三项 private seam；Side 两 visibility probe 属于 Side，不当 SDK 能力 attestation。
+CC execution assembly 安装轻 recorder，Detached 仍写真实 run metrics；UI 每 view attach/detach。presentation 只接受空 tools/providers/commands 的纯展示声明，模块和 export 由 owner 声明，不注册 builtin execution；标准 Main profile 显式选择七个内置工具。CC presentation 可选；有合法能力时装配其显式 factory，缺席时使用 Pi 原生消息渲染，输入、历史与生命周期不变。Main completion append 只用公开 branch API 与 mailbox，没有旧三项 private seam；Side 两 visibility probe 属于 Side，不当 SDK 能力 attestation。
 
 装配与 factory loader 使用共享库的 canonical namespace 表，readonly history 也从该表创建 SessionManager；[SDK realm 与 loader 合同](../../pi-session-runtime/docs/runtime.md#唯一-sdk-realm)定义身份校验、缓存和跨副本交接规则。
 
@@ -196,7 +195,7 @@ Main binding 在 `src/index.ts` 通过 `src/context/effective.ts` 租用共享 c
 
 HostCaller 只由实际 Main/child/UI/recovery adapter 构造，模型 schema 不含 kind/generation/session 身份。Host 复核 binding/manager/runtime、Task ID、lifecycle/revision 与 Main owner；child 只操作直接 child 且 close/resume 仅 Main/可信用户。maxDepth 默认 1/max2，注册/active tools/profile/fingerprint/prompt/Host 全部执行 ceiling；不能通过手工 tool name 或伪 depth 越层。
 
-创建冻结 role body/provenance/hash、model scope/model/effort/tier、cwd/trust/settings snapshot/delegation ceiling、tools/definition/approved factory hash；resume 不能读取变更 role 扩权、用 fallback model 执行或复制未知 Main plugin。public namespaces/factory module cache 不共享 runtime instance/options，provider auth 只在公开 ModelRuntime 解析，不持久 secret。closed history 仅 in-memory read view/空 tool，不自动 resume/模型请求。当前 builtin consumer 仅 codemode/tool-search canonical factory，前端/后端一致且受 role/tools fences；`builtin_proof={version,pi_version}` 核对 canonical Pi.VERSION，不对 builtin 标识做物理文件 SHA 读取。其他 builtin 默认不启用，llama.cpp 非工具、不启服务；未知 owner 拒绝而非扫描 ambient paths。非 builtin Search/Processes 的 `execution_factory` proof 才直接读取实际物理 factory 文件做 SHA 校验，wrapper hash 不证明未校验文件可信；旧 profile 可读历史，缺 proof 不执行。
+创建冻结 role body/provenance/hash、model scope/model/effort/tier、cwd/trust/settings snapshot/delegation ceiling、tools/definition/approved factory hash；resume 不能读取变更 role 扩权、用 fallback model 执行或复制未知 Main plugin。public namespaces/factory module cache 不共享 runtime instance/options，provider auth 只在公开 ModelRuntime 解析，不持久 secret。closed history 仅 in-memory read view/空 tool，不自动 resume/模型请求。当前 builtin consumer 仅 codemode/tool-search canonical factory，前端/后端一致且受 role/tools fences；`builtin_proof={version,pi_version}` 核对 canonical Pi.VERSION，不对 builtin 标识做物理文件 SHA 读取。其他 builtin 默认不启用，llama.cpp 非工具、不启服务；未知 owner 拒绝而非扫描 ambient paths。普通插件的 `child_factory` proof 校验实际模块和声明的执行 artifacts，wrapper hash 不证明未校验文件可信；旧 profile 可读历史，缺 proof 不执行。
 
 当前 MCP 来自 pi-mcp-adapter；child 继承需 adapter 自己明确能力声明/工厂及后续独立验收，现在不宣称支持。不以 stock MCP 替代，不解析其配置、冻结 raw 凭据或增加配置 pinning。共享 Runtime 通用显式 Builtin 接口仍默认全禁，保留的可选 MCP 支持不授权本 consumer。
 

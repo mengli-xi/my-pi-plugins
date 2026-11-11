@@ -18,7 +18,7 @@
 
 ## 可选协作与降级
 
-CC presentation 缺席时使用 Pi 原生消息渲染；Completion 保留单行 fallback。Goal、Processes、Search、外部 SDK provider 仅按能力与批准 factory 接入，缺失不影响普通委派。Compact recovery 收集缺席时保留独立恢复路径。
+CC presentation 缺席时使用 Pi 原生消息渲染；Completion 保留单行 fallback。已加载插件按 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md) 的声明装入子会话，工具仍受 role/closure 约束；外部 SDK provider 保持独立批准，缺失不影响普通委派。Compact recovery 收集缺席时保留独立恢复路径。
 
 ## 验证
 

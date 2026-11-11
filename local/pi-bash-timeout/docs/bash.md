@@ -22,9 +22,9 @@ TypeScript 直接加载，无 `dist/` 或 build。工具定义设 `defaultActive
 
 `pi-runtime-contracts/child-capabilities-v1` 是 registry owner；Main 绑定每个 session 的 `pi-bash-timeout` descriptor，声明 targets `pi-subagents` 和 `pi-side-chat`，两者共用同一个 child descriptor、activation `required-only`、tools `["bash"]`，没有 commands/providers/hooks/requires。每次 `session_shutdown` 都幂等 dispose 全部 binding 和 registration，包括 new/resume/fork/reload/quit；Pi replacement 创建新的 extension runtime，再注册并绑定 descriptor，旧 runtime 不保留候选。stale release 沿用 registry 的 fail-closed 规则。
 
-`extensions/child.ts` 仅导出 `createBashTimeoutChildFactory`。它与 Main 共用 `extensions/tool.ts`，只注册相同工具，不注册 capability、不读取 ambient child identity。Subagents 和 Side 的审计 catalog 只接受 owner/package `pi-bash-timeout`、`extensions/child.ts`、匹配的 target hash 和该具名 export；未知身份或定义指纹不匹配会拒绝，不退回无 timeout 的内置 bash。Side 仅在 Main 的 active bash 确实归本包 main descriptor 所有时安装同一个 named factory，注册前核对 Main/Side 的工具定义指纹；Main 未启用 bash 时不安装。父会话不加载本包时，bash 仍归 `builtin`，子会话沿用原行为。
+`extensions/child.ts` 仅导出 `createBashTimeoutChildFactory`。它与 Main 共用 `extensions/tool.ts`，只注册相同工具，不注册 capability、不读取 ambient child identity。Main 声明该 factory 及 `extensions/tool.ts` 的完整性证明，Subagents 与 Side 经共享 loader 装载；格式与失败规则见 [child-capabilities-v1](../../pi-runtime-contracts/docs/child-capabilities-v1.md)。Main/child 定义指纹必须一致，失败不退回宽松 builtin。Side 只在 Main active bash 归本包声明来源时安装；Main 不启用 bash 时不安装，父会话不加载本包时仍沿用 builtin bash。
 
-协作边界：`pi-runtime-contracts`（workspace 依赖 child-capabilities-v1；registry shape 变化须回归）、`pi-subagents`（optional audited child factory、closure 与定义指纹；修改本包定义后必须重建/验证 Subagents）、`pi-side-chat`（required-only target、精确 catalog、同定义指纹与 Side schema/本地执行隔离）。
+共享库是 workspace 硬依赖，消费者是可选协作方；定义修改后须重建并验证编译消费者。
 
 ## 验证
 

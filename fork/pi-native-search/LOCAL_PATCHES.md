@@ -24,7 +24,7 @@ Pi 通过抛出的执行错误标记工具失败，不能靠不存在的 `AgentT
 
 同进程 SDK session 会共享 module cache，不能靠模块级状态或环境身份隐式区分 Main/child。显式 factory 为每个安装复制配置，child 的 model/tree 生命周期不重读 Main 文件，也不写回 Main 设置。
 
-Main 独占命令、持久化、状态展示和 capability owner；child 只提供工具执行，不修改 Host 冻结的 active-tool allowlist，避免 child 重绑或退出影响 Main/兄弟 session。Main 可以声明共享 child capability，但不依赖某个消费插件存在。
+Main 独占命令、持久化、状态展示和 capability owner；child 只提供工具执行，不修改 Host 冻结的 active-tool allowlist，避免 child 重绑或退出影响 Main/兄弟 session。Main 声明 Subagents/Side 的开放 child factory，注册时冻结适配模块及实际执行文件，两个消费者共用 loader；不依赖某个消费插件存在。合同见 [child-capabilities-v1](../../local/pi-runtime-contracts/docs/child-capabilities-v1.md)。
 
 ## 可选集成只走公开协议
 

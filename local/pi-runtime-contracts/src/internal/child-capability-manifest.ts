@@ -1,3 +1,4 @@
+import { assertChildFactoryEntrypointV1, validateChildFactoryV1, type ChildFactoryV1 } from "#internal/child-factory";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute } from "node:path";
@@ -37,6 +38,7 @@ export interface SdkProviderFactoryV1 {
 }
 
 export interface ChildCapabilityTargetV1 {
+  readonly child_factory?: ChildFactoryV1;
   readonly sdk_provider_factory?: SdkProviderFactoryV1;
   readonly child_entrypoint: EntrypointDescriptorV1;
   readonly activation: "mirror" | "required-only";
@@ -134,7 +136,7 @@ export function captureEntrypointDescriptorV1(path: string): EntrypointDescripto
   return accepted;
 }
 
-function descriptor(value: unknown, label: string, verifyFiles = true): EntrypointDescriptorV1 {
+export function descriptor(value: unknown, label: string, verifyFiles = true): EntrypointDescriptorV1 {
   const input = exactObject(value, ["canonical_path", "sha256", "device", "inode", "size", "mtime_ns"], label);
   const path = safeString(input.canonical_path, `${label}.canonical_path`, 4096);
   const digest = safeString(input.sha256, `${label}.sha256`, 64);
@@ -201,16 +203,22 @@ export function validateSdkProviderFactoryV1(value: unknown, verifyFiles = true)
   });
 }
 
-function target(value: unknown, targetId: string, verifyFiles = true): ChildCapabilityTargetV1 {
+function target(value: unknown, targetId: string, main: string, verifyFiles = true): ChildCapabilityTargetV1 {
   const label = `manifest.targets.${targetId}`;
-  const input = exactObject(value, ["child_entrypoint", "activation", "commands", "tools", "providers", "hooks", "requires", "sdk_provider_factory"], label);
+  const input = exactObject(value, ["child_entrypoint", "activation", "commands", "tools", "providers", "hooks", "requires", "sdk_provider_factory", "child_factory"], label);
   if (input.activation !== "mirror" && input.activation !== "required-only") fail(`${label}.activation is invalid`);
   if (!Array.isArray(input.providers) || input.providers.length > 128) fail(`${label}.providers must contain at most 128 values`);
   const providers = input.providers.map((item, index) => provider(item, index, `${label}.providers`));
   if (providers.some((item, index) => index > 0 && providers[index - 1]!.provider_id >= item.provider_id)) fail(`${label}.providers must be sorted and unique by provider_id`);
+  const child = descriptor(input.child_entrypoint, `${label}.child_entrypoint`, verifyFiles);
+  const factory = input.child_factory === undefined ? undefined : validateChildFactoryV1(input.child_factory, main, verifyFiles);
+  if (factory && verifyFiles) assertChildFactoryEntrypointV1(factory, child);
+  if (factory && (input.sdk_provider_factory || providers.length)) fail("ordinary child factory cannot authorize providers");
+  if (factory?.kind === "presentation" && ((input.tools as unknown[]).length || (input.commands as unknown[]).length || providers.length)) fail("child presentation is not display-only");
   return Object.freeze({
+    ...(factory ? { child_factory: factory } : {}),
     ...(input.sdk_provider_factory === undefined ? {} : { sdk_provider_factory: validateSdkProviderFactoryV1(input.sdk_provider_factory, verifyFiles) }),
-    child_entrypoint: descriptor(input.child_entrypoint, `${label}.child_entrypoint`, verifyFiles),
+    child_entrypoint: child,
     activation: input.activation,
     commands: sortedUniqueStrings(input.commands, `${label}.commands`),
     tools: sortedUniqueStrings(input.tools, `${label}.tools`),
@@ -223,9 +231,10 @@ function target(value: unknown, targetId: string, verifyFiles = true): ChildCapa
 export function validateChildCapabilityManifestV1(value: unknown, verifyFiles = true): ChildCapabilityManifestV1 {
   const input = exactObject(value, ["version", "owner_id", "main_entrypoint", "targets"], "manifest");
   if (input.version !== 1) fail("manifest.version must equal 1");
+  const main = descriptor(input.main_entrypoint, "manifest.main_entrypoint", verifyFiles);
   const rawTargets = targetRecord(input.targets);
   const targets: Record<string, ChildCapabilityTargetV1> = {};
-  for (const targetId of Object.keys(rawTargets).sort()) targets[targetId] = target(rawTargets[targetId], targetId, verifyFiles);
+  for (const targetId of Object.keys(rawTargets).sort()) targets[targetId] = target(rawTargets[targetId], targetId, main.canonical_path, verifyFiles);
   return Object.freeze({
     version: 1,
     owner_id: id(input.owner_id, "manifest.owner_id"),

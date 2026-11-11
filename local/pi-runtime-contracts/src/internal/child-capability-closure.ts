@@ -12,6 +12,7 @@ export interface ResolvedChildCapabilityOwnerV1 {
   readonly target_id: string;
   readonly manifest: ChildCapabilityManifestV1;
   readonly target: ChildCapabilityTargetV1;
+  readonly factory_context?: Readonly<Record<string, unknown>>;
 }
 
 export interface ChildCapabilityClosureV1 {
@@ -96,7 +97,7 @@ export function resolveChildCapabilityClosureV1(input: ResolveChildCapabilityClo
     const abilityMatch = intersects(target.commands, activeCommands)
       || intersects(target.tools, activeTools)
       || target.providers.some((provider) => activeProviders.has(provider.provider_id));
-    if (abilityMatch || (target.activation === "mirror" && target.hooks.length > 0)) selected.add(registration.owner_id);
+    if (abilityMatch || (target.activation === "mirror" && (target.hooks.length > 0 || target.child_factory !== undefined))) selected.add(registration.owner_id);
   }
 
   const visiting = new Set<string>();
@@ -127,9 +128,19 @@ export function resolveChildCapabilityClosureV1(input: ResolveChildCapabilityClo
         target_id: targetId,
         manifest: registration.manifest,
         target,
+        ...(registration.factory_context ? { factory_context: registration.factory_context } : {}),
       });
     })
     .sort((left, right) => left.bind_ordinal - right.bind_ordinal || left.owner_id.localeCompare(right.owner_id));
+  for (const kind of ["tools", "commands", "providers"] as const) {
+    const claims = new Map<string, string>();
+    for (const owner of owners) for (const ability of owner.target[kind]) {
+      const name = typeof ability === "string" ? ability : ability.provider_id;
+      const prior = claims.get(name);
+      if (prior && prior !== owner.owner_id) throw new Error(`child capability ${kind} conflict: ${name} (${prior},${owner.owner_id})`);
+      claims.set(name, owner.owner_id);
+    }
+  }
   const childEntrypoints = owners.map((owner) => owner.target.child_entrypoint.canonical_path);
   if (new Set(childEntrypoints).size !== childEntrypoints.length) throw new Error("child entrypoint is claimed by multiple selected owners");
   return Object.freeze({

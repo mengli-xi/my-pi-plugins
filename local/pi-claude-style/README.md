@@ -20,6 +20,8 @@
 
 消费 Todo、Goal、Processes、容量和 provider activity 的公开语义协议；缺失时不显示对应领域状态，不启动对方。提供 `statusline:row`/`statusline:refresh`、child `presentation/claude-style-v1`、custom-entry presentation、编辑器图片源与 geometry 协议；DTO、校验和生命周期见运行时与界面合同。
 
+普通 child factory 的声明与共享装载规则见 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md)；外部 provider grant 不由这个声明授予。
+
 ## 验证
 
 仓库根运行：

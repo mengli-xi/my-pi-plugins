@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
-import { captureEntrypointDescriptorV1, getOrCreateChildCapabilityRegistryV1 } from "pi-runtime-contracts/child-capabilities-v1";
+import { captureChildFactoryV1, captureEntrypointDescriptorV1, getOrCreateChildCapabilityRegistryV1 } from "pi-runtime-contracts/child-capabilities-v1";
 import { contextFingerprint } from "pi-session-runtime/effective-context";
 import { createBashTimeoutTool } from "../local/pi-bash-timeout/extensions/tool.ts";
 import { sideExecutionPlan } from "../local/pi-side-chat/sdk-factories.ts";
@@ -23,7 +23,8 @@ function fixture(options: { active?: boolean; builtin?: boolean; target?: boolea
   const sessionId = randomUUID();
   const registry = getOrCreateChildCapabilityRegistryV1();
   const entry = options.path ? captureEntrypointDescriptorV1(options.path) : child;
-  const target = { child_entrypoint: { ...entry, sha256: options.hash ?? entry.sha256 }, activation: "required-only" as const,
+  const declaration = captureChildFactoryV1(main.canonical_path, { module: "extensions/child.ts", export: "createBashTimeoutChildFactory", artifacts: ["extensions/tool.ts"] });
+  const target = { child_factory: options.path ? { ...declaration, files: [entry, ...declaration.files.slice(1)] } : declaration, child_entrypoint: { ...entry, sha256: options.hash ?? entry.sha256 }, activation: "required-only" as const,
     commands: [], tools: ["bash"], providers: [], hooks: [], requires: [] };
   const registration = registry.register({ version: 1, manifest: { version: 1, owner_id: "pi-bash-timeout", main_entrypoint: main,
     targets: { "pi-subagents": target, ...(options.target === false ? {} : { "pi-side-chat": target }) } } });
@@ -50,7 +51,7 @@ for (const options of [{ target: false }, { hash: "0".repeat(64) }, { path: main
     const source = fixture(options);
     try { await sideExecutionPlan(source.pi, source.ctx, "unused-agent"); }
     finally { source.release(); }
-  }, /Side factory|Unapproved Side factory|live file identity/);
+  }, /Side factory|Unapproved Side factory|live file identity|proof\/entry mismatch/);
 });
 
 test("Timeout catalog rejects a loaded child definition that differs from Main", async () => {

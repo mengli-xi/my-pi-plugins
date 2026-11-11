@@ -6,11 +6,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ViewLifecycle } from "pi-session-runtime/managed-interactive";
-import { captureEntrypointDescriptorV1, getOrCreateChildCapabilityRegistryV1, type ChildCapabilityManifestV1 } from "pi-runtime-contracts/child-capabilities-v1";
+import { captureChildFactoryV1, captureEntrypointDescriptorV1, getOrCreateChildCapabilityRegistryV1, type ChildCapabilityManifestV1 } from "pi-runtime-contracts/child-capabilities-v1";
+const fixtureRoots: string[] = [];
+test.after(async () => { for (const root of fixtureRoots) await rm(root, { recursive: true, force: true }); });
+
 import { sidePresentationFactories } from "../sdk-factories.ts";
 
 async function presentationFixture(options: { source?: string; target?: string; packageName?: string } = {}) {
   const root = await mkdtemp(join(tmpdir(), "side-presentation-"));
+  fixtureRoots.push(root);
   const directory = join(root, "dist");
   await mkdir(directory);
   await writeFile(join(root, "package.json"), JSON.stringify({ name: options.packageName ?? "pi-claude-style" }));
@@ -20,8 +24,8 @@ async function presentationFixture(options: { source?: string; target?: string; 
   const registry = getOrCreateChildCapabilityRegistryV1();
   const sessionId = randomUUID();
   const manifest = { version: 1 as const, owner_id: "pi-claude-style", main_entrypoint: captureEntrypointDescriptorV1(join(directory, "index.ts")),
-    targets: { [options.target ?? "pi-side-chat"]: { child_entrypoint: captureEntrypointDescriptorV1(path), activation: "required-only" as const,
-      tools: [], providers: [], commands: [], hooks: ["session_start"], requires: [] } } };
+    targets: { [options.target ?? "pi-side-chat"]: { child_factory: captureChildFactoryV1(join(directory, "index.ts"), { module: "dist/child.ts", export: "createClaudeStyleChildExtension", kind: "presentation", package_name: "pi-claude-style" }), child_entrypoint: captureEntrypointDescriptorV1(path), activation: "mirror" as const,
+      tools: [], providers: [], commands: [], hooks: ["presentation/claude-style-v1"], requires: [] } } };
   const registration = registry.register({ version: 1, manifest });
   const binding = registry.bind({ version: 1, registrationToken: registration.registrationToken, session_id: sessionId, runtime_generation: 1, mode: "rpc" });
   return { ctx: { sessionManager: { getSessionId: () => sessionId } } as ExtensionContext, manifest, path,
@@ -55,38 +59,43 @@ test("Side loads the display-only factory with independent view lifecycle option
     assert.notEqual(first, second);
     first!(pi); second!(pi);
     assert.deepEqual(captured, [firstLifecycle, secondLifecycle].map(viewLifecycle => ({
-      target: "side-chat", taskName: "Side", returnLabel: "Alt+/ Main", readOnlyStatusline: true, viewLifecycle,
+      context: {}, target: "side-chat", taskName: "Side", returnLabel: "Alt+/ Main", readOnlyStatusline: true, viewLifecycle,
     })));
     assert.equal((captured[0] as { viewLifecycle: ViewLifecycle }).viewLifecycle, firstLifecycle);
     assert.equal((captured[1] as { viewLifecycle: ViewLifecycle }).viewLifecycle, secondLifecycle);
   } finally { await fixture.dispose(); }
 });
 
-test("Side rejects a changed presentation file rather than falling back to native", async () => {
+test("Side rejects a changed required presentation file rather than falling back to native", async () => {
   const fixture = await presentationFixture();
   try {
     await writeFile(fixture.path, "throw new Error('Drifted factories must not load');\n");
-    await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle), /Side presentation changed/);
+    await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle, { requiredOwnerIds: ["pi-claude-style"] }), /capability-drift|live file identity/);
   } finally { await fixture.dispose(); }
+});
+
+test("Side skips only an optional presentation whose file drifted", async () => {
+  const fixture = await presentationFixture();
+  try { await writeFile(fixture.path, "throw new Error('must not import drift');\n"); assert.deepEqual(await sidePresentationFactories(fixture.ctx, {} as ViewLifecycle), []); }
+  finally { await fixture.dispose(); }
 });
 
 test("Side rejects conflicting presentation descriptors rather than treating them as absent", async () => {
   const fixture = await presentationFixture();
   const registration = getOrCreateChildCapabilityRegistryV1().register({ version: 1, manifest: { ...fixture.manifest,
-    targets: { "pi-side-chat": { ...fixture.manifest.targets["pi-side-chat"]!, tools: ["read"] } } } });
-  try { await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle), /Side presentation changed/); }
+    targets: { "pi-side-chat": { ...fixture.manifest.targets["pi-side-chat"]!, hooks: ["presentation/other-v1"] } } } });
+  try { await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle), /registry conflict/); }
   finally { registration.release(); await fixture.dispose(); }
 });
 
 test("Side rejects an invalid presentation package identity", async () => {
-  const fixture = await presentationFixture({ packageName: "unapproved-presentation" });
-  try { await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle), /Side presentation changed/); }
-  finally { await fixture.dispose(); }
+  await assert.rejects(presentationFixture({ packageName: "unapproved-presentation" }), /declaring package name mismatch/);
+
 });
 
 test("Side rejects a presentation module without the approved factory export", async () => {
   const fixture = await presentationFixture({ source: "export const createClaudeStyleChildExtension = null;\n" });
-  try { await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle), /Approved factory export is missing/); }
+  try { await assert.rejects(sidePresentationFactories(fixture.ctx, {} as ViewLifecycle, { requiredOwnerIds: ["pi-claude-style"] }), /Approved factory export is missing/); }
   finally { await fixture.dispose(); }
 });
 
@@ -101,8 +110,9 @@ test("Side rejects malformed published descriptors at registration", async () =>
   } finally { await fixture.dispose(); }
 });
 
-test("Side rejects execution-capable CC descriptors and the legacy JavaScript entry", async () => {
+test("Side rejects execution-capable presentation declarations and an undeclared JavaScript replacement", async () => {
   const root = await mkdtemp(join(tmpdir(), "side-presentation-"));
+  fixtureRoots.push(root);
   const directory = join(root, "dist");
   await mkdir(directory);
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "pi-claude-style" }));
@@ -120,17 +130,15 @@ test("Side rejects execution-capable CC descriptors and the legacy JavaScript en
       { filename: "child.js" },
     ]) {
       const sessionId = randomUUID();
-      const registration = registry.register({ version: 1, manifest: { version: 1, owner_id: "pi-claude-style",
+      const declaration = captureChildFactoryV1(join(directory, "index.ts"), { module: "dist/child.ts", export: "createClaudeStyleChildExtension", kind: "presentation" });
+      assert.throws(() => registry.register({ version: 1, manifest: { version: 1, owner_id: "pi-claude-style",
         main_entrypoint: captureEntrypointDescriptorV1(join(directory, "index.ts")), targets: { "pi-side-chat": {
-          child_entrypoint: captureEntrypointDescriptorV1(join(directory, candidate.filename ?? "child.ts")), activation: "required-only",
-          tools: [...candidate.tools ?? []].sort(), providers: candidate.providers ?? [], commands: candidate.commands ?? [], hooks: [], requires: [],
+          child_factory: candidate.filename ? { ...declaration, module: "dist/child.js" } : declaration,
+          child_entrypoint: captureEntrypointDescriptorV1(join(directory, candidate.filename ?? "child.ts")), activation: "mirror",
+          tools: [...candidate.tools ?? []].sort(), providers: candidate.providers ?? [], commands: candidate.commands ?? [], hooks: ["presentation/claude-style-v1"], requires: [],
           ...(candidate.sdk_provider_factory ? { sdk_provider_factory: candidate.sdk_provider_factory } : {}),
-        } } } });
-      const binding = registry.bind({ version: 1, registrationToken: registration.registrationToken, session_id: sessionId, runtime_generation: 1, mode: "rpc" });
-      try {
-        await assert.rejects(sidePresentationFactories({ sessionManager: { getSessionId: () => sessionId } } as ExtensionContext, {} as ViewLifecycle),
-          candidate.filename ? /Side presentation changed/ : /Side presentation is not display-only/);
-      } finally { binding.release(); registration.release(); }
+        } } } }), candidate.filename ? /capability-drift/ : /display-only|cannot authorize providers/);
+
     }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
