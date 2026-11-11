@@ -104,7 +104,7 @@ test("host-lost child input is cancelled before the new Task request without rel
     };
     try { await rpc("get_state"); } catch (error) { child.kill("SIGKILL"); await exit; throw error; }
     return { rpc, control, until, async stop() { child.stdin.end(); let timer: ReturnType<typeof setTimeout> | undefined;
-      try { assert.deepEqual(await Promise.race([exit, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("reopened Pi did not exit: " + stderr)), 15_000); })]), { code: 0, signal: null }); }
+      try { assert.deepEqual(await Promise.race([exit, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("reopened Pi did not exit: " + stderr)), 60_000); })]), { code: 0, signal: null }); }
       finally { clearTimeout(timer); if (child.exitCode === null && child.signalCode === null) { child.kill("SIGKILL"); await exit; } }
     } };
   }

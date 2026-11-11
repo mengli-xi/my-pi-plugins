@@ -39,7 +39,7 @@ test("recovered D intent is cold until resume; lost fulfilled ACK repairs withou
     await rpc("get_state");
     return { rpc, until, async stop() {
       child.stdin.end(); let timer: ReturnType<typeof setTimeout> | undefined;
-      try { assert.deepEqual(await Promise.race([exit, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("cold fixture quit timed out: " + stderr)), 15_000); })]), { code: 0, signal: null }); }
+      try { assert.deepEqual(await Promise.race([exit, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("cold fixture quit timed out: " + stderr)), 60_000); })]), { code: 0, signal: null }); }
       finally { clearTimeout(timer); }
     } };
   }

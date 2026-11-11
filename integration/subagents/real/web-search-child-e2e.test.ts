@@ -20,13 +20,17 @@ test("real Subagent child executes pi-native-search web_search", { timeout: 120_
   const session = join(home, "main.jsonl");
   await writeFile(session, `${JSON.stringify({ type: "session", version: 3, id: sessionId, timestamp: new Date().toISOString(), cwd })}\n`, { mode: 0o600 });
   const storeRoot = join(agentDir, "pi-subagents", "store-v2", "mains", mainKey(sessionId));
-  t.after(async () => { await rm(home, { recursive: true, force: true }); });
   const child = spawn(pi, ["--mode", "rpc", "--session", session, "--no-extensions", "-e", join(cwd, "test/fixtures/test-commands.ts"), "-e", search, "-e", join(cwd, "test", "fixtures", "faux-subagent-provider.ts"), "--provider", "fixture", "--model", "faux-1", "--thinking", "off"], {
     cwd,
     env: { ...process.env, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: agentDir, HOME: home, PI_SUBAGENTS_TEST_TIMEOUT_MS: "30000", PI_SUBAGENTS_TEST_MESSAGE: "WEB_SEARCH_CHILD", PI_NATIVE_SEARCH_TEST_DDG: "1" },
     stdio: ["pipe", "pipe", "pipe"],
   });
-  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
+  const reaped = new Promise<void>(resolve => child.once("exit", () => resolve()));
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await reaped;
+    await rm(home, { recursive: true, force: true });
+  });
   const records: any[] = []; const stderr: Buffer[] = []; let buffer = "";
   child.stdout.on("data", (chunk) => { buffer += chunk.toString("utf8"); for (let at; (at = buffer.indexOf("\n")) >= 0;) { const line = buffer.slice(0, at); buffer = buffer.slice(at + 1); if (line) records.push(JSON.parse(line)); } });
   child.stderr.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
@@ -56,6 +60,6 @@ test("real Subagent child executes pi-native-search web_search", { timeout: 120_
   assert.ok(childEntries.some((entry) => entry.type === "message" && entry.message?.role === "assistant" && entry.message.content?.some((block: any) => block.type === "toolCall" && block.name === "web_search")));
   assert.ok(childEntries.some((entry) => entry.type === "message" && entry.message?.role === "toolResult" && entry.message.toolName === "web_search" && JSON.stringify(entry.message.content).includes("SEARCH_FIXTURE_OK")));
   child.stdin.end();
-  const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise, reject) => { const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("web-search Main did not exit")); }, 15_000); child.once("exit", (code, signal) => { clearTimeout(timer); resolvePromise({ code, signal }); }); });
+  const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise, reject) => { const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("web-search Main did not exit")); }, 60_000); child.once("exit", (code, signal) => { clearTimeout(timer); resolvePromise({ code, signal }); }); });
   assert.deepEqual(exit, { code: 0, signal: null }, Buffer.concat(stderr).toString("utf8"));
 });

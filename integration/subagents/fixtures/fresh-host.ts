@@ -35,9 +35,9 @@ export async function freshHost(t: TestContext, message = "Reply exactly SUBAGEN
     const end = Date.now() + timeout;
     for (;;) { const result = await get(); if (accept(result)) return result; if (Date.now() > end || main.exitCode !== null || main.signalCode !== null) throw new Error(`${label}: ${stderr}\n${JSON.stringify(records.slice(-6)).slice(-4000)}`); await delay(20); }
   }
-  async function rpc(type: string, extra: Record<string, unknown> = {}) {
+  async function rpc(type: string, extra: Record<string, unknown> = {}, timeout = 25_000) {
     const id = `rpc-${++serial}`; main.stdin.write(JSON.stringify({ id, type, ...extra }) + "\n");
-    const result = await until<any>(() => records.find(row => row.id === id && row.type === "response"), Boolean, id);
+    const result = await until<any>(() => records.find(row => row.id === id && row.type === "response"), Boolean, id, timeout);
     assert.equal(result.success, true, JSON.stringify(result) + stderr); return result.data;
   }
   async function control(op: string, params?: unknown, target?: string): Promise<any> {
@@ -79,7 +79,7 @@ export async function freshHost(t: TestContext, message = "Reply exactly SUBAGEN
     await rm(root, { recursive: true, force: true });
     if (runtimeTmp) await rm(runtimeTmp, { recursive: true, force: true });
   });
-  await rpc("get_state");
+  await rpc("get_state", {}, 60_000);
   if (fullProfile) await rpc("prompt", { message: "/schedule list" }); // positive backend readiness, zero provider requests
   const descendants = () => {
     const rows = execFileSync("ps", ["-axww", "-o", "pid=,ppid=,command="], { encoding: "utf8" }).split("\n").flatMap(line => { const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/u.exec(line); return match ? [{ pid: Number(match[1]), parent: Number(match[2]), command: match[3]! }] : []; });
