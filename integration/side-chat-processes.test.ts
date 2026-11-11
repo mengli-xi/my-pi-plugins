@@ -8,7 +8,7 @@ import { SideRuntime } from "../local/pi-side-chat/sdk-runtime.ts";
 import type { EffectiveContextSelection } from "pi-session-runtime/native-child-context";
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
-test("new ephemeral Side consumes one Process wait wake and cancels before destroying its directory", async () => {
+for (const [loseSupervisor, matcherFailure] of [[false, false], [true, false], [false, true]]) test(`new ephemeral Side consumes one Process wait wake and cancels before destroying its directory${loseSupervisor ? " after Supervisor loss" : matcherFailure ? " after matcher failure" : ""}`, async () => {
   const root = await mkdtemp(join(process.env.PI_PROCESSES_TEST_OUTPUT ?? tmpdir(), "side-process-mailbox-"));
   const agentDir = join(root, "agent"); await mkdir(agentDir);
   const gate = join(root, "ready");
@@ -17,7 +17,7 @@ test("new ephemeral Side consumes one Process wait wake and cancels before destr
   const requests: string[] = [];
   faux.setResponses(Array.from({ length: 10 }, () => context => {
     requests.push(JSON.stringify(context.messages));
-    if (requests.length === 1) return fauxAssistantMessage(fauxToolCall("process", { action: "start", name: "side-watch", command: `while [ ! -f '${gate}' ]; do sleep 0.02; done; printf 'READY\\n'; sleep 300`, watches: [{ key: "ready", pattern: "READY", attention: "turn" }], continuation: { mode: "wait", until: { kind: "watch", key: "ready" } } }), { stopReason: "toolUse" });
+    if (requests.length === 1) return fauxAssistantMessage(fauxToolCall("process", { action: "start", name: "side-watch", command: `while [ ! -f '${gate}' ]; do sleep 0.02; done; printf 'READY\\n'; sleep 300`, watches: [{ key: "ready", pattern: matcherFailure ? "[" : "READY", mode: matcherFailure ? "regex" : "literal", attention: "turn" }], continuation: { mode: "wait", until: { kind: "watch", key: "ready" } } }), { stopReason: "toolUse" });
     return fauxAssistantMessage(requests.length === 2 ? "waiting" : "handled");
   }));
   const selection: EffectiveContextSelection = { source: "request-capture", exactRequestPrefix: false, messages: [{ role: "user", content: "Main context", timestamp: 1 }], turnAnchors: [], preambleMessageIndices: [], attachedMessageIndices: [], turnMappingReliable: false };
@@ -37,11 +37,19 @@ test("new ephemeral Side consumes one Process wait wake and cancels before destr
     assert.equal(faux.state.callCount, 3, JSON.stringify({ root, pending: snapshot.pending.map((mail: any) => mail.key), suspended: snapshot.suspended }));
     await delay(100);
     assert.equal(faux.state.callCount, 3);
-    assert.equal(requests.filter(body => body.includes("matched watch 'ready'")).length, 1);
+    assert.equal(requests.filter(body => body.includes(matcherFailure ? "watch 'ready' matcher failed" : "matched watch 'ready'")).length, 1);
     const directory = side.directory;
+    if (loseSupervisor) {
+      const { getProcessHost } = await import("../local/pi-processes/src/host/registry.ts");
+      const host = getProcessHost(sessionId)!;
+      const supervisor = host.managedSnapshot().groups.find(group => group.kind === "supervisor")!;
+      process.kill(supervisor.pid, "SIGKILL");
+      await host.dispose("protocol-failure");
+      assert.equal(host.runtimeContainmentComplete, true);
+    }
     await side.destroy("main-shutdown");
     await assert.rejects(stat(directory), { code: "ENOENT" });
-    process.stdout.write(JSON.stringify({ root, providerCalls: faux.state.callCount, watchRequests: 1 }) + "\n");
+    process.stdout.write(JSON.stringify({ root, providerCalls: faux.state.callCount, watchRequests: matcherFailure ? 0 : 1, matcherErrorRequests: matcherFailure ? 1 : 0 }) + "\n");
   } finally { await side?.destroy(); if (!process.env.PI_PROCESSES_TEST_OUTPUT) await rm(root, { recursive: true, force: true }); }
 });
 

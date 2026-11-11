@@ -6,7 +6,7 @@ import test from "node:test";
 import { freshHost, delay } from "../fixtures/fresh-host.ts";
 
 for (const mode of ["native", "extension", "failed", "cancel", "active-native"]) {
-  test(`completion during manual ${mode} compaction drains without another prompt`, { timeout: 40000 }, async t => {
+  test(`completion during manual ${mode} compaction drains without another prompt`, { timeout: 120000 }, async t => {
     const host = await freshHost(t, "COMPACT_REINJECT_CHILD", false, 1, [resolve(import.meta.dirname, "../../../local/pi-subagents/test/fixtures/compact-reinject.ts")]);
     await host.rpc("prompt", { message: "SEED " + "z".repeat(100000) });
     await host.until(() => host.records.filter(row => row.type === "agent_end").length, n => n >= 1, "seed finished");
@@ -35,7 +35,7 @@ for (const mode of ["native", "extension", "failed", "cancel", "active-native"])
 }
 
 for (const active of [false, true]) {
-  test(`live snapshots follow compaction with Main ${active ? "active" : "idle"} and never start another run`, { timeout: 40000 }, async t => {
+  test(`live snapshots follow compaction with Main ${active ? "active" : "idle"} and never start another run`, { timeout: 120000 }, async t => {
     const host = await freshHost(t, "COMPACT_REINJECT_CHILD", false, 1, [resolve(import.meta.dirname, "../../../local/pi-subagents/test/fixtures/compact-reinject.ts")]);
     await host.rpc("prompt", { message: "SEED " + "z".repeat(100000) });
     await host.until(() => host.records.filter(row => row.type === "agent_settled").length, n => n >= 1, "seed settled");

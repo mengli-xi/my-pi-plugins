@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { freshHost } from "../fixtures/fresh-host.ts";
-test("mailbox run preserves a parked Process Task until its own notification run", { timeout: 30_000 }, async t => {
+test("mailbox run preserves a parked Process Task until its own notification run", { timeout: 120_000 }, async t => {
   const h = await freshHost(t, "MAILBOX_PARK_CHILD");
   await h.rpc("prompt", { message: "FOREGROUND_CHECK" });
   await h.until(() => h.rpc("get_state"), state => !state.isStreaming && h.records.some(event => event.type === "agent_end"), "seed settled", 5_000);

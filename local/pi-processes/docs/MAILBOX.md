@@ -103,7 +103,7 @@ factory 的方法，然后才 retire policy、interrupt、dispose 和删除 ephe
 两者同步 fence 新 intent，再用公共 getEntries 扫本 session tree，取消本 producer 的 keys；
 其它 Task/slot 不受影响。只 await mailbox durable acceptance/cancel，不 await Host admission
 或 source ACK，因此允许 D 在 Host 撤权事务中调用。已在途 admission 返回后因 closing fence
-转 record-only；不会向后继 Task 发送。取消失败保留 runtime/源目录，caller 可重试。
+转 record-only；不会向后继 Task 发送。取消失败保留 runtime/源目录，caller 可重试。Supervisor 失联/containment 只撤销执行 Host，不撤销仍绑定的 conversation source ownership：当前 Side 仍可 durable cancel（及记录 cancelled evidence），然后 dispose/delete；不允许因 Host disposed 而永久拒绝销毁。ownership 固定到 coordinator 首次激活的 session manager；即使 sessionId 相同，替换 manager 也必须创建新 coordinator。stale context、已卸载 coordinator 和非取消投递仍拒绝。disposed Host 上的 source 取消只清理本 batch 的内存投影，不重启 helper、不 re-arm successor，也不改变 execution containment 结果。
 
 取消终态优先于旧 pending status。收到 A 的 cancelled evidence（callback 或 put 返回）后，source
 用现有 `process-notification-migration-v1/classification=cancelled` 持久确认业务取消，不写成功
@@ -111,6 +111,8 @@ factory 的方法，然后才 retire policy、interrupt、dispose 和删除 ephe
 或新 coordinator 不得用旧 pending marker 重建已取消义务；成功证明仍只取 active branch。
 
 ## Notification 模型投影
+
+`matcher-error` batch item 与 `watch-match` 一样保留 `watchKey/watchGeneration`，用于定位失效的 watch；只有 `watch-match` 带 `matchedCount/suppressedCount`。包括 worker 启动超时在内的 matcher 故障必须通过同一严格 carrier 校验、恢复与取消流程，不能把完整的错误通知当成损坏 intent。
 
 ProcessHost-owned Notification Broker 按 owner/process/watch generation 聚合 repeat watch；`context` 在下一 external user boundary 注入一批，`turn` 经 Main wake 或 Subagent Host admission。`process-event-v2` 只服务 TUI/history renderer，模型只消费 `process-notification-batch-v1`。每个 blocking lease 另有独立、隐藏的 `process-notification-receipt-v1` 持久凭据。
 

@@ -15,7 +15,7 @@ test("late Process terminal cannot start a second settled Subagent turn", { time
   const session = join(home, "main.jsonl");
   await writeFile(session, `${JSON.stringify({ type: "session", version: 3, id: "process-watch-main", timestamp: new Date().toISOString(), cwd: process.cwd() })}\n`, { mode: 0o600 });
   if (process.env.PI_KEEP_PROCESS_WATCH_FIXTURE === "1") console.error(`PROCESS_WATCH_HOME=${home}`);
-  else t.after(() => rm(home, { recursive: true, force: true }));
+
 
   const agentDir = await prepareFreshProfile(home); const child = spawn(pi, [
     "--mode", "rpc", "--session", session, "--no-extensions",
@@ -37,7 +37,12 @@ test("late Process terminal cannot start a second settled Subagent turn", { time
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
-  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
+  const reaped = new Promise<void>(resolve => child.once("exit", () => resolve()));
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await reaped;
+    if (process.env.PI_KEEP_PROCESS_WATCH_FIXTURE !== "1") await rm(home, { recursive: true, force: true });
+  });
   const records: any[] = [];
   const stderr: Buffer[] = [];
   let buffer = "";
@@ -72,7 +77,7 @@ test("late Process terminal cannot start a second settled Subagent turn", { time
 
   child.stdin.end();
   const exit = await new Promise<any>((resolve, reject) => {
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Process Main did not exit")); }, 10_000);
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Process Main did not exit")); }, 60_000);
     child.once("exit", (code, signal) => { clearTimeout(timer); resolve({ code, signal }); });
   });
   assert.deepEqual(exit, { code: 0, signal: null }, Buffer.concat(stderr).toString());

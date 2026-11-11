@@ -16,6 +16,14 @@ Processes 使用 producer 的真实 beforeRun/afterRun/settled callback：可信
 
 Pi 加载 `dist/index.js`。构建还生成 `dist/supervisor.js`、`dist/matcher-worker.js`、独立 child/factory entry 和 `dist/manager-view.js`。空会话只建立 Host/binding，不启动 Supervisor；首次 process tool 操作等待 runtime selection 和完整握手。并发首次操作共用一次启动，失败不发送请求，后续操作可以重试。
 
+helper runtime 每次尝试从 spawn 起有 10 秒总探测预算，包含等待输出管道关闭。运行时已退出时，stdout/stderr 最多再等 2 秒，且不延长这 10 秒预算：仅有 exit=0 或有效版本行不足以成功，后台子进程保持管道打开也属于 `timeout`。这样既不漏读迟到的 stderr，也不会为了已退出的运行时等满 10 秒。正常 close 到达后才验证完整 nonce、stdout/stderr 和版本；管道被强制关闭时绝不把截断输出当成功。
+
+任一期限到点后尝试 SIGKILL 探测进程组，并至多再给 2 秒等待回收/pipe 关闭。仍未关闭则 destroy 两个读管道、unref 子进程句柄并返回 `timeout`，不依赖 close 才结束。脱离进程组的子进程可能逃过信号；此兜底保证探测调用不被其管道阻断，不宣称这些子进程已全部回收。运行时/包装脚本应关闭继承的输出描述符，不应在 probe 后保留后台 helper。
+
+只有 `timeout` 重试一次；重试失败才继续下一个候选。单候选两次尝试的预算最多约 24 秒（含清理，不含调度延迟），not-found/not-executable、spawn-error、输出不合法和版本不符不重试。重试仍失败时，诊断的 detail 同时列出 `first attempt` 的 timeout 原因和 `retry` 的最终结果；成功重试不保留失败诊断。
+
+不缓存跨 Host 的成功探测：同一个 Host 已有 transport 或启动中的 promise 会复用，无需重复探测；fresh scope 重新验证实际 executable 和 Supervisor entry，避免 runtime 路径、符号链接目标或构建产物替换后复用过期结果。普通二进制的探测通常只需毫秒，10 秒是高负载的等待预算，不是固定延迟。
+
 普通配置下，已有 transport、启动中的任务或 record 在 reload/rebind 时沿用原 readiness 流程；managed/isolated 不 reclaim 旧 Host，执行与 cleanup 规则见[执行合同](MANAGED_EXECUTION.md#reload-与-scope-cleanup)。源码或 source-only library 依赖变更后须重建并新开 Pi process，不用 reload 替代构建验证。
 
 `/ps`、strip 与 status protocol 同步注册，管理面板和 UIKit overlay 首次打开时才 dynamic import。`verify-dist` 防止 manager view 重返首帧静态图。加载期间关闭面板或替换 session，会使旧 generation 失效，不会迟到重开旧 UI；导入失败显示错误。

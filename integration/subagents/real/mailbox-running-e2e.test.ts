@@ -28,7 +28,7 @@ test("send_input reaches an Agent that is running a task", { timeout: 120_000 },
   const session = join(home, "main.jsonl");
   await writeFile(session, `${JSON.stringify({ type: "session", version: 3, id: "mailbox-main", timestamp: new Date().toISOString(), cwd: process.cwd() })}\n`, { mode: 0o600 });
   if (process.env.PI_KEEP_MAILBOX_FIXTURE === "1") console.error(`MAILBOX_HOME=${home}`);
-  else t.after(() => rm(home, { recursive: true, force: true }));
+
 
   const agentDir = await prepareFreshProfile(home); const child = spawn(pi, [
     "--mode", "rpc", "--session", session, "--no-extensions",
@@ -49,7 +49,12 @@ test("send_input reaches an Agent that is running a task", { timeout: 120_000 },
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
-  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
+  const reaped = new Promise<void>(resolve => child.once("exit", () => resolve()));
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await reaped;
+    if (process.env.PI_KEEP_MAILBOX_FIXTURE !== "1") await rm(home, { recursive: true, force: true });
+  });
 
   const records: any[] = [];
   const stderr: Buffer[] = [];
@@ -119,7 +124,7 @@ test("send_input reaches an Agent that is running a task", { timeout: 120_000 },
 
   child.stdin.end();
   const exit = await new Promise<any>((resolve, reject) => {
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Mailbox Main did not exit")); }, 20_000);
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Mailbox Main did not exit")); }, 60_000);
     child.once("exit", (code, signal) => { clearTimeout(timer); resolve({ code, signal }); });
   });
   assert.deepEqual(exit, { code: 0, signal: null }, Buffer.concat(stderr).toString());
@@ -134,7 +139,7 @@ test("a mailbox resumes a Process-parked Agent for exactly one extra turn", { ti
   const session = join(home, "main.jsonl");
   await writeFile(session, `${JSON.stringify({ type: "session", version: 3, id: "mailbox-park-main", timestamp: new Date().toISOString(), cwd: process.cwd() })}\n`, { mode: 0o600 });
   if (process.env.PI_KEEP_MAILBOX_FIXTURE === "1") console.error(`MAILBOX_PARK_HOME=${home}`);
-  else t.after(() => rm(home, { recursive: true, force: true }));
+
 
   await prepareFreshProfile(home); const child = spawn(pi, [
     "--mode", "rpc", "--session", session, "--no-extensions",
@@ -148,7 +153,12 @@ test("a mailbox resumes a Process-parked Agent for exactly one extra turn", { ti
     env: { ...process.env, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: join(home, ".pi", "agent"), HOME: home, PI_SUBAGENTS_TEST_ASYNC: "1", PI_SUBAGENTS_TEST_TASK_NAME: "mail_park_child", PI_SUBAGENTS_TEST_MESSAGE: "MAILBOX_PARK_CHILD", PI_SUBAGENTS_TEST_MAILBOX: "MAILBOX_NOTE" },
     stdio: ["pipe", "pipe", "pipe"],
   });
-  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
+  const reaped = new Promise<void>(resolve => child.once("exit", () => resolve()));
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await reaped;
+    if (process.env.PI_KEEP_MAILBOX_FIXTURE !== "1") await rm(home, { recursive: true, force: true });
+  });
 
   const records: any[] = [];
   const stderr: Buffer[] = [];
@@ -199,7 +209,7 @@ test("a mailbox resumes a Process-parked Agent for exactly one extra turn", { ti
 
   child.stdin.end();
   const exit = await new Promise<any>((resolve, reject) => {
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Mailbox park Main did not exit")); }, 30_000);
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Mailbox park Main did not exit")); }, 60_000);
     child.once("exit", (code, signal) => { clearTimeout(timer); resolve({ code, signal }); });
   });
   assert.deepEqual(exit, { code: 0, signal: null }, Buffer.concat(stderr).toString());

@@ -28,7 +28,7 @@ export function discoverChecks(root) {
 }
 
 export function piBin() {
-  return resolve(process.env.PI_BIN ?? join(repositoryRoot, "node_modules/.bin/pi"));
+  return resolve(repositoryRoot, process.env.PI_BIN ?? "node_modules/.bin/pi");
 }
 
 export function installedPiVersion() {
