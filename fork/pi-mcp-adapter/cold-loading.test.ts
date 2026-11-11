@@ -79,11 +79,16 @@ describe("public exports and real startup module graph", () => {
     const sandbox = testSandbox("mcp-cold-import-");
     const trace = join(sandbox.root, "trace.txt");
     const tracer = join(sandbox.root, "trace.mjs");
+    // Trace resolution instead of load: every module that is loaded is resolved first,
+    // and synchronous resolve hooks also cover createRequire(). A synchronous load hook
+    // that wraps the async loader chain (tsx) receives `{ format: "commonjs", source: null }`
+    // from Node's async defaultLoad and fails strict load validation before Node 24.12.
     writeFileSync(tracer, `import { appendFileSync } from "node:fs";
 import { registerHooks } from "node:module";
-registerHooks({ load(url, context, next) {
-  appendFileSync(${JSON.stringify(trace)}, url + "\\n");
-  return next(url, context);
+registerHooks({ resolve(specifier, context, next) {
+  const result = next(specifier, context);
+  appendFileSync(${JSON.stringify(trace)}, result.url + "\\n");
+  return result;
 } });`);
     try {
       const result = spawnSync(process.execPath, ["--import", offlineGuard, "--import", tracer, "--import", "tsx", "--input-type=module", "-e", `
