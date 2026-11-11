@@ -6,6 +6,27 @@ import { promisify } from "node:util";
 import { createVersionedReader } from "./file-cache.ts";
 
 const exec = promisify(execFile);
+// `git rev-parse` answers in milliseconds on an idle machine, but discovery also runs
+// while the machine is loaded (load average over 100 in the reported failure), where
+// spawn and process-table pressure alone exceeded the old 5s budget. 15s per attempt
+// keeps that headroom; the retry below caps one Git call at two attempts.
+const GIT_TIMEOUT_MS = 15_000;
+// A timeout under load is transient, so one retry recovers it. Other failures (missing
+// Git, damaged markers, refused spawn) are not retried: the result must stay reproducible.
+const GIT_ATTEMPTS = 2;
+
+/** One `git` invocation; defaults to `execFile`, replaced by tests. */
+export type GitRunner = (
+  file: string,
+  args: readonly string[],
+  options: { env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number },
+) => Promise<{ stdout: string; stderr: string }>;
+
+export interface ProjectDiscoveryOptions {
+  /** One Git command, with the timeout and buffer budget it must honour; defaults to `execFile`. */
+  readonly runGit?: GitRunner;
+}
+
 export type ProjectIdentity =
   | { available: true; identity: string; memoryDir: string; warning?: string }
   | { available: false; warning: string };
@@ -96,8 +117,26 @@ export function createProjectResolver() {
   };
 }
 
+/** `execFile` reports a child it killed for exceeding its timeout as killed by SIGTERM with no exit code. */
+function isGitTimeout(error: unknown): boolean {
+  const failure = error as { killed?: unknown; signal?: unknown };
+  return failure?.killed === true && failure.signal === "SIGTERM";
+}
+
+/** Timeouts retry once; anything else fails as it did, so results stay reproducible. */
+async function discoverGit(args: string[], run: GitRunner, env: NodeJS.ProcessEnv): Promise<{ stdout: string }> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await run("git", args, { env, timeout: GIT_TIMEOUT_MS, maxBuffer: 1024 * 1024 });
+    } catch (error) {
+      if (!isGitTimeout(error) || attempt >= GIT_ATTEMPTS) throw error;
+    }
+  }
+}
+
 /** Full discovery remains the fallback whenever the filesystem fingerprint cannot be trusted. */
-export async function resolveProject(cwd: string, agentDir: string): Promise<ProjectIdentity> {
+export async function resolveProject(cwd: string, agentDir: string, options: ProjectDiscoveryOptions = {}): Promise<ProjectIdentity> {
+  const git = options.runGit ?? exec;
   try {
     const canonicalCwd = await realpath(cwd);
     let identity: string;
@@ -105,9 +144,9 @@ export async function resolveProject(cwd: string, agentDir: string): Promise<Pro
     let commonDir: string | undefined;
     // Discovery belongs to cwd, not the caller's Git invocation/config/discovery overrides.
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
-    const options = { env: { ...env, LC_ALL: "C", GIT_OPTIONAL_LOCKS: "0" }, timeout: 5000, maxBuffer: 1024 * 1024 };
+    const gitEnv = { ...env, LC_ALL: "C", GIT_OPTIONAL_LOCKS: "0" };
     try {
-      const { stdout } = await exec("git", ["-C", canonicalCwd, "rev-parse", "--path-format=absolute", "--git-common-dir"], options);
+      const { stdout } = await discoverGit(["-C", canonicalCwd, "rev-parse", "--path-format=absolute", "--git-common-dir"], git, gitEnv);
       // Git terminates the path with one newline; preserve whitespace in actual path names.
       commonDir = stdout.replace(/\r?\n$/, "");
       identity = "";
@@ -130,7 +169,7 @@ export async function resolveProject(cwd: string, agentDir: string): Promise<Pro
       const marker = await nearestGitMarker(canonicalCwd, canonicalCommonDir);
       if (marker) {
         // Explicit --git-dir validates directories AND gitfiles, without skipping a broken inner repo.
-        const { stdout } = await exec("git", ["-C", canonicalCwd, "--git-dir", marker, "rev-parse", "--path-format=absolute", "--git-common-dir"], options);
+        const { stdout } = await discoverGit(["-C", canonicalCwd, "--git-dir", marker, "rev-parse", "--path-format=absolute", "--git-common-dir"], git, gitEnv);
         if (await realpath(stdout.replace(/\r?\n$/, "")) !== canonicalCommonDir) {
           throw new Error(`Git 发现结果与最近标记 ${marker} 不一致。`);
         }
@@ -140,6 +179,11 @@ export async function resolveProject(cwd: string, agentDir: string): Promise<Pro
     const key = createHash("sha256").update(identity).digest("hex");
     return { available: true, identity, memoryDir: join(agentDir, "pi-cc-memory", "projects", key, "memory"), warning };
   } catch (error) {
-    return { available: false, warning: `pi-cc-memory：无法识别项目，暂不注入记忆。${error instanceof Error ? error.message : String(error)}` };
+    // A timeout says why discovery stopped; the bare `Command failed: git ...` text does not.
+    const message = error instanceof Error ? error.message : String(error);
+    const warning = isGitTimeout(error)
+      ? `pi-cc-memory：Git 超时（${GIT_TIMEOUT_MS / 1000} 秒），暂不注入记忆。`
+      : `pi-cc-memory：无法识别项目，暂不注入记忆。${message}`;
+    return { available: false, warning };
   }
 }
