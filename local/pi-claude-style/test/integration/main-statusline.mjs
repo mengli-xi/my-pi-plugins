@@ -26,22 +26,25 @@ for (const scenario of ["failure", "timeout", "success-then-failure", "success"]
   const mode = join(root, "mode");
   const calls = join(root, "calls");
   const script = join(root, "statusline.sh");
-  writeFileSync(mode, scenario === "timeout" || scenario === "failure" ? scenario : "success");
-  // Every invocation records its own mode before sleeping or returning output.
+  writeFileSync(mode, scenario === "timeout" || scenario === "failure" ? scenario : "success-1");
+  // Drain the payload and read mode with shell builtins. The deadline
+  // starts at spawn, not at the first script statement: the old 300ms budget
+  // could expire during shell/cat startup and kill an invocation before it
+  // reached `calls`. Use the same 5s budget as the other host scenarios;
+  // `sleep 30` still guarantees a real timeout followed by the existing retry.
   writeFileSync(script, `#!/bin/sh
-cat >/dev/null
-mode=$(cat '${mode}')
-echo "$mode $$" >>'${calls}'
-n=$(wc -l <'${calls}' | tr -d ' ')
+while IFS= read -r line; do :; done
+IFS= read -r mode <'${mode}' || :
+printf '%s %s\\n' "$mode" "$$" >>'${calls}'
 case "$mode" in
   timeout) sleep 30 ;;
   failure) exit 1 ;;
   empty) exit 0 ;;
-  success) printf 'REAL_COMMAND %s [[pi:slot:model]] [[pi:slot:effort]]\\n[[pi:slot:cache-quality]]\\nthird\\n' "$n" ;;
+  success-*) printf 'REAL_COMMAND %s [[pi:slot:model]] [[pi:slot:effort]]\\n[[pi:slot:cache-quality]]\\nthird\\n' "\${mode#success-}" ;;
 esac
 `);
   writeFileSync(join(root, "agent/settings.json"), JSON.stringify({ quietStartup: true,
-    statusLine: { type: "command", command: `sh '${script}'`, debounceMs: 10, timeoutMs: scenario === "timeout" ? 300 : 5000 },
+    statusLine: { type: "command", command: `sh '${script}'`, debounceMs: 10, timeoutMs: 5000 },
   }));
   const term = new xterm.Terminal({ cols: 120, rows: 32, allowProposedApi: true });
   const chunks = [];
@@ -85,12 +88,12 @@ esac
     await wait("synchronous fallback", () => events().some((event) => event.event === "footer"));
     const firstFooter = events().find((event) => event.event === "footer");
     assert.match(firstFooter.lines[0], /fallback-model\(fallback-fixture\).*off/);
-    assert.equal(firstFooter.lines.length, 3);
+    assert.equal(firstFooter.lines.length, 2, "normal fallback has only two rows");
     assert.ok(!firstFooter.lines.join("\n").includes("REAL_COMMAND"), "first setter precedes any command output");
     await wait("first command invocation", () => commandCalls().length > 0);
     await wait("CP/MEM contributions", () => screen().includes("CP:0") && screen().includes("MEM:3"));
     if (scenario === "timeout") {
-      await wait("second timed-out invocation", () => commandCalls().length >= 2);
+      await wait("retry invocation after the first timeout", () => commandCalls().length >= 2);
       await delay(800);
       assert.ok(!screen().includes("REAL_COMMAND"));
     } else if (scenario !== "failure") {
@@ -134,10 +137,13 @@ esac
       }
     }
     if (scenario === "success") {
-      const count = commandCalls().length;
+      // A startup retry may have been spawned before this explicit refresh.
+      // Identify the requested output by its mode, not a sampled invocation
+      // count (which could jump from 1 straight to 3 while a frame is pending).
+      writeFileSync(mode, "success-2");
       await send("/fixture-refresh");
-      await wait("new successful output", () => commandCalls().length > count);
-      await wait("updated successful command output", () => screen().includes(`REAL_COMMAND ${count + 1}`));
+      await wait("new successful invocation", () => commandCalls().some(line => line.startsWith("success-2 ")));
+      await wait("updated successful command output", () => screen().includes("REAL_COMMAND 2"));
     }
     // Exercise diagnostics in this same fresh Main without making a request.
     await send("/internals");

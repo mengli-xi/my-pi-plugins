@@ -1,4 +1,5 @@
 ▲ FIXTURE_IMAGE inspect the picture ──────────────────────────────────────────────────────────────────── click to jump ─
+
 ● Picture read; now a screenshot.
 
   Called fixture.screenshot

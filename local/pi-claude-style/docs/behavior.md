@@ -550,8 +550,8 @@ agent 目录（显式设 `terminal.showImages=false`）跑分组工具、thinkin
 路径、时钟、耗时和计数归一化，只有含这些值的行压缩横线和空白，其余行保持原宽度，框和面板变宽变窄会失败。
 归一化也覆盖 Pi 自己测出的数（压缩行的 `compacted from <n> tokens`）和 `/session` 面板里随临时路径长度换行的 session
 文件名；状态栏整块按形状从区域末尾剔除。为了让画面高度不受机器影响，fixture 在 `PATH` 前置 `fd`/`rg` 空壳
-（Pi 离线缺工具会往 transcript 打两行警告），并把 `statusLine.command` 固定成三行，使首个保留帧、命令帧与
-预留三行高度一致；faux provider 用固定较慢的 token 速率并逐 token 分块，让 done 行的 `t/s` 稳定出现。
+（Pi 离线缺工具会往 transcript 打两行警告）；状态栏使用默认命令，没有贡献项时首帧和命令帧均为两行。
+faux provider 用固定较慢的 token 速率并逐 token 分块，让 done 行的 `t/s` 稳定出现。
 场景在系统临时目录下的短路径里跑，直接运行子脚本时，`CC_HOST_FIXTURE_ARTIFACTS` 指定的目录在结束时收到一份拷贝。
 分组、nested、图片和用户消息还会在新进程里恢复同一 session，比对 live 与 hydrate 的 transcript；
 运行中 Ctrl+T 断言 transcript 里的工具和 assistant 组件身份不变、工具进度照常到达。定向维护可直接运行 `PI_BIN=/path/to/pi bun test/integration/host-fixtures.mjs --only a,b`；子脚本的 `--update` 重写或新建快照，
@@ -570,12 +570,15 @@ Goal/Todo 或 model selector 控制面。Side 只接受 `side-chat` statusline c
 Subagent 每次绑定 TUI 时先同步挂载本视图的目录、model 和 effort 只读 CC 首帧，
 再等待 statusline command 更新；command 慢或失败时保留该帧，不借用 Main 的分段。
 Side factory 沿用原有首帧内容策略。
-Main 在 `session_start` 用公开 `setFooter` 同步挂载同一模板，预留三行以保留
-CP/MEM、cache 和第三行贡献项的布局；贡献项照常更新，不等 shell 成功。
+Main 在 `session_start` 用公开 `setFooter` 同步挂载两行模板，保留 CP/MEM 与 cache 的布局；
+有 Todo 等第三行贡献项时才显示第三行。贡献项出现或撤回带来的一行布局跳动是接受的行为；
+贡献项照常更新，不等 shell 成功。
 Main 模板也保留 Fast 与 Todo slot；命令持续失败时，完成 Todo 的计数仍可点击展开完成列表。
 命令成功后替换为真实输出，失败、超时或空输出保留上次成功帧；尚未成功时保留兜底帧。
 Main 冷启动在 `session_start` 之前仍可能显示原生 footer；不增加私有启动接口。
 `PI_BIN=/path/to/pi bun test/integration/main-statusline.mjs` 使用隔离 profile 与零请求 fixture，
+命令统一使用 5s 测试预算，挂起脚本等待 30s 验证真正的超时和重试；stdin、mode 读取及调用记录使用 shell builtin，
+不以额外 `cat`/`wc` 子进程的启动速度判断 runner 是否调用。
 覆盖持续超时、成功后失败/空输出/超时、持续成功及 CP/MEM 更新；逐帧单独记录冷启动限制，
 并要求 `session_start` 后的原生 footer 为零帧。
 共享 managed host 正常初始化时在 native init、presentation/theme/draft 就绪后才提交渲染帧，

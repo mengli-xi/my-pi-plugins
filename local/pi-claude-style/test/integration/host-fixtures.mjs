@@ -281,11 +281,10 @@ function snapshotRegion(text, endAtEditor = false) {
     return `${lines.slice(start, editor + 2).join("\n")}\n`;
   }
   let end = lines.length;
-  // The fixture pins a three-line statusline footer, so the screen ends with
-  // its rows. Pi's native footer and a clipped CC path row (`work │ …`) are
-  // still recognised, so a scenario that renders its own footer keeps working.
+  // Default CC/footer rows end the screen. A clipped CC path row (`work │ …`)
+  // is still recognised instead of depending on a complete temporary path.
   const footerRow = (line) =>
-    line.startsWith("fixture ") || line.startsWith("<ROOT>") || line.includes("(fixture) fixture-model") ||
+    line.startsWith("<ROOT>") || line.includes("(fixture) fixture-model") ||
     /\bfixture-model\(fixture\)/u.test(line) || /\bCH[:<]/u.test(line) ||
     /^\[[\d.]+k?\/(?:<n>|\d)/u.test(line);
   while (end > start && (lines[end - 1].trim() === "" || footerRow(lines[end - 1]))) end--;
@@ -342,13 +341,6 @@ async function scenarioRoot(name, settings = {}) {
     fullscreenCopyOnSelect: false,
     // The profile, not CC presentation, owns the standard active tool set.
     defaultTools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
-    // A fixed three-row statusline keeps the footer height — and with it the
-    // transcript space above the editor — the same before and after the first
-    // command frame. CC's default command renders one row less than the
-    // reserved three-row first frame while no third-row contribution exists,
-    // which would otherwise move the capture by one row depending on timing.
-    statusLine: { type: "command", debounceMs: 10, timeoutMs: 5000,
-      command: "printf 'fixture statusline\\nfixture metrics\\nfixture todo\\n'" },
     ...(settings.pi ?? {}),
   }));
   // Exercise the one-time legacy Pinned import in an isolated profile.

@@ -6,6 +6,7 @@
 
 ● Nested calls finished.
 
+
 ─────────────────────────────────────────────────────────────────────────────── Tool transcript > Activity transcript ──
 
   → ▸ Run fixture_codemode 1/4

@@ -26,6 +26,7 @@ interface RenderState {
   padding: number;
   widgetPlacement: "aboveEditor" | "belowEditor";
   lines: string[];
+  initialContributionLine?: string;
 }
 
 const FRAME_HANDOFF_KEY = Symbol.for("pi-claude-style.statusline-frames.v2");
@@ -85,6 +86,8 @@ export interface StatusLineInstallOptions {
   readonly isolatedFrame?: boolean;
   /** View-local CC rows to mount before the first asynchronous command completes. */
   readonly initialLines?: readonly string[];
+  /** Optional fallback row; visible only after slot/inline contributions fill it. */
+  readonly initialContributionLine?: string;
   readonly acceptContributions?: boolean;
   readonly acceptedContributionKeys?: readonly string[];
 }
@@ -317,15 +320,20 @@ export default function (
    * row has to be matched by column, not just by row.
    */
   let interactionSpans: InlineSpan[][] = [];
-  function compose(lines: string[], ctx: any): string[] {
+  function compose(lines: string[], ctx: any, initialContributionLine?: string): string[] {
     // Slots first: markers change column widths, and interaction spans must be
     // measured against what actually reaches the screen. The host owns the
     // separator, including its neutral tone; contributors own their content.
-    const slotted = contributed.composeSlots(lines);
+    const template = initialContributionLine === undefined ? lines : [...lines, initialContributionLine];
+    const slotted = contributed.composeSlots(template);
     const separator = ctx.ui?.theme?.fg
       ? ctx.ui.theme.fg("dim", INLINE_SEPARATOR)
       : INLINE_SEPARATOR;
     const spliced = contributed.spliceInline(slotted.lines, separator);
+    if (initialContributionLine !== undefined && spliced.lines.at(-1)?.trim() === "") {
+      spliced.lines.pop();
+      spliced.spans.pop();
+    }
     interactionSpans = spliced.spans.map((spans, index) => [
       ...(slotted.spans[index] ?? []),
       ...spans,
@@ -372,12 +380,10 @@ export default function (
     ) {
       return;
     }
-    measure("cc-style.statusline.render", () => applyStatusLineUi(
-      ctx,
-      config,
-      compose(frame.lines, ctx),
-      clickOptions(frame.lines.length),
-    ));
+    measure("cc-style.statusline.render", () => {
+      const lines = compose(frame.lines, ctx, frame.initialContributionLine);
+      applyStatusLineUi(ctx, config, lines, clickOptions(lines.length - contributed.lines().length));
+    });
   }
 
   async function refresh(ctx: any): Promise<void> {
@@ -505,6 +511,7 @@ export default function (
         padding: config.padding ?? 0,
         widgetPlacement: config.widgetPlacement ?? "belowEditor",
         lines: [...options.initialLines],
+        initialContributionLine: options.initialContributionLine,
       };
     }
     // pi clears every extension widget before rebuilding this extension, and
