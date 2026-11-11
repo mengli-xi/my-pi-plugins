@@ -41,6 +41,8 @@ config 为封闭有界 JSON 对象：12 层、2048 节点、32 KiB，字符串�
 
 sdkProviderApprovalV1 返回 `{owner_id,target_id,manifest}`，只含一个 target。grant 精确批准 owner、真实 Main descriptor、child、package、factory/export/config/artifacts 和可选 observer。两份自报 hash 相同不够，发现与执行都检查真实文件。grant 文件本身须非软链、当前 UID 常规文件，按 inode/size/mtime/ctime 缓存，未变不重解析。没有运行时写 grant API，缺 grant 不执行外部 factory。
 
+选择已声明 SDK factory 的 provider 创建 Subagents 或 Side 时，准入在模型过滤前检查该 target 的独立批准。缺匹配批准、文件不存在、文件损坏/不可读取均以中文明确报「SDK provider 未授权」，包含 provider、owner、target 和实际 `<agent-dir>/sdk-provider-grants.json` 审阅批准路径；无匹配批准保留 `no exact grant` 诊断标记。同一 provider id 的多个 owner 中，任一声明获批即可通过该检查；全部未批准时错误列出所有未批准 owner。执行仍只从已批准集合选唯一 owner，多个已批准 owner 仍以歧义拒绝，未批准声明不参与执行。错误不回退其他模型，factory 的模块顶层也不执行。执行前和 await 后的撤销/漂移复查仍生效。其他 provider 的未批准声明或坏 grant 不阻断所选内置模型；provider 根本没有该 target 的 SDK factory 声明时，仍按消费者原有的不支持策略处理。
+
 ## 冻结与装配
 
 冻结 entry 携带 `sdk_provider:{version:1,owner_id,target_id,manifest,model_scope}`，完整 proof 进入指纹。Main/role/frozen/parent model scope 仍是模型权限唯一来源；proof 绑定本次精确 scope。嵌套只能缩窄，新增声明/grant 不给旧 frozen role 增 provider。无 proof 的旧 profile 可看历史，不能执行。

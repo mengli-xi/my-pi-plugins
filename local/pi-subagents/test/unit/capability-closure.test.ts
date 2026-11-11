@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -25,7 +25,7 @@ test("built-in extension owners freeze explicit tokens and reproduce child tool 
 function registryFixture(t: test.TestContext, extTools = ["ext_tool"], providerId = "fixture") {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-subagents-closure-"))); t.after(() => rmSync(root, { recursive: true, force: true }));
   const files = ["dep-main.js", "dep-child.js", "ext-main.js", "ext-child.js", "provider-main.js", "provider-child.js"];
-  for (const file of files) { writeFileSync(join(root, file), `${file}\n`, { mode: 0o600 }); chmodSync(join(root, file), 0o600); }
+  for (const file of files) { writeFileSync(join(root, file), file === "provider-child.js" ? `import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(join(root, "factory-executed"))}, "executed"); export function createProvider() { return () => {}; }` : `${file}\n`, { mode: 0o600 }); chmodSync(join(root, file), 0o600); }
   const manifest = (owner_id: string, prefix: string, values: Partial<{ tools: string[]; hooks: string[]; requires: string[]; providers: Array<{ provider_id: string; service_tiers: string[]; service_tier_application: "none" | "owner-before-provider-request" }>; activation: "mirror" | "required-only" }> = {}) => ({ version: 1 as const, owner_id, main_entrypoint: captureEntrypointDescriptorV1(join(root, `${prefix}-main.js`)), targets: { "pi-subagents": { child_entrypoint: captureEntrypointDescriptorV1(join(root, `${prefix}-child.js`)), activation: values.activation ?? "required-only" as const, commands: [], tools: values.tools ?? [], providers: values.providers ?? [], hooks: values.hooks ?? [], requires: values.requires ?? [] } } });
   const registry = createChildCapabilityRegistryV1();
   const dep = registry.register({ version: 1, manifest: manifest("dep", "dep", { hooks: ["support/v1"] }) }); registry.bind({ version: 1, registrationToken: dep.registrationToken, session_id: "session", runtime_generation: 1, mode: "tui" });
@@ -145,4 +145,47 @@ test("unspawnable provider lookup excludes custom providers without exactly one 
   assert.deepEqual([...unspawnableProviderIdsV1({ registry, registeredProviderIds: ["alternate", "fixture-gateway"] })].sort(), ["alternate", "fixture-gateway"]);
   assert.deepEqual([...unspawnableProviderIdsForContextV1({}, () => registry)], []);
   assert.deepEqual([...unspawnableProviderIdsForContextV1({ sessionManager: { getSessionId: () => "s" }, modelRegistry: { getRegisteredProviderIds: () => ["alternate"] } }, () => registry)], ["alternate"]);
+});
+
+for (const state of ["未批准", "文件不存在", "文件损坏"]) {
+  test(`spawn admission reports declared SDK provider authorization: ${state}`, t => {
+    const fx = registryFixture(t);
+    const path = join(fx.root, "sdk-provider-grants.json");
+    if (state === "文件不存在") rmSync(path);
+    else writeFileSync(path, state === "文件损坏" ? "{" : '{"version":1,"grants":[]}');
+    assert.throws(() => resolveToolCapabilityClosureV1({ activeToolNames: [], allTools: [], role: role([]), registry: fx.snapshot,
+      agentDir: fx.root, registeredProviderIds: ["fixture"], providerId: "fixture" }), error => {
+      assert.match(String(error), /未授权/);
+      assert.ok(String(error).includes("fixture"));
+      assert.ok(String(error).includes("pi-subagents"));
+      assert.ok(String(error).includes(path));
+      return true;
+    });
+    assert.equal(existsSync(join(fx.root, "factory-executed")), false);
+    // An unrelated builtin model remains usable, even with a broken grant file.
+    assert.equal(resolveToolCapabilityClosureV1({ activeToolNames: [], allTools: [], role: role([]), registry: fx.snapshot,
+      agentDir: fx.root, registeredProviderIds: ["fixture"], providerId: "anthropic" }).providerOwnerId, undefined);
+  });
+}
+
+
+test("one approved provider owner remains usable beside an unapproved declaration in either order", t => {
+  const fx = registryFixture(t);
+  const approved = fx.snapshot.registrations.find(item => item.owner_id === "provider")!.manifest;
+  const registration = fx.registry.register({ version: 1, manifest: { ...approved, owner_id: "unapproved-provider" } });
+  fx.registry.bind({ version: 1, registrationToken: registration.registrationToken, session_id: "session", runtime_generation: 1, mode: "rpc" });
+  const snapshot = fx.registry.snapshot("session");
+  for (const registrations of [snapshot.registrations, [...snapshot.registrations].reverse()]) {
+    const input = { activeToolNames: [], allTools: [], role: role([]), registry: { ...snapshot, registrations }, agentDir: fx.root,
+      registeredProviderIds: ["fixture"], providerId: "fixture" };
+    assert.equal(resolveToolCapabilityClosureV1(input).providerOwnerId, "provider");
+  }
+  writeFileSync(join(fx.root, "sdk-provider-grants.json"), '{"version":1,"grants":[]}');
+  assert.throws(() => resolveToolCapabilityClosureV1({ activeToolNames: [], allTools: [], role: role([]), registry: snapshot,
+    agentDir: fx.root, registeredProviderIds: ["fixture"], providerId: "fixture" }), error => {
+    assert.match(String(error), /未授权/);
+    for (const owner of ["provider", "unapproved-provider"]) assert.ok(String(error).includes(owner));
+    return true;
+  });
+  assert.equal(existsSync(join(fx.root, "factory-executed")), false);
 });

@@ -1,4 +1,5 @@
-import { VERSION } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, VERSION } from "@earendil-works/pi-coding-agent";
+import { assertSdkProviderModelApprovedV1 } from "pi-session-runtime/sdk-provider";
 import { isSyntheticToolSourcePath, sourcePath } from "pi-runtime-contracts/child-capabilities-v1";
 import { supportsSdkProviderV1 } from "./sdk-provider.js";
 import type { ResolvedAgentRoleV1 } from "../roles/types.js";
@@ -65,6 +66,7 @@ export function resolveToolCapabilityClosureV1(input: {
   const wildcard = input.role.frontmatter.tools === "*";
   const selectedNames = (wildcard ? active : [...input.role.frontmatter.tools]).filter(name => !["close_agent", "resume_agent"].includes(name) && (input.canSpawn !== false || name !== "spawn_agent"));
   if (!wildcard) for (const name of selectedNames) if (!active.includes(name)) throw new Error(`explicit role tool is not active: ${name}`);
+  assertSdkProviderModelApprovedV1(input.registry, input.agentDir ?? getAgentDir(), SUBAGENT_CHILD_TARGET, input.providerId);
   const targetOwners = input.registry.registrations.filter((entry) => {
     const target = entry.manifest.targets[SUBAGENT_CHILD_TARGET];
     return target && (target.providers.length === 0 || target.providers.some(provider => supportsSdkProviderV1(entry, provider.provider_id, input.agentDir)));

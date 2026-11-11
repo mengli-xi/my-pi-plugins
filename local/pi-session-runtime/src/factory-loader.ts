@@ -6,19 +6,20 @@ type FactoryModule = Readonly<Record<string, unknown>>;
 interface LoaderState { readonly importModule: (path: string) => Promise<FactoryModule>; readonly modules: Map<string, Promise<FactoryModule>> }
 const loaders = new WeakMap<object, Promise<LoaderState>>();
 const realmKey = Symbol.for("pi.session-runtime.factory-loader-realms.v1");
-const namespaceNames = ["@earendil-works/pi-coding-agent", "@earendil-works/pi-ai", "@earendil-works/pi-tui"] as const;
-interface FactoryRealms { readonly version: 1; readonly paths: Map<string, readonly (object | undefined)[]>; readonly digests: Map<string, string> }
+interface FactoryRealms { readonly version: 1; readonly paths: Map<string, Readonly<Record<string, object>>>; readonly digests: Map<string, string> }
 function claimFactoryRealm(path: string, modules: Readonly<Record<string, object>>): void {
   const global = globalThis as typeof globalThis & { [realmKey]?: FactoryRealms };
   if (!Object.hasOwn(global, realmKey)) Object.defineProperty(global, realmKey, { value: Object.freeze({ version: 1, paths: new Map(), digests: new Map() }) });
   const descriptor = Object.getOwnPropertyDescriptor(global, realmKey)!;
   const realms = descriptor.value as FactoryRealms | undefined;
   if (!realms || realms.version !== 1 || !(realms.paths instanceof Map) || !(realms.digests instanceof Map) || !Object.isFrozen(realms) || descriptor.configurable || descriptor.writable) throw new Error("Incompatible approved factory realm registry");
-  const namespaces = namespaceNames.map(name => modules[name]);
+  // The supplied public table is the sole alias list. Pin keys as well as values,
+  // so a newly added alias cannot silently bypass the process-wide cache fence.
+  const names = Object.keys(modules);
   const previous = realms.paths.get(path);
-  if (previous && (!Array.isArray(previous) || previous.length !== namespaceNames.length || !Object.isFrozen(previous))) throw new Error("Incompatible approved factory realm registry");
-  if (previous && namespaces.some((namespace, index) => namespace !== previous[index])) throw new Error(`Approved factory SDK realm changed for ${path}; use the process-wide session-assembly namespaces`);
-  if (!previous) realms.paths.set(path, Object.freeze(namespaces));
+  if (previous && (Array.isArray(previous) || typeof previous !== "object" || !Object.isFrozen(previous))) throw new Error("Incompatible approved factory realm registry");
+  if (previous && (Object.keys(previous).length !== names.length || names.some(name => !Object.hasOwn(previous, name) || modules[name] !== previous[name]))) throw new Error(`Approved factory SDK realm changed for ${path}; use the process-wide session-assembly namespaces`);
+  if (!previous) realms.paths.set(path, Object.freeze({ ...modules }));
 }
 
 /**
@@ -37,7 +38,7 @@ export async function loadApprovedFactoryModule(input: {
   const identity = input.publicModules["@earendil-works/pi-coding-agent"];
   if (!identity) throw new Error("Host coding-agent namespace is required");
   // Jiti integrates with the process-wide CJS cache even across loader copies. Pin the
-  // three Pi namespaces before any import; never return a cached factory from another realm.
+  // public namespaces before any import; never return a cached factory from another realm.
   const path = captureEntrypointDescriptorV1(input.path).canonical_path;
   claimFactoryRealm(path, input.publicModules);
   const checkCode = (): void => {
@@ -51,15 +52,15 @@ export async function loadApprovedFactoryModule(input: {
     }
   };
   checkCode();
-  let pending = loaders.get(identity);
+  let pending = loaders.get(input.publicModules);
   if (!pending) {
     pending = (async () => {
       const { createJiti } = await import("jiti");
       const jiti = createJiti(import.meta.url, { virtualModules: { ...input.publicModules }, tryNative: false, moduleCache: true });
       return { importModule: (path: string) => jiti.import<FactoryModule>(pathToFileURL(path).href), modules: new Map<string, Promise<FactoryModule>>() };
     })();
-    loaders.set(identity, pending);
-    pending.catch(() => { if (loaders.get(identity) === pending) loaders.delete(identity); });
+    loaders.set(input.publicModules, pending);
+    pending.catch(() => { if (loaders.get(input.publicModules) === pending) loaders.delete(input.publicModules); });
   }
   const state = await pending;
   let module = state.modules.get(path);

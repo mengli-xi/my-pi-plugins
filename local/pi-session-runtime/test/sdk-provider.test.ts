@@ -36,15 +36,15 @@ test("unchanged malformed grants reuse the parsed failure and a new file version
   const f = fixture(t);
   writeFileSync(f.grantPath, "{invalid");
   let first: unknown;
-  assert.throws(f.proof, error => { first = error; return error instanceof SyntaxError; });
-  assert.throws(f.proof, error => error === first);
+  assert.throws(f.proof, error => { assert.ok(error instanceof Error); first = error.cause; return first instanceof SyntaxError; });
+  assert.throws(f.proof, error => error instanceof Error && error.cause === first);
   f.grantIt();
   assert.equal(f.proof().owner_id, f.manifest.owner_id);
 });
 
 test("external factories require exact grant; assembly fields cannot be overwritten; observer survives view detach and disposes", async t => {
   const f = fixture(t);
-  assert.throws(f.proof, /ENOENT/);
+  assert.throws(f.proof, /未授权.*批准文件不存在/);
   f.grantIt(); const proof = f.proof();
   assert.throws(() => revalidateSdkProviderProofV1(proof, f.root, "pi-side-chat", proof.model_scope), /target\/model scope/);
   assert.throws(() => revalidateSdkProviderProofV1(proof, f.root, "pi-subagents", ["faux/a"]), /target\/model scope/);
@@ -65,7 +65,7 @@ test("external factories require exact grant; assembly fields cannot be overwrit
   disposers.forEach(dispose => dispose()); assert.equal(listeners.size, 0);
   hooks.get("session_shutdown")!(); assert.equal(listeners.size, 0);
   writeFileSync(f.grantPath, '{"version":1,"grants":[]}');
-  await assert.rejects(factory(pi as never) as Promise<void>, /no exact grant/);
+  await assert.rejects(factory(pi as never) as Promise<void>, /未授权/);
   // Disk drift does not make persisted historical proofs undecodable.
   writeFileSync(f.paths["child.ts"]!, "changed"); assert.deepEqual(decodeSdkProviderProofV1(proof), proof);
 });
@@ -103,7 +103,7 @@ test("grant revocation across loader await rejects before returning an executabl
   const f = fixture(t); f.grantIt(); const proof = f.proof();
   const pending = loadSdkProviderFactoryV1({ proof, agentDir: f.root, target: "pi-subagents", modelScope: proof.model_scope, publicModules });
   writeFileSync(f.grantPath, '{"version":1,"grants":[]}');
-  await assert.rejects(pending, /no exact grant/);
+  await assert.rejects(pending, /未授权/);
 });
 
 test("provider startup failure disposes the child observer even before execution ownership publishes", async t => {

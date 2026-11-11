@@ -1,14 +1,13 @@
 import type * as agent from "@earendil-works/pi-coding-agent";
-import * as core from "@earendil-works/pi-agent-core";
 import type { ViewLifecycle } from "pi-session-runtime/managed-interactive";
 import { loadChildFactoryV1 } from "pi-session-runtime/child-factory";
-import { approvedSdkProviderRegistrationsV1, approveSdkProviderV1, loadSdkProviderFactoryV1, revalidateSdkProviderProofV1, sdkProviderBindingFenceV1 } from "pi-session-runtime/sdk-provider";
+import { assertSdkProviderModelApprovedV1, approvedSdkProviderRegistrationsV1, approveSdkProviderV1, loadSdkProviderFactoryV1, revalidateSdkProviderProofV1, sdkProviderBindingFenceV1 } from "pi-session-runtime/sdk-provider";
 import { contextFingerprint } from "pi-session-runtime/effective-context";
 import { isSyntheticToolSourcePath, sourcePath, resolveChildCapabilityClosureV1, getOrCreateChildCapabilityRegistryV1, type ResolvedChildCapabilityOwnerV1 } from "pi-runtime-contracts/child-capabilities-v1";
 
 async function factoryPublicModules() {
   const assembly = await import("pi-session-runtime/session-assembly");
-  return { ...assembly.getSessionAssemblyPublicModules(), "@earendil-works/pi-agent-core": core };
+  return assembly.getSessionAssemblyPublicModules();
 }
 const BUILTINS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
@@ -56,6 +55,7 @@ export async function sideExecutionPlan(pi: agent.ExtensionAPI, ctx: agent.Exten
   const mainBash = mainTools.has("bash") ? allTools.find(tool => tool.name === "bash") : undefined;
   const bashOwner = toolOwners.get("bash");
   if (mainTools.has("bash") && (!mainBash || mainBash.sourceInfo.source !== "builtin" && !bashOwner)) throw new Error("The active Main bash has no approved Side factory");
+  if (ctx.model) assertSdkProviderModelApprovedV1(registry, agentDir, "pi-side-chat", ctx.model.provider);
   const approvedProviders = approvedSdkProviderRegistrationsV1(registry, agentDir, "pi-side-chat");
   const counts = new Map<string, number>();
   for (const item of approvedProviders) { const id = item.manifest.targets["pi-side-chat"]!.sdk_provider_factory!.provider_id; counts.set(id, (counts.get(id) ?? 0) + 1); }

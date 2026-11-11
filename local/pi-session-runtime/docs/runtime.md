@@ -46,13 +46,22 @@ const builtinOptions = {
 
 本库跨原生 ESM 和 Root Jiti copy 共用一个不可变 child SDK realm。同版本不同物理 SDK 不等于相同 class prototype、回调和 registry；同一 CC factory 路径不能被另一个 realm 的 CJS cache 偷用。
 
-`getSessionAssemblyPublicModules()` 返回 canonical 冻结表，含 `@earendil-works/pi-coding-agent`、`pi-ai`、`pi-tui`。首次调用发布不可写/不可配置的 `Symbol.for("pi.session-runtime.session-assembly-realm.v1")`，值为冻结 `{version:1,sdkVersion:codingAgent.VERSION,publicModules}`；后续同版本 copy 必须复用该表。
+`getSessionAssemblyPublicModules()` 返回 canonical 冻结表，与 Pi 1.5 正式 extension loader 的 `getAliases` 逐项一致：
+
+- `@earendil-works/pi-coding-agent`、`pi-agent-core`、`pi-tui`；
+- `@earendil-works/pi-ai`、`pi-ai/compat` 共用宿主 extension view（含 `openAIResponsesApi`、`Type`、`StringEnum`），以及独立的 `pi-ai/models`、`pi-ai/oauth`、`pi-ai/providers/all`；
+- 上述八项的 `@mariozechner/*` 兼容名称；
+- `typebox`、`typebox/compile`、`typebox/value` 及同对象的 `@sinclair/typebox` 对应名称。
+
+extension/bundled host 复用正式 loader 注入的 namespace；原生 Node 的 pi-ai 根是 core-only，因此只从已解析的同一 SDK 目录读取固定的 `core/extensions/pi-ai-extension-view.js`，复用其模块缓存，不合成替代函数、不解析另一套 SDK。此 SDK-relative seam 固定 Pi 1.5；离线测试直接从已安装 Pi 的 `virtual-modules.js` 读取 `VIRTUAL_MODULES`，断言 key 集合相等，避免本地列表自比自；真实 `check:host` 对照 Main 与实际 child 的 `StringEnum`、`openAIResponsesApi` 对象身份。升级检查包含这两项。普通 child、presentation、Search 与 SDK provider/observer 都传原表，不再以调用方 Core/TypeBox 覆盖宿主对象。
+
+首次调用发布不可写/不可配置的 `Symbol.for("pi.session-runtime.session-assembly-realm.v1")`，值为冻结 `{version:1,sdkVersion:codingAgent.VERSION,publicModules}`；后续同版本 copy 必须复用该表。
 
 装配和 managed view 均经此表调用 SDK。`TerminalOwner.acquire()` 首次交接时动态取 getter，保存 canonical TUI keybindings 对象与 setter，返回时恢复同一个引用，不写调用方另一物理副本。空 Main binding 不初始化 SDK realm；import/getter 不创建 session/store/model runtime。异步 import 和 input drain 后重验 abort、lease generation、owner 与 disposal，再修改 Main 终端。
 
 未知 schema、可变/畸形 holder、缺函数或版本冲突抛错，不替换、不降级。managed view 拒绝非 canonical AgentSession。registry 与 CJS cache 同寿命，跨 session 保留。调用方应保留首次 import 的 getter，并将其表传给 `loadApprovedFactoryModule()`；自己提供的 SessionManager 仍归自己，需要 class identity 时也须从 canonical namespace 创建，不克隆已有 writer。
 
-`Symbol.for("pi.session-runtime.factory-loader-realms.v1")` 保存 `{version:1,paths:Map<approvedPath,frozen [codingAgent,ai,tui]>,digests:Map<canonicalPath,sha256>}`。每次 import/cache lookup 前声明该路径的三个 namespace；冲突可见拒绝，不返回错误 realm 的工厂。声明跨失败/shutdown 保留，因为部分模块可能已缓存。未知 holder 拒绝。此保护不代替 owner 的 path/package/hash/export 检查，也不提供任意多 realm 隔离；Core/TypeBox 映射仍由消费者负责。
+`Symbol.for("pi.session-runtime.factory-loader-realms.v1")` 保存 `{version:1,paths:Map<approvedPath,frozen publicModules>,digests:Map<canonicalPath,sha256>}`。每次 import/cache lookup 前从传入的同一张公开表固定该路径的全部 key 与 namespace，不另存别名名单；冲突可见拒绝，不返回错误 realm 的工厂。声明跨失败/shutdown 保留，因为部分模块可能已缓存。未知 holder 拒绝。此保护不代替 owner 的 path/package/hash/export 检查，也不提供任意多 realm 隔离；旧格式的 realm 不能补授权，须新进程。
 
 本地回归用两个真实同版本物理 SDK、两个 assembly/loader 和同一 factory 路径，覆盖 native/Jiti 先后、重复交替、真实 session/runner/manager/mode identity、冲突 holder，以及 FakeTerminal 下 keybindings 的原引用恢复；不启动终端或 provider。
 
@@ -93,7 +102,7 @@ const builtinOptions = {
 
 首个模型不可见 custom entry 为 `pi-session-runtime-provenance-v1`：`{version:1,entries:Record<freshEntryId,"turn"|"preamble"|"body"|"unknown">}`。boundary 标 body；reopen/capture/再次 N 按此恢复归属，不猜摘要文本。unknown 保持 unknown，原生 compaction 可正常丢弃。用 inheritedEntryIds，不用数组下标识别继承行。
 
-可选 writer 创建私有目录/文件，独占创建调用方路径；会话寿命、工具权限、清理和业务状态仍归调用方。`factory-loader` 按需 import Jiti，只加载调用方批准的 named export；按 host coding-agent namespace 和 canonical path 缓存模块，不缓存 options/session，不发现或授权路径。
+可选 writer 创建私有目录/文件，独占创建调用方路径；会话寿命、工具权限、清理和业务状态仍归调用方。`factory-loader` 按需 import Jiti，只加载调用方批准的 named export；按公开模块表和 canonical path 缓存模块，不缓存 options/session，不发现或授权路径。
 
 ## 原生视图与终端
 

@@ -5,8 +5,6 @@ import type { ViewLifecycle } from "pi-session-runtime/managed-interactive";
 import { loadSdkProviderFactoryV1, sdkProviderBindingFenceV1 } from "pi-session-runtime/sdk-provider";
 import { getOrCreateChildCapabilityRegistryV1, type ChildCapabilityRegistrySnapshotV1 } from "../capabilities/registry.js";
 import { loadChildFactoryV1 } from "pi-session-runtime/child-factory";
-import * as piAgentCore from "@earendil-works/pi-agent-core";
-import * as typebox from "typebox";
 import { builtinRoleApiV1, validateBuiltinEntryV1 } from "../capabilities/builtin.js";
 
 function isPresentationEntry(entry: FrozenProfileV1["capabilities"]["entries"][number]) {
@@ -32,7 +30,7 @@ function factoryMismatch(entry: FrozenProfileV1["capabilities"]["entries"][numbe
 }
 async function factoryPublicModules() {
   const assembly = await import("pi-session-runtime/session-assembly");
-  return { ...assembly.getSessionAssemblyPublicModules(), "@earendil-works/pi-agent-core": piAgentCore, typebox };
+  return assembly.getSessionAssemblyPublicModules();
 }
 export async function childPresentationFactories(profile: FrozenProfileV1, lifecycle: ViewLifecycle, taskName: string): Promise<ExtensionFactory[]> {
   const result: ExtensionFactory[] = [];
@@ -78,7 +76,7 @@ export async function childExecutionFactories(input: { profile: FrozenProfileV1;
       if (!input.registry || proof.owner_id !== entry.owner || proof.manifest.main_entrypoint.canonical_path !== entry.main_entrypoint || proof.manifest.targets["pi-subagents"]?.child_entrypoint.canonical_path !== entry.child_entrypoint || proof.manifest.targets["pi-subagents"]?.child_entrypoint.sha256 !== entry.sha256) throw new Error("capability-unavailable: SDK provider proof/entry mismatch");
       const assembly = await import("pi-session-runtime/session-assembly");
       factories.push(await loadSdkProviderFactoryV1({ proof, agentDir: input.agentDir, target: "pi-subagents", modelScope: input.profile.model_scope,
-        publicModules: { ...assembly.getSessionAssemblyPublicModules(), "@earendil-works/pi-agent-core": piAgentCore, typebox },
+        publicModules: assembly.getSessionAssemblyPublicModules(),
         fence: sdkProviderBindingFenceV1(input.registry, () => getOrCreateChildCapabilityRegistryV1().snapshot(input.registry!.session_id), entry.owner, proof), onDispose: input.onExecutionDispose }));
       continue;
     }
