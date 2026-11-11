@@ -221,6 +221,40 @@ test("a repeated request identity cannot reuse one native turn", () => {
   assert.deepEqual(mapping.turnAnchors, [{ entryId: "e0", messageIndex: 0 }]);
 });
 
+test("multi-block user content maps one turn only while every part stays byte-identical", () => {
+  const rich = { role: "user", timestamp: 3, content: [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }, { type: "text", text: "first" }, { type: "text", text: "second" }] } as Message;
+  const origins: NativeMessageOrigin[] = [{ message: rich, kind: "turn", turnId: "rich" }];
+  const mapping = mapEffectiveTurns([rich], origins);
+  assert.equal(mapping.turnMappingReliable, true);
+  assert.deepEqual(mapping.turnAnchors, [{ entryId: "rich", messageIndex: 0 }]);
+  const changedImage = structuredClone(rich) as any;
+  changedImage.content[0].data = "Y2hhbmdlZA==";
+  assert.equal(mapEffectiveTurns([changedImage], origins).turnMappingReliable, false);
+  const signed = structuredClone(rich) as any;
+  signed.content[1].textSignature = "added metadata";
+  assert.equal(mapEffectiveTurns([signed], origins).turnMappingReliable, false);
+});
+
+test("two identical requests against two identical native turns refuse instead of pairing", () => {
+  const request = user("same request");
+  const origins: NativeMessageOrigin[] = [{ message: request, kind: "turn", turnId: "e0" }, { message: request, kind: "turn", turnId: "e1" }];
+  const mapping = mapEffectiveTurns([request, request], origins);
+  assert.equal(mapping.turnMappingReliable, false);
+  assert.deepEqual(mapping.turnAnchors, []);
+});
+
+test("a compaction entry with unknown details does not by itself require capture", () => {
+  const branch = branchOf([user("kept turn"), answer("kept answer")]);
+  append(branch, { type: "compaction", firstKeptEntryId: "e0", summary: "summary from an unknown producer", tokensBefore: 4000, details: { source: "fixture-compaction-producer" } });
+  append(branch, { type: "message", message: answer("latest answer") });
+  assert.equal(requiresEffectiveCapture({ requestTransforms: "native-only" }), false);
+  const all = select(branch, "all", undefined, false);
+  assert.equal(all.source, "native-projection");
+  assert.equal(all.exactRequestPrefix, false);
+  assert.match(JSON.stringify(all.messages), /summary from an unknown producer/);
+  assert.match(JSON.stringify(select(branch, "1", undefined, false).messages), /kept turn|latest answer/);
+});
+
 test("provider ownership, one-shot request fence, frozen candidate leaf and structural invalidation", () => {
   const received: unknown[] = []; const returned = {};
   const provider: any = { streamSimple(this: unknown, model: unknown, context: unknown, options: any) { received.push({ receiver: this, model, context, options }); options?.onResponse?.(); return returned; } };

@@ -70,7 +70,10 @@ const builtinOptions = {
 
 未知请求变换要求有效 capture。`requestTransforms` 只在 fork 时比较当前 capture 的 provider hash 与冻结原生消息并缓存该 capture 的结果；新请求/失效清缓存。结构不合适的 capture 先 invalid，再判断 fallback，另一分支的证据不能授权原生回放；缺变换标记不证明 native-only。
 
-本库只按原生 origin 精确比对消息身份，不识别第三方请求格式、包名或 `compaction.details` 来源。因此外来的 compaction 摘要和前导注入按未知内容处理：变换标记不会是 native-only，数值 N 因无法证明身份而不可用，`all` 仍可取 capture 原文；旧 session 里遗留的这类 entry 同样不获特殊解释。
+本库只按原生 origin 精确比对消息身份，不识别第三方请求格式、包名或 `compaction.details` 来源。请求里的额外内容分两种情形：
+
+- 只注入在请求里、分支里没有对应原生 entry 的前导或摘要：指纹和冻结原生消息对不上，变换标记不会是 native-only，身份无法证明，数值 N 拒绝；有有效 capture 时 `all` 仍返回 capture 原文。
+- 以原生 `compaction` 或 `branch_summary` entry 落盘的摘要，不管 `details` 里写什么：本库看不出是谁生成的，按原生 compaction 处理，preamble 归属、数值 N 和 `all` 都照原生规则可用；旧 session 里遗留的这类 entry 同样如此。
 
 ## 选择与 seed
 
