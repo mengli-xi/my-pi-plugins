@@ -9,10 +9,11 @@ for (const order of ["fast-first", "cc-first", "without-fast"] as const) {
   test(`real pi-fast and built CC statusline (${order})`, { timeout: 15000 }, async () => {
     initTheme("dark", false);
     const f = fastFixture();
-    const { default: cc } = await import(new URL("../local/pi-claude-style/dist/index.ts", import.meta.url).href) as { default: ExtensionFactory };
-    const runtime = await f.start(order === "fast-first" ? [piFast, cc] : order === "cc-first" ? [cc, piFast] : [cc]);
+    let runtime: Awaited<ReturnType<typeof f.start>> | undefined;
     let footer: Component | undefined;
     try {
+      const { default: cc } = await import(new URL("../local/pi-claude-style/dist/index.ts", import.meta.url).href) as { default: ExtensionFactory };
+      runtime = await f.start(order === "fast-first" ? [piFast, cc] : order === "cc-first" ? [cc, piFast] : [cc]);
       const ui: ExtensionUIContext = { ...runtime.session.extensionRunner!.getUIContext(),
         setFooter(factory) {
           footer = factory?.({ requestRender() {}, terminal: { rows: 40, columns: 160 } } as TUI, undefined as never, undefined as never);
@@ -43,7 +44,7 @@ for (const order of ["fast-first", "cc-first", "without-fast"] as const) {
       }
       assert.deepEqual(f.errors, []);
     } finally {
-      await runtime.dispose();
+      await runtime?.dispose();
       f.cleanup();
     }
   });

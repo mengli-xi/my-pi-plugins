@@ -20,11 +20,16 @@ pi -e "$PWD/local/pi-fast"
 | `/fast all`、`/fast all on\|off` | 切换或设置全局默认，并清除当前分支的 override |
 | `/fast status` | 显示实际生效状态及作用域，不修改状态 |
 
-session override 优先于全局默认。override 以 `pi-fast:session-state-v1` custom entry 写入 session JSONL，数据为 `{ "enabled": true }` 或 `{ "enabled": false }`；只保存扩展状态，不发送给模型。reload、resume、fork 从选中分支重建，session tree 导航或 rewind 到 entry 之前会移除该 override。
+session override 优先于全局默认。override 以 `pi-fast:session-state-v1` custom entry 写入 session JSONL，数据为 `{ "enabled": true | false | null }`：`true`/`false` 是本 session 的选择，`null` 表示跟随全局默认（`/fast all` 写入的 clear marker）。它只保存扩展状态，不发送给模型。reload、resume、fork 从选中分支重建，session tree 导航或 rewind 到 entry 之前会移除该 override。
 
-全局默认保存在 `<agent-dir>/pi-fast.json`，格式为 `{ "enabled": true }` 或 `{ "enabled": false }`。`<agent-dir>` 来自 Pi 公开 `getAgentDir()`，遵守 `PI_CODING_AGENT_DIR`。没有 override 的 session 在每次请求时重新读取；文件缺失、不可读或 JSON 无效时默认为 off。
+全局默认保存在 `<agent-dir>/pi-fast.json`，格式为 `{ "enabled": true }` 或 `{ "enabled": false }`，写入先在同目录建临时文件再 rename，失败时旧文件保持完整。`<agent-dir>` 来自 Pi 公开 `getAgentDir()`，遵守 `PI_CODING_AGENT_DIR`。没有 override 的 session 在每次请求时重新读取；文件缺失、不可读或 JSON 无效时默认为 off。
 
-`/fast all` **仅在写入成功后**为当前分支追加 `{ "enabled": null }` clear marker，防止旧 override 在 reload 后恢复。写入失败会提示路径和具体错误，不清除或改写当前 override，也不报告保存成功。当前模型不是 `openai-codex` 时，开启状态会提示没有效果，切回该 provider 后才生效。
+`/fast all` **仅在写入成功后**为当前分支追加 `{ "enabled": null }` clear marker，防止旧 override 在 reload 后恢复。任一步骤失败都会提示路径和具体错误，不报告保存成功：
+
+- 全局文件写入失败：不清除或改写当前 override，本次请求继续按原 override 生效。
+- 全局文件已保存、但 clear marker 写入失败：本次运行仍跟随新默认，并提示 reload 后旧 override 可能恢复。
+
+当前模型不是 `openai-codex` 时，开启状态会提示没有效果，切回该 provider 后才生效。
 
 ## 请求作用域
 
@@ -33,7 +38,7 @@ session override 优先于全局默认。override 以 `pi-fast:session-state-v1`
 - 影响主 agent loop 请求。
 - **Pi 1.5.0 原生 compaction 不受影响**：它直接调用 `agent.streamFunction`，未经过 Agent 的 `onPayload`，不会触发此 hook。
 - 本仓库 [pi-session-compact](../pi-session-compact/README.md) 的压缩生成也不受影响：main/small（含 chunk、synthesis）和该插件的 native fallback 经 `src/generate.ts` 直接调用 `ctx.modelRegistry.streamSimple`，不传 `onPayload`。继承主请求的消息前缀不等于继承请求 body 的 `service_tier`；本包不会为这些压缩请求增加 priority。
-- **子 session 暂不跟随**，Subagents、Side Chat 等独立 SDK session 不安装本包的 hook；本包不注册 child factory。
+- **子 session 不跟随**：Subagents、Side Chat 等独立 SDK session 不安装本包的 hook，本包也不注册 child factory。
 - 直接调用 `modelRegistry` stream 的扩展绕过此 hook，不受影响。
 - 仅在 fast 生效、`ctx.model.provider === "openai-codex"`、payload 是含字符串 `model` 的对象且没有 `service_tier` 时注入。其他 provider 不变；已有 tier（例如 `models.json` override）优先，原 payload 不被原地修改。
 
@@ -53,7 +58,7 @@ session override 优先于全局默认。override 以 `pi-fast:session-state-v1`
 npm run typecheck -w pi-fast
 npm run test -w pi-fast
 npm run build -w pi-claude-style
-node scripts/isolated-agent.mjs node --import ./ts-resolve.mjs --experimental-strip-types --test integration/fast-statusline.test.ts
+node --test integration/fast-statusline.test.ts
 ```
 
 包内测试覆盖注入、分支恢复、全局默认、写入失败及独立 SDK 的主请求及原生 compaction/直接 stream 不注入边界；跨插件双加载顺序测试见[根 integration](../../integration/README.md)。测试使用临时配置与 faux provider，不发真实 provider 请求，不证明真实服务端性能或人工终端表现。

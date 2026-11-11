@@ -10,7 +10,8 @@
  * be sent (before both the SSE and WebSocket transports, which share one
  * body). Setting `service_tier` there is equivalent.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 
@@ -92,7 +93,24 @@ export function loadEnabled(path: string): boolean {
   }
 }
 
+/**
+ * Replace the default atomically: a reader never observes a half-written file,
+ * and a failed write keeps the previous default intact (`loadEnabled` is called
+ * on every request). The temporary file lives in the same directory so the
+ * rename stays on one filesystem.
+ */
 export function saveEnabled(path: string, enabled: boolean): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify({ enabled }, null, 2)}\n`, "utf8");
+  const temporary = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify({ enabled }, null, 2)}\n`, "utf8");
+    renameSync(temporary, path);
+  } catch (error) {
+    try {
+      unlinkSync(temporary);
+    } catch {
+      // The temporary file was never created.
+    }
+    throw error;
+  }
 }

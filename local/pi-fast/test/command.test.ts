@@ -43,18 +43,21 @@ interface Harness {
   sessionStart: () => void;
   sessionTree: (entries: readonly SessionEntry[]) => void;
   modelSelect: (model: { id: string; provider: string }) => void;
+  agentStart: () => void;
   ctx: ExtensionCommandContext;
 }
 
 function build(
   model: { id: string; provider: string } | undefined,
   initialEntries: readonly SessionEntry[] = [],
+  options: { beforeAppend?: (customType: string, data: unknown) => void } = {},
 ): Harness {
   let hook: Handler | undefined;
   let command: RegisteredCommand | undefined;
   let onSessionStart: Handler | undefined;
   let onSessionTree: Handler | undefined;
   let onModelSelect: Handler | undefined;
+  let onAgentStart: Handler | undefined;
   const notifications: string[] = [];
   const slots: SlotPayload[] = [];
   const branchEntries = [...initialEntries];
@@ -66,6 +69,7 @@ function build(
       if (event === "session_start") onSessionStart = handler;
       if (event === "session_tree") onSessionTree = handler;
       if (event === "model_select") onModelSelect = handler;
+      if (event === "agent_start") onAgentStart = handler;
     },
     events: {
       emit: (channel: string, payload: unknown) => {
@@ -77,6 +81,7 @@ function build(
       command = cmd;
     },
     appendEntry: (customType: string, data: unknown) => {
+      options.beforeAppend?.(customType, data);
       const parentId = branchEntries.at(-1)?.id ?? null;
       branchEntries.push({
         type: "custom",
@@ -95,6 +100,7 @@ function build(
   assert.ok(onSessionStart, "extension must publish its slot on session_start");
   assert.ok(onSessionTree, "extension must restore state on session_tree");
   assert.ok(onModelSelect, "extension must publish its slot on model_select");
+  assert.ok(onAgentStart, "extension must refresh its slot when a turn starts");
 
   const contextState = {
     model,
@@ -126,6 +132,7 @@ function build(
         ctx,
       );
     },
+    agentStart: () => void onAgentStart!({ type: "agent_start" }, ctx),
     request: (payload, provider) =>
       hook!({ type: "before_provider_request", payload }, { model: provider ? { provider } : undefined }),
   };
@@ -290,7 +297,11 @@ test("unknown arguments warn instead of toggling", async () => {
 });
 
 
-test("read-only agent dir reports save failure without clearing the session override", async () => {
+// chmod does not stop root from writing, so the read-only directory fixture
+// only reproduces the failure for a non-root user.
+test("read-only agent dir reports save failure without clearing the session override", {
+  skip: process.getuid?.() === 0,
+}, async () => {
   const h = build(CODEX);
   await h.command.handler("on", h.ctx);
   const branch = h.branch();
@@ -312,4 +323,43 @@ test("read-only agent dir reports save failure without clearing the session over
   } finally {
     chmodSync(home, 0o755);
   }
+});
+
+test("a failed clear marker keeps the saved default without a success report", async () => {
+  const h = build(CODEX, [], {
+    // Only the clear marker fails; the session override before it is persisted.
+    beforeAppend: (_customType, data) => {
+      if ((data as { enabled?: unknown }).enabled === null) throw new Error("session file is read-only");
+    },
+  });
+  await h.command.handler("on", h.ctx);
+  const branch = h.branch();
+  const notifications = h.notifications.length;
+
+  await h.command.handler("all on", h.ctx);
+
+  assert.equal(h.notifications.length, notifications + 1, "one warning, not a success report");
+  const warning = h.notifications.at(-1)!;
+  assert.match(warning, /Global default saved, but this session's override could not be cleared/);
+  assert.match(warning, /session file is read-only/);
+  assert.match(warning, /may come back after reload/);
+  assert.deepEqual(h.branch(), branch, "the clear marker was never persisted");
+  assert.equal((h.request(BODY, "openai-codex") as Record<string, unknown>).service_tier, FAST_TIER);
+  assert.ok(h.slots.at(-1)!.line?.startsWith(YELLOW), "this run follows the saved global default");
+  await h.command.handler("status", h.ctx);
+  assert.match(h.notifications.at(-1)!, /following the all-sessions default/);
+});
+
+test("another session's global default refreshes this session's slot at the next turn start", async () => {
+  const h = build(CODEX);
+  h.sessionStart();
+  assert.ok(h.slots[0].line?.startsWith(DIM));
+
+  const other = build(CODEX);
+  await other.command.handler("all on", other.ctx);
+  assert.equal((h.request(BODY, "openai-codex") as Record<string, unknown>).service_tier, FAST_TIER, "injection reads the file per request");
+  assert.ok(h.slots.at(-1)!.line?.startsWith(DIM), "the icon waits for the next turn before refreshing");
+
+  h.agentStart();
+  assert.ok(h.slots.at(-1)!.line?.startsWith(YELLOW), "the next turn picks up the new global default");
 });

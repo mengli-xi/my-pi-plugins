@@ -18,7 +18,7 @@
 - [Fast + CC](fast-statusline.test.ts) 用真实 SDK 和构建后的 CC 验证两种加载顺序、即时 slot 更新和 priority 请求注入；缺 Fast 时 CC 与普通请求照常工作。包内 SDK 回归另验证原生 compaction 与直接 registry stream 不受 Fast 影响，不发真实 provider 请求。
 - [Skills + CC](skills-presentation.test.ts) 在两种加载顺序中加载真实 Skills 和构建后的 CC；另用生产 presentation factory 与真实 Skills SDK row 组合，检查晚加载、owner 替换、旧 owner 退出和缺 CC fallback，不覆写 row 的 `render`。click 只交给测试侧 opener，不操作终端或剪贴板。
 
-`npm run test:integration` 会先用 Bun 构建 CC、Subagents 和 Processes，再运行联测；单独运行 Skills/CC 测试文件时须先执行 `npm run build -w pi-claude-style`，不以源码 mock 代替 `dist/index.ts`。这些用例使用根依赖中的 stock Pi 1.5.0 公共 SDK，不加载 patched SDK 或真实 provider。
+`npm run test:integration` 会先用 Bun 构建 CC、Subagents 和 Processes，再运行联测；单独运行依赖 CC `dist` 的联测（Skills/CC、Fast/CC）前，要先执行 `npm run build -w pi-claude-style`，不以源码 mock 代替 `dist/index.ts`。这些用例使用根依赖中的 stock Pi 1.5.0 公共 SDK，不加载 patched SDK 或真实 provider。
 
 无 pi-claude-style 的 Subagents child 视图可在按[根安装说明](../README.md#安装与加载)安装的原版 Pi 1.5.0 上验证：
 

@@ -5,8 +5,9 @@ import { fastFixture } from "./fixture.ts";
 
 test("real SDK injects main payloads, but not native compaction or direct registry streams", { timeout: 15000 }, async () => {
   const f = fastFixture();
-  const runtime = await f.start([piFast]);
+  let runtime: Awaited<ReturnType<typeof f.start>> | undefined;
   try {
+    runtime = await f.start([piFast]);
     await runtime.session.prompt("Fast starts off.");
     assert.equal(f.requests.length, 1);
     assert.equal("service_tier" in f.requests[0], false);
@@ -31,7 +32,7 @@ test("real SDK injects main payloads, but not native compaction or direct regist
     assert.equal("service_tier" in f.requests.at(-1)!, false);
     assert.deepEqual(f.errors, []);
   } finally {
-    await runtime.dispose();
+    await runtime?.dispose();
     f.cleanup();
   }
 });

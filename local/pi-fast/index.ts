@@ -32,7 +32,7 @@ import {
   saveEnabled,
   SESSION_STATE_ENTRY_TYPE,
   type FastSessionStateEntry,
-} from "./state.js";
+} from "./state.ts";
 
 const MODES = ["on", "off", "all", "status"] as const;
 type Mode = (typeof MODES)[number];
@@ -126,8 +126,21 @@ export default function piFast(pi: ExtensionAPI): void {
     // `all` speaks for every session, this one included: drop the override
     // rather than leaving this session pinned to a stale choice. Persist the
     // clear marker so an older override does not return after runtime reload.
+    // The default is already saved at this point, so a failed marker write does
+    // not roll back this run: the session follows the new default now, and the
+    // warning says that reload may bring the older override back.
     sessionOverride = undefined;
-    pi.appendEntry<FastSessionStateEntry>(SESSION_STATE_ENTRY_TYPE, { enabled: null });
+    try {
+      pi.appendEntry<FastSessionStateEntry>(SESSION_STATE_ENTRY_TYPE, { enabled: null });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      publishSlot(ctx.model?.provider);
+      ctx.ui.notify(
+        `Global default saved, but this session's override could not be cleared: ${reason}. This session follows the new default until reload; an older override may come back after reload.`,
+        "warning",
+      );
+      return;
+    }
     finish(ctx);
   };
 
