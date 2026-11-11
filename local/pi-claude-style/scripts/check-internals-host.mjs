@@ -12,11 +12,6 @@ const extensionPath = join(packageRoot, "dist", "index.ts");
 const probesUrl = pathToFileURL(join(packageRoot, "dist", "src", "probes.ts")).href;
 const internalsUrl = pathToFileURL(join(packageRoot, "dist", "src", "internals.ts")).href;
 const binary = piBin();
-
-if (!existsSync(binary)) {
-  console.error(`final Pi binary not found: ${binary}`);
-  process.exit(2);
-}
 if (!existsSync(extensionPath)) {
   console.error(`production build not found: ${extensionPath}; run npm run build first`);
   process.exit(2);

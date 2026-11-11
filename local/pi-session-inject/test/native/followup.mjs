@@ -3,10 +3,11 @@ import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdir
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installedPiVersion, piBin } from "../../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 const root = dirname(fileURLToPath(import.meta.url));
-const binary = process.env.MAILBOX_PI_BINARY ?? join(process.env.HOME, "bin", "pi-binary");
-assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), "1.5.0");
+const binary = piBin();
+assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), installedPiVersion());
 const artifact = process.env.MAILBOX_FOLLOWUP_ARTIFACT_DIR ?? mkdtempSync(join(tmpdir(), "mailbox-followup-"));
 mkdirSync(artifact, { recursive: true });
 const sdkRoot = join(artifact, "sdk"); mkdirSync(sdkRoot, { recursive: true });
@@ -104,5 +105,5 @@ for (const scenario of [...(process.env.MAILBOX_GOAL_BUNDLE ? ["goal"] : []), "r
   if (result.exit.code !== 0) result.passed = false;
   writeFileSync(join(directory, "rpc.jsonl"), stdout); writeFileSync(join(directory, "stderr.log"), stderr); results.push(result); console.log(JSON.stringify(result));
 }
-writeFileSync(join(artifact, "summary.json"), JSON.stringify({ version: "1.5.0", realRequests: 0, goalBundle: process.env.MAILBOX_GOAL_BUNDLE ?? null, results }, null, 2));
+writeFileSync(join(artifact, "summary.json"), JSON.stringify({ version: installedPiVersion(), realRequests: 0, goalBundle: process.env.MAILBOX_GOAL_BUNDLE ?? null, results }, null, 2));
 console.log(`Artifacts: ${artifact}`); process.exitCode = results.every(result => result.passed) ? 0 : 1;

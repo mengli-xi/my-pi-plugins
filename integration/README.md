@@ -46,7 +46,7 @@ npm run test:integration:patched-host
 ## Side Chat 视图
 
 ```sh
-PI_TEST_EXECUTABLE=/path/to/stock-pi-1.5.0 npm run test:integration:side-chat
+PI_BIN=/path/to/pi npm run test:integration:side-chat
 ```
 
 先构建 CC，再在真实 Main PTY 中分别验证 CC presentation 与没有 CC 的原生 Side，核对独立草稿/模型/effort、十次返回、同 PID、原 editor 和 terminal 恢复。CC 矩阵保留 compaction、外部 editor、销毁及 BTW/Main 共存断言。只有测试 Main 使用 PTY，不能据此把 Side 称为进程后端。
@@ -96,13 +96,13 @@ npm run test:integration:goal-ui
 
 `npm run test:integration:subagents` 运行 `integration/subagents/real` 下的 Node 联测。
 包括直接加载其他插件的文件，以及通过 `fresh-host` 默认加载 Processes 的文件。
-设置 `PI_REAL_BINARY`，先显式构建本仓的 Processes、Goal 及这些测试所需的其他协作方；native-search 等外部插件仍须提供。
+设置 `PI_BIN`，先显式构建本仓的 Processes、Goal 及这些测试所需的其他协作方；native-search 等外部插件仍须提供。
 仓库不提供外部插件的仿制实现。缺协作方或宿主时应失败，不能把默认降级门禁通过当成完整协作矩阵通过。
 原有全 profile 环境变量仍只用于显式矩阵；日常默认门禁不发现用户 profile。
 
 Subagents 的三套 Bun PTY runner 在 `subagents/real/sdk-{child-view,statusline,initialization}.mjs`，
 从仓库根 `bun <runner> <patched-cli>` 运行；须同时配置匹配的 patched SDK。
 CC 的 child/provider renderer 联测与 Compact/statusline 联测在 `claude-style/`，
-入口为 `bun integration/claude-style/child-ui.mjs <pi>`、
-`bun integration/claude-style/context-compact.mjs <pi>`。这些矩阵保留原有断言及额外依赖，
+入口为 `PI_BIN=/path/to/pi bun integration/claude-style/child-ui.mjs`、
+`PI_BIN=/path/to/pi bun integration/claude-style/context-compact.mjs`。这些矩阵保留原有断言及额外依赖，
 不属于 stock 降级门禁。原 statusline 文档中的旧命令位置以本页为准。

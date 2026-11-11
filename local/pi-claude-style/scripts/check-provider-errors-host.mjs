@@ -10,12 +10,6 @@ import { fileURLToPath } from "node:url";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const extensionPath = join(packageRoot, "dist", "index.ts");
 const binary = piBin();
-
-
-if (!existsSync(binary)) {
-  console.error(`final Pi binary not found: ${binary}`);
-  process.exit(2);
-}
 const binaryVersion = execFileSync(binary, ["--version"], {
   encoding: "utf8",
   timeout: 5_000,

@@ -257,7 +257,7 @@ Task final 由 D 在撤权前 await B.cancelPending 及 D 自有 cancel；Side �
 `npm run check` 运行类型、事务故障/SIGKILL、callback、scope/branch/compaction 与 API 回归。
 `npm run test:native` 分别 Bun bundle 两个 extension 后，在 stock Pi 1.5.0 新进程、隔离 HOME/agent/cwd/TMPDIR
 和 offline faux 下检查 boundary 覆盖、async settled 两种顺序、USER/control 双顺序、facade 交接/reload、
-以及 shared A/E fulfilled-final-ACK-lost 的零请求恢复。用 MAILBOX_PI_BINARY 显式指定测试 binary；脚本中的 ~/bin/pi-binary 仅是 legacy fallback，不是安装约定。
+以及 shared A/E fulfilled-final-ACK-lost 的零请求恢复。用 `PI_BIN` 指定测试 binary（缺省用仓库根 `node_modules/.bin/pi`），不读日常 PATH 或 home 里的安装。
 `npm run test:followup` 检查真实 SDK 的 seed/extension prompt、Main 卡片、closed→reopen、cold key 和无 A snapshot 的 legacy pending；
 stock binary 检查 A→B→A、fork 后切回仍有 pending 的父会话、持续 proof conflict、自然请求消费后零多余 control。设置 MAILBOX_GOAL_BUNDLE
 为已 build 的真实 Goal adapter 可另验 fresh RPC /goal 自动续行；脚本只复制其 artifact，依赖由 stock

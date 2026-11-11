@@ -3,11 +3,12 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installedPiVersion, piBin } from "../../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { fulfilledFinalAckLostFixture } from "../fixtures/fulfilled-final-ack-lost.ts";
 const root = dirname(fileURLToPath(import.meta.url));
-const binary = process.env.MAILBOX_PI_BINARY ?? join(process.env.HOME, "bin", "pi-binary");
-assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), "1.5.0");
+const binary = piBin();
+assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), installedPiVersion());
 const artifact = process.env.MAILBOX_NATIVE_ARTIFACT_DIR ?? mkdtempSync(join(tmpdir(), "mailbox-native-"));
 const bundle = join(artifact, "bundles"); mkdirSync(bundle, { recursive: true });
 execFileSync("bun", ["build", join(root, "first.ts"), join(root, "second.ts"), "--target=node", "--format=esm", "--external=@earendil-works/pi-coding-agent", "--external=@earendil-works/pi-ai", `--outdir=${bundle}`], { stdio: "pipe" });
@@ -113,5 +114,5 @@ for (const scenario of scenarios) {
   if (result.exit.code !== 0) result.passed = false;
   writeFileSync(join(directory, "rpc.jsonl"), stdout); writeFileSync(join(directory, "stderr.log"), stderr); results.push(result); console.log(JSON.stringify(result));
 }
-writeFileSync(join(artifact, "summary.json"), JSON.stringify({ binary, version: "1.5.0", realRequests: 0, artifact, results }, null, 2));
+writeFileSync(join(artifact, "summary.json"), JSON.stringify({ binary, version: installedPiVersion(), realRequests: 0, artifact, results }, null, 2));
 console.log(`Artifacts: ${artifact}`); process.exitCode = results.every(result => result.passed) ? 0 : 1;

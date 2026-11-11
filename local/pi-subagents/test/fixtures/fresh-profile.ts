@@ -1,8 +1,8 @@
 import { mkdir, writeFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
-export const piBinary = process.env.PI_REAL_BINARY ?? (() => {
-  throw new Error("Set PI_REAL_BINARY to the official Pi 1.5.0 CLI for isolated fresh-host tests.");
+export const piBinary = process.env.PI_BIN ?? (() => {
+  throw new Error("用 PI_BIN 指定 stock Pi CLI 用于隔离 fresh-host 测试。");
 })();
 export async function prepareFreshProfile(home: string, maxDepth: 1 | 2 = 1, order: "default" | "reverse" = "default"): Promise<string> {
   if (process.env.PI_MAILBOX_FULL_PROFILE === "1") {

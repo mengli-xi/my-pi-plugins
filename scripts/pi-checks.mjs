@@ -38,8 +38,7 @@ export function installedPiVersion() {
 export function checkEnvironment(root, extra = {}) {
   return {
     PATH: process.env.PATH,
-    ...(process.platform === "win32" ? { SystemRoot: process.env.SystemRoot } : {}),
-    HOME: join(root, "home"), USERPROFILE: join(root, "home"),
+    HOME: join(root, "home"),
     XDG_CONFIG_HOME: join(root, "config"), XDG_CACHE_HOME: join(root, "cache"),
     XDG_DATA_HOME: join(root, "data"), XDG_STATE_HOME: join(root, "state"),
     TMPDIR: join(root, "tmp"), TMP: join(root, "tmp"), TEMP: join(root, "tmp"),

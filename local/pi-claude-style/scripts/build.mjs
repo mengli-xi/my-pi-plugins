@@ -18,7 +18,7 @@ execFileSync("bun", [
 // selects that supported loader, not a different source language or host patch.
 // EVERY entry/shared/lazy chunk must keep .ts: one .js hop can bind Pi imports
 // to devDependency copies. Child/diagnostic consumers must follow this contract;
-// do not add .js aliases. check-internals:host rejects wrong host identities or
+// do not add .js aliases. scripts/check-internals-host.mjs rejects wrong host identities or
 // a missing compact patch. The native conf writer has no Pi imports and stays CJS.
 execFileSync("bun", [
   "build", "src/bootstrap.ts", "src/internals.ts", "src/probes.ts",

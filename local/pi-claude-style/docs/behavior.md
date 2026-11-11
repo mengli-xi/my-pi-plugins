@@ -36,9 +36,7 @@ Pi 原生重试显示，`/internals` 可查状态。regular 模式保留 Pi 原�
 请求开始、取消、重试结束和 session shutdown 清除。原型包装 bindExtensions / init 也按私有接缝审计，
 这两个恢复探针失配只禁用恢复，保留当前视图行为。当前总计 25 个私有面（16 eager、9 live；历史探针另有实时实例校验）。
 
-child 生命周期：`PI_BIN=/path/to/pi npm run check:host` 覆盖 Side/Subagent 在等待中重进、后台等待后首次进入、Main 隔离及取消后再次进入。
-
-真实 host 用例：`PI_BIN=/path/to/pi npm run check:host`。
+child 生命周期：`node scripts/check-retry-child-host.mjs` 覆盖 Side/Subagent 在等待中重进、后台等待后首次进入、Main 隔离及取消后再次进入。
 
 ## Provider activity 与指标
 
@@ -525,7 +523,7 @@ import 边界不变；`dist/config-storage.cjs` 不导入任何 Pi class，刻�
 - 真实 CLI fixture 同样用 `.mts` / `.ts` 入口保持 host 绑定，例如 `host-fixtures-extension.mts`、`full-history-extension.mts` 和临时 child wrapper。
 
 `scripts/check-internals-host.mjs` 同时断言最终 CLI 的 component identity 与 compact patch 安装状态，不能仅凭 prototype probe 判断 realm 正确。
-`PI_BIN=/path/to/pi-1.5.0 npm run check:host` 是可重复门禁；根 `integration/claude-style/child-ui.mjs` 另验证 Main/child 的真实
+`PI_BIN=/path/to/pi-1.5.0 node scripts/check-internals-host.mjs` 是可重复门禁；根 `integration/claude-style/child-ui.mjs` 另验证 Main/child 的真实
 identity、单次 ownership 与 teardown。无效后缀导致的降级不能用 source probe 或只改 snapshot 冒充通过。
 
 ```sh
@@ -533,10 +531,10 @@ npm run check
 npm test
 npm run typecheck
 npm run build
-PI_BIN=/path/to/final/pi npm run check:host # 本地 faux provider；包含重试、PTY 快照与历史检查
+PI_BIN=/path/to/final/pi npm run check:host # 依次运行下面的构建和全部宿主子脚本
 ```
 
-`check:host` 使用临时 HOME/agent/session 目录和独立 tmux socket，只注册本地 faux provider；
+`scripts/check-provider-errors-host.mjs` 使用临时 HOME/agent/session 目录和独立 tmux socket，只注册本地 faux provider；
 验证原始错误、retry 事件、fresh-process session 恢复及 TUI 聚合行，使用通用 `provider_log_id`，不访问真实 provider。
 该验证使用通用 fixture，不依赖专用 provider 命令别名。
 
@@ -544,7 +542,7 @@ PI_BIN=/path/to/final/pi npm run check:host # 本地 faux provider；包含重�
 history anchor predicate 和 editor-slot geometry reader 从源码加载，分别通过 `Symbol.for()` 标记与全局 registry
 识别真实 bundle 的对象，不依赖模块实例相同。Child UI harness 在启动前写入隔离的 v6 配置，Main/child 各自读取。
 
-`check:host` 先 build CC，再用真实 Pi 1.5 TUI、faux provider 和临时
+入口先 build CC，再由 `bun test/integration/host-fixtures.mjs` 用真实 Pi TUI、faux provider 和临时
 agent 目录（显式设 `terminal.showImages=false`）跑分组工具、thinking 归批、nested、
 用户消息折叠和围栏、压缩摘要点击/滚动/关闭及新进程恢复（Main/Side/Subagent 三种 presentation）、图片入口（`read` 和非 read 工具；`showImages=true` 时 Pi 画图、CC 不加入口）、
 `/session`、`/model`、运行中 Ctrl+T、跑完一轮后 `/internals` 无缺失几组场景，与 `test/integration/host-fixtures/`
@@ -573,7 +571,7 @@ CP/MEM、cache 和第三行贡献项的布局；贡献项照常更新，不等 s
 Main 模板也保留 Fast 与 Todo slot；命令持续失败时，完成 Todo 的计数仍可点击展开完成列表。
 命令成功后替换为真实输出，失败、超时或空输出保留上次成功帧；尚未成功时保留兜底帧。
 Main 冷启动在 `session_start` 之前仍可能显示原生 footer；不增加私有启动接口。
-`npm run test:main-statusline -- /path/to/pi-1.5.0` 使用隔离 profile 与零请求 fixture，
+`PI_BIN=/path/to/pi bun test/integration/main-statusline.mjs` 使用隔离 profile 与零请求 fixture，
 覆盖持续超时、成功后失败/空输出/超时、持续成功及 CP/MEM 更新；逐帧单独记录冷启动限制，
 并要求 `session_start` 后的原生 footer 为零帧。
 共享 managed host 正常初始化时在 native init、presentation/theme/draft 就绪后才提交渲染帧，
@@ -624,7 +622,7 @@ custom message/entry renderer 的组件由 facade 自己带 owner scope，`Custo
 
 ```sh
 npm run build
-仓库根运行：bun integration/claude-style/child-ui.mjs /path/to/pi-1.5.0
+仓库根运行：PI_BIN=/path/to/pi bun integration/claude-style/child-ui.mjs
 ```
 
 集成测试用公开 SDK、faux provider 和真正的 Pi binary 创建两个 session；Bun PTY/xterm
@@ -666,7 +664,7 @@ managed child factory 必须在 execution 装配时安装，不等首次 view。
 
 所有压缩摘要留在实际发生的位置，只在**最新一次**压缩的 `firstKeptEntryId` 前插入「以上 N 条消息已压缩进摘要」分隔线；N 计该位置之前的 message entry，不含配置、custom entry 或摘要条目。现场压缩只重建常驻批次，保留未加载锚点；分隔线和摘要所在批次重载后按原始位置恢复，保留尾部不重复显示。全屏搜索只覆盖当前驻留部分，以前加载过但已卸载的正文也暂不参与搜索。上箭头输入历史独立从整条分支选取最近至多 100 个可入历史的用户输入，交给原生 append/editor 保留修剪与相邻去重；等 `session_start` 安装 editor 完成后单独填入，正文初始渲染和补载均不重复填入，也不清理活动工具状态。regular 模式保留 Pi 原生的上下文历史显示，不启用整分支和批次缓存。
 
-新增私有边界 `history.renderEntries` 行为校验 `renderSessionEntries` 及现有 compaction dispatch 两个分支的同步 clear/render，真实 dispatch 也检查同步次数；读取 mode 的 `session/sessionManager/renderer`。`session` 只用于通过公开 `AgentSession.extensionRunner` 和已注册 Markdown transformer 识别 `/reload` 重画早于 `session_start` 的归属。`history.selectionAnchors` 校验补载涉及的 `selectionAnchor/selectionFocus/selectionInitialRange/lastClick` 内容坐标。复用已登记的 `chatContainer/addMessageToChat`、`handleEvent` 和 fullscreen frame/scroll metadata；两项均进入 `check:host`。安装后运行中失配同样完整回退：取消补载、撤掉窗口和加载行，在 idle 且原生 dispatch 完成后，先恢复选区方法，再按 `buildContextEntries()` 同步 GroupStore/Activity 两份 projection 并调用原生 renderer；`/internals` 记录失配，regular 不受影响。
+新增私有边界 `history.renderEntries` 行为校验 `renderSessionEntries` 及现有 compaction dispatch 两个分支的同步 clear/render，真实 dispatch 也检查同步次数；读取 mode 的 `session/sessionManager/renderer`。`session` 只用于通过公开 `AgentSession.extensionRunner` 和已注册 Markdown transformer 识别 `/reload` 重画早于 `session_start` 的归属。`history.selectionAnchors` 校验补载涉及的 `selectionAnchor/selectionFocus/selectionInitialRange/lastClick` 内容坐标。复用已登记的 `chatContainer/addMessageToChat`、`handleEvent` 和 fullscreen frame/scroll metadata；两项分别由 `scripts/check-internals-host.mjs` 与 `bun test/integration/full-history.mjs` 检查。安装后运行中失配同样完整回退：取消补载、撤掉窗口和加载行，在 idle 且原生 dispatch 完成后，先恢复选区方法，再按 `buildContextEntries()` 同步 GroupStore/Activity 两份 projection 并调用原生 renderer；`/internals` 记录失配，regular 不受影响。
 
 `PI_BIN=/path/to/pi-1.5.0 bun test/integration/full-history.mjs` 用合成会话和 faux provider 检查完整历史、补载选区/视口、两类现场压缩、reload、settings rebuild、tree、fork、new、resume、输入历史与运行中回退；另用 2800 余条记录检验卸载、双向重载、折叠状态、选区保护和多次压缩。
 

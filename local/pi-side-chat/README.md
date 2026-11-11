@@ -56,9 +56,9 @@ Side 共享 Main 的文件系统、网络与 credentials，没有 sandbox 或跨
 npm run typecheck -w pi-side-chat
 npm test -w pi-side-chat
 PI_BIN=/path/to/stock-pi-1.5.0 npm run check:host -w pi-side-chat
-PI_TEST_EXECUTABLE=/path/to/stock-pi-1.5.0 npm run test:ui -w pi-side-chat
+PI_BIN=/path/to/pi npm run test:ui -w pi-side-chat
 npm run test:integration
-PI_TEST_EXECUTABLE=/path/to/stock-pi-1.5.0 npm run test:integration:side-chat
+PI_BIN=/path/to/pi npm run test:integration:side-chat
 ```
 
 测试使用临时 HOME/profile/session 和 faux provider。跨插件用例归[根 integration](../../integration/README.md)，不能用单元测试冒充真实终端、provider/cache 或完整 profile 验收。

@@ -2,14 +2,14 @@ import { piBin, installedPiVersion } from "../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { offlineGuard, sourceResolver, testSandbox } from "./scripts/test-env.mjs";
 import test from "node:test";
 
 test("Pi 1.5 loads production per-file dist and validates proxy arguments without loading optional implementations", () => {
   const binary = piBin();
-  assert.ok(binary && isAbsolute(binary), "set PI_BIN to an explicit stock Pi binary");
+  assert.ok(existsSync(binary), `找不到 Pi CLI：${binary}；先在本仓库根运行 bun install，或用 PI_BIN 指定 stock Pi 二进制`);
   const actualBinary = realpathSync(binary);
   let hostRoot = dirname(actualBinary);
   while (!existsSync(join(hostRoot, "package.json"))) {

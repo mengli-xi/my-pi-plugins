@@ -9,10 +9,6 @@ const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const extension = resolve(packageDir, "test", "internals-probe-extension.ts");
 const fauxProvider = resolve(packageDir, "test", "faux-provider.ts");
 const executable = piBin();
-if (!executable || !existsSync(executable)) {
-  console.error(`Set an existing stock Pi binary via PI_BIN: ${executable}`);
-  process.exit(1);
-}
 const reportDir = mkdtempSync(join(tmpdir(), "pi-side-chat-probes-"));
 const reportFile = join(reportDir, "report.json");
 const home = join(reportDir, "home");

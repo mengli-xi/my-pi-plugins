@@ -4,11 +4,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installedPiVersion, piBin } from "../../../../scripts/pi-checks.mjs";
 import { sharedCarrierFixture } from "../fixtures/shared-carrier.ts";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const binary = process.env.MAILBOX_PI_BINARY ?? join(process.env.HOME, "bin", "pi-binary");
-assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), "1.5.0");
+const binary = piBin();
+assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), installedPiVersion());
 const artifact = process.env.MAILBOX_CANCEL_ARTIFACT_DIR ?? mkdtempSync(join(tmpdir(), "mailbox-cancel-"));
 const bundle = join(artifact, "bundles"); mkdirSync(bundle, { recursive: true });
 execFileSync("bun", ["build", join(root, "cancel-projection.ts"), "--target=node", "--format=esm", "--splitting", "--external=@earendil-works/*", `--outdir=${bundle}`], { stdio: "pipe" });
@@ -90,5 +91,5 @@ for (const { scenario, receiptOnly, format, fulfilledIndex = 0, allCancelled = f
   }
   results.push(result); console.log(JSON.stringify(result));
 }
-writeFileSync(join(artifact, "summary.json"), JSON.stringify({ version: "1.5.0", realRequests: 0, results }, null, 2));
+writeFileSync(join(artifact, "summary.json"), JSON.stringify({ version: installedPiVersion(), realRequests: 0, results }, null, 2));
 console.log(`Artifacts: ${artifact}`); process.exitCode = results.every(result => result.passed) ? 0 : 1;

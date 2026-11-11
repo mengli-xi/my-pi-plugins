@@ -1,4 +1,4 @@
-// bun test/integration/main-statusline.mjs /path/to/stock/pi
+// PI_BIN=/path/to/stock/pi bun test/integration/main-statusline.mjs
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -6,12 +6,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import xterm from "@xterm/headless";
+import { installedPiVersion, piBin } from "../../../../scripts/pi-checks.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../..");
-const binary = process.argv[2] ?? process.env.PI_BINARY;
-assert.ok(binary, "usage: bun test/integration/main-statusline.mjs /path/to/pi");
-assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(), "1.5.0");
+const binary = piBin();
+assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(), installedPiVersion());
 const artifacts = process.env.CC_MAIN_STATUSLINE_ARTIFACTS ?? mkdtempSync(join(tmpdir(), "cc-main-statusline-"));
 mkdirSync(artifacts, { recursive: true });
 const delay = (ms) => new Promise((done) => setTimeout(done, ms));

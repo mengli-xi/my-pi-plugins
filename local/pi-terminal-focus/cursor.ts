@@ -89,7 +89,7 @@ export function parseFocusInput(data: string): FocusInputResult {
 
 /**
  * Pi 1.2 exposes fake-cursor wrapping through renderFakeCursor(). Its adjacency
- * to CURSOR_MARKER remains a render-shape seam (checked by check-internals). Strip only that
+ * to CURSOR_MARKER remains a render-shape seam (checked by check:internals). Strip only that
  * cursor's APC wrapper, keeping its cell text and every surrounding style.
  */
 export function concealEditorCursor(lines: readonly string[]): ConcealResult {

@@ -1,4 +1,4 @@
-// bun test/integration/context-compact.mjs /path/to/stock/pi
+// PI_BIN=/path/to/pi bun test/integration/context-compact.mjs
 // Copies the repository statusline asset into an isolated profile; never edits it.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -7,11 +7,11 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import xterm from "@xterm/headless";
+import { installedPiVersion, piBin } from "../../../scripts/pi-checks.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url)), pkg = resolve(here, "../../local/pi-claude-style");
-const binary = process.argv[2] ?? process.env.PI_BINARY;
-assert.ok(binary, "pass a stock Pi binary");
-assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(), "1.5.0");
+const binary = piBin();
+assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(), installedPiVersion());
 const artifacts = process.env.CC_CONTEXT_COMPACT_ARTIFACTS ?? mkdtempSync(join(tmpdir(), "cc-context-compact-"));
 const statusline = process.env.CC_CONTEXT_STATUSLINE ?? fileURLToPath(new URL("../../local/pi-claude-style/assets/statusline.mjs", import.meta.url));
 const patch = process.env.CC_CONTEXT_STATUSLINE_PATCH;

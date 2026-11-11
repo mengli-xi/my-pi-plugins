@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import xterm from "@xterm/headless";
+import { installedPiVersion, piBin } from "../../../scripts/pi-checks.mjs";
 
-const binary = process.argv[2] ?? process.env.PI_BINARY;
-if (!binary) throw new Error("usage: npm run test:child-ui -- /path/to/pi-next-binary");
+const binary = piBin();
 const artifactRoot = process.env.CC_CHILD_UI_ARTIFACTS ?? mkdtempSync(join(tmpdir(), "cc-child-ui-"));
 async function runScenario(scenario) {
 const root = join(artifactRoot, scenario);

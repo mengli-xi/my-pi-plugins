@@ -56,7 +56,7 @@ npm run typecheck -w pi-subagents
 npm run build -w pi-subagents
 npm run verify-dist -w pi-subagents
 npm test -w pi-subagents
-PI_REAL_BINARY=/path/to/pi-1.5.0 npm run test:real -w pi-subagents
+PI_BIN=/path/to/pi-1.5.0 npm run test:real -w pi-subagents
 ```
 
 跨插件、缺失协作方和宿主矩阵统一见 [integration](../../../integration/README.md)。包内测试不加载其他插件，不读日常配置，不发真实 provider 请求。改 slash 参数时同时检查空、部分、未知输入的补全与实际 parser。

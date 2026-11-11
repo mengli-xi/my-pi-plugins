@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import xterm from "@xterm/headless";
 
 const pkg = resolve(dirname(fileURLToPath(import.meta.url)), "../../../local/pi-subagents");
-const binary = process.argv[2] ?? process.env.PI_BINARY;
+const binary = process.argv[2] ?? process.env.PI_PATCHED_CLI;
 if (!binary) throw new Error("Usage: bun test/real/sdk-statusline.mjs /path/to/pi-next");
 const root = process.env.PI_SDK_STATUSLINE_ARTIFACTS ?? mkdtempSync(join(tmpdir(), "pi-sdk-statusline-"));
 mkdirSync(root, { recursive: true });

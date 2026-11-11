@@ -22,14 +22,21 @@ export function parseArgs(args) {
   return options;
 }
 
+// 只自动改写简单版本范围；*、>=、|| 并集等保持原样并回报人工处理。
+const SIMPLE_RANGE = /^([~^]?)(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?$/;
+
 export function updatePiVersions(manifest, version, { peers = false } = {}) {
   const updated = structuredClone(manifest);
+  const manual = [];
   for (const field of peers ? ["peerDependencies"] : ["devDependencies"]) {
     for (const [name, range] of Object.entries(updated[field] ?? {})) {
-      if (isPiDependency(name)) updated[field][name] = peers && /^[~^]/.test(range) ? range[0] + version : version;
+      if (!isPiDependency(name)) continue;
+      const simple = SIMPLE_RANGE.exec(range);
+      if (!simple) manual.push({ name, range, field });
+      else updated[field][name] = simple[1] + version;
     }
   }
-  return updated;
+  return { manifest: updated, manual };
 }
 
 // 原始日志始终保留；摘要提取 npm workspace、TS 位置及失败用例，不替代报错。
@@ -58,7 +65,12 @@ export function renderReport(report) {
     for (const failure of step.failures ?? []) lines.push(`  ${failure.package}：${failure.item}`);
     if (step.log) lines.push(`  原始日志：${step.log}`);
   }
-  lines.push("", ...report.notices, "", `报告：${join(report.directory, "report.json")}`);
+  lines.push("", ...report.notices);
+  if (report.manual?.length) {
+    lines.push("", "未自动改写、需人工处理：");
+    for (const item of report.manual) lines.push(`  ${item.package} · ${item.name} · ${item.range}：${item.reason}`);
+  }
+  lines.push("", `报告：${join(report.directory, "report.json")}`);
   return lines.join("\n");
 }
 
@@ -72,7 +84,7 @@ async function saveManifest(path, manifest) {
 export async function runCommand(command, args, { cwd, env, log, timeoutMs = 1_800_000 }) {
   const start = Date.now();
   const stream = createWriteStream(log);
-  const child = spawn(command, args, { cwd, env, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(command, args, { cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
   let output = "", stdout = "", reason;
   const record = data => { stream.write(data); output += data; };
   child.stdout.setEncoding("utf8");
@@ -80,7 +92,7 @@ export async function runCommand(command, args, { cwd, env, log, timeoutMs = 1_8
   child.stdout.on("data", data => { stdout += data; record(data); });
   child.stderr.on("data", record);
   const kill = () => {
-    try { process.platform === "win32" ? child.kill("SIGKILL") : process.kill(-child.pid, "SIGKILL"); }
+    try { process.kill(-child.pid, "SIGKILL"); }
     catch (error) { if (error.code !== "ESRCH") throw error; }
   };
   const interrupt = signal => { reason = `收到 ${signal}`; kill(); };
@@ -112,13 +124,28 @@ export async function main(args) {
   const env = checkEnvironment(environment);
   const report = {
     target: options.version, from: [...new Set(dependencies.map(name => manifest.devDependencies[name]))],
-    source, commit: head, directory, steps: [], notices: [
+    source, commit: head, directory, steps: [], manual: [], notices: [
       "未覆盖：真实 provider、人工终端与输入法、没有探针的私有行为。",
+      "没有 check:host 的包，其真实宿主测试在 integration/ 的 test:integration:* 与各包 real/native 套件里，不在本门禁内；升级后要另行运行。",
       "补丁宿主检查不纳入原版升级门禁；test:patched-host 与补丁联测须用匹配的真实构建另跑。",
       "host-patches/ 的补丁固定上游版本；Pi 版本变更必须按 host-patches/pi/v1.5.0/README.md 重新 pin、重新构建和验证，不能直接套用旧补丁。",
       options.keep ? "保留临时副本及日志。" : "结束后删除临时副本，保留报告与原始日志；需要保留副本请加 --keep。",
     ],
   };
+  const packages = workspacePackages(source);
+  const checks = discoverChecks(source);
+  const testPackages = packages.filter(pkg => Object.hasOwn(pkg.scripts ?? {}, "test"));
+  // fork 包 peer 与根 devDeps 里的非简单范围一律不改写，只回报人工处理。
+  for (const item of updatePiVersions(manifest, options.version).manual) {
+    report.manual.push({ package: "仓库", ...item, reason: "devDep 不是简单版本范围，未自动改写，需人工处理" });
+  }
+  for (const pkg of packages) {
+    const peers = Object.entries(pkg.peerDependencies ?? {}).filter(([name]) => isPiDependency(name));
+    if (!pkg.directory.startsWith("fork/")) continue;
+    for (const [name, range] of peers) {
+      report.manual.push({ package: pkg.name, name, range, reason: "fork 包 peer 不自动改写；如按目标版本修改，须同步记入该 fork 的 LOCAL_PATCHES.md" });
+    }
+  }
   const step = async (stage, pkg, item, command, commandArgs, cwd = checkout, extraEnv = {}) => {
     const log = join(directory, `${String(report.steps.length + 1).padStart(2, "0")}-${stage.replace(/[^\w\u3400-\u9fff-]/g, "-")}.log`);
     console.log(`检查：${pkg} · ${stage} · ${item}`);
@@ -130,6 +157,15 @@ export async function main(args) {
     return { ...entry, output, stdout };
   };
   const skipped = (stage, pkg, item, reason) => report.steps.push({ stage, package: pkg, item, status: "skipped", reason });
+  // 未运行项也逐条列出，便于一眼看出哪个包、哪一步没有结果。
+  const skipApply = reason => { if (options.apply) skipped("应用", "仓库", "--apply", reason); };
+  const skipGatesAndChecks = reason => {
+    skipped("公开 API 签名", "仓库", "typecheck", reason);
+    for (const pkg of testPackages) skipped("公开 API 行为", pkg.name, "test", reason);
+    skipped("公开 API 行为", "仓库", "test:integration", reason);
+    for (const check of checks) skipped("私有 seam", check.package, check.check, reason);
+    skipApply("有失败或未运行项，不修改当前工作区。");
+  };
   try {
     // 显式校验每个根 Pi devDep 的精确版本；失败时从未调用安装。
     let published = true;
@@ -148,50 +184,54 @@ export async function main(args) {
       }
     }
     if (!published) {
-      skipped("安装", "仓库", "目标依赖", "目标版本不存在或 registry 不可达，未安装任何目标依赖。");
+      skipped("临时副本", "仓库", "clone", "目标版本不存在或 registry 不可达，未创建临时副本。");
+      skipped("安装", "仓库", "bun install", "目标版本不存在，未安装任何目标依赖。");
+      skipGatesAndChecks("目标版本不存在或 registry 不可达，未运行。");
     } else {
       const cloned = await step("临时副本", "仓库", "clone", "git", ["clone", "--no-hardlinks", "--no-local", "--quiet", source, checkout], source);
-      if (cloned.status === "passed") {
+      if (cloned.status !== "passed") {
+        skipped("安装", "仓库", "bun install", "临时副本 clone 失败，未运行。");
+        skipGatesAndChecks("临时副本 clone 失败，未运行。");
+      } else {
         git(checkout, "checkout", "--quiet", "--detach", head);
-        await saveManifest(join(checkout, "package.json"), updatePiVersions(manifest, options.version));
+        await saveManifest(join(checkout, "package.json"), updatePiVersions(manifest, options.version).manifest);
         const installed = await step("安装", "仓库", "bun install", "bun", ["install"], checkout);
-        const checks = discoverChecks(checkout);
-        const gates = [
-          ["公开 API 签名", "typecheck", ["run", "typecheck"]],
-          ["公开 API 行为", "test", ["test"]],
-          ["公开 API 行为", "test:integration", ["run", "test:integration"]],
-        ];
-        for (const [stage, item, argv] of gates) {
-          if (installed.status === "passed") await step(stage, "仓库", item, "npm", argv);
-          else skipped(stage, "仓库", item, "目标依赖安装失败");
-        }
-        for (const check of checks) {
-          if (installed.status === "passed") await step("私有 seam", check.package, check.check, "npm", ["run", check.check], join(checkout, check.directory), { PI_BIN: join(checkout, "node_modules/.bin/pi") });
-          else skipped("私有 seam", check.package, check.check, "目标依赖安装失败");
-        }
-        if (options.apply) {
-          if (report.steps.every(entry => entry.status === "passed")) {
-            const files = ["package.json", "bun.lock"];
-            for (const pkg of workspacePackages(checkout)) {
-              if (!Object.keys(pkg.peerDependencies ?? {}).some(isPiDependency)) continue;
-              const path = join(pkg.directory, "package.json");
-              await saveManifest(join(checkout, path), updatePiVersions(readJson(join(checkout, path)), options.version, { peers: true }));
-              files.push(path);
-            }
-            const lock = await step("应用准备", "仓库", "更新 peers 与 bun.lock", "bun", ["install", "--lockfile-only"]);
-            if (lock.status === "passed") {
-              if (git(source, "rev-parse", "HEAD") !== head || git(source, "status", "--porcelain")) throw new Error("检查期间当前工作区或 HEAD 已变，拒绝 --apply");
-              // 不在当前工作区安装；只复制临时副本中已生成的 manifests 与 lock。
-              const originals = await Promise.all(files.map(file => readFile(join(source, file))));
-              try {
-                for (const file of files) await copyFile(join(checkout, file), join(source, file));
-              } catch (error) {
-                await Promise.all(files.map((file, index) => writeFile(join(source, file), originals[index])));
-                throw error;
+        if (installed.status !== "passed") {
+          skipGatesAndChecks("目标依赖安装失败。");
+        } else {
+          await step("公开 API 签名", "仓库", "typecheck", "npm", ["run", "typecheck"]);
+          for (const pkg of testPackages) await step("公开 API 行为", pkg.name, "test", "npm", ["run", "test", "-w", pkg.name]);
+          await step("公开 API 行为", "仓库", "test:integration", "npm", ["run", "test:integration"]);
+          for (const check of checks) {
+            await step("私有 seam", check.package, check.check, "npm", ["run", check.check], join(checkout, check.directory), { PI_BIN: join(checkout, "node_modules/.bin/pi") });
+          }
+          if (options.apply) {
+            if (report.steps.every(entry => entry.status === "passed")) {
+              const files = ["package.json", "bun.lock"];
+              for (const pkg of packages) {
+                if (!Object.keys(pkg.peerDependencies ?? {}).some(isPiDependency)) continue;
+                if (pkg.directory.startsWith("fork/")) continue;
+                const path = join(pkg.directory, "package.json");
+                const { manifest: updated, manual } = updatePiVersions(readJson(join(checkout, path)), options.version, { peers: true });
+                for (const item of manual) report.manual.push({ package: pkg.name, ...item, reason: "peer 不是简单版本范围，未自动改写，需人工处理" });
+                await saveManifest(join(checkout, path), updated);
+                files.push(path);
               }
-              report.steps.push({ stage: "应用", package: "仓库", item: "根 devDeps、各包 peers、bun.lock", status: "passed" });
-            }
-          } else skipped("应用", "仓库", "--apply", "有失败或未运行项，不修改当前工作区。");
+              const lock = await step("应用准备", "仓库", "更新 peers 与 bun.lock", "bun", ["install", "--lockfile-only"]);
+              if (lock.status === "passed") {
+                if (git(source, "rev-parse", "HEAD") !== head || git(source, "status", "--porcelain")) throw new Error("检查期间当前工作区或 HEAD 已变，拒绝 --apply");
+                // 不在当前工作区安装；只复制临时副本中已生成的 manifests 与 lock。
+                const originals = await Promise.all(files.map(file => readFile(join(source, file))));
+                try {
+                  for (const file of files) await copyFile(join(checkout, file), join(source, file));
+                } catch (error) {
+                  await Promise.all(files.map((file, index) => writeFile(join(source, file), originals[index])));
+                  throw error;
+                }
+                report.steps.push({ stage: "应用", package: "仓库", item: "根 devDeps、各包 peers、bun.lock", status: "passed" });
+              }
+            } else skipApply("有失败或未运行项，不修改当前工作区。");
+          }
         }
       }
     }

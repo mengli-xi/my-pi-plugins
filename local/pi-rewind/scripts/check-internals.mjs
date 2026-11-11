@@ -23,7 +23,12 @@ function checkProbes(SessionManager) {
   return !failed;
 }
 
-const binary = process.argv[2] === "--host" ? piBin() : undefined;
+const args = process.argv.slice(2);
+if (args.some(arg => arg !== "--host") || args.length > 1) {
+  console.error("用法：node scripts/check-internals.mjs [--host]");
+  process.exit(2);
+}
+const binary = args[0] === "--host" ? piBin() : undefined;
 if (!binary) {
   if (!checkProbes(SessionManager)) process.exitCode = 1;
 } else {
