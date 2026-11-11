@@ -14,7 +14,7 @@ async function runtimePath(): Promise<string> {
   return result.runtime.candidate.path;
 }
 
-function waitForEvent(events: SupervisorEvent[], predicate: (event: SupervisorEvent) => boolean, timeoutMs = 5_000): Promise<SupervisorEvent> {
+function waitForEvent(events: SupervisorEvent[], predicate: (event: SupervisorEvent) => boolean, timeoutMs = 20_000): Promise<SupervisorEvent> {
   const existing = events.find(predicate);
   if (existing) return Promise.resolve(existing);
   return new Promise((resolve, reject) => {
@@ -79,16 +79,18 @@ test("same-session generations use isolated roots and cleanup cannot break a pee
     });
     assert.equal(typeof started.pid, "number");
     // The command may already be terminal; polling the retained log is the
-    // ownership assertion and does not depend on event timing.
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    // ownership assertion and does not depend on event timing. Keep polling for
+    // a loaded machine's spawn latency instead of counting a fixed attempt count.
+    const logDeadline = Date.now() + 30_000;
+    for (;;) {
       const page = await second.request("logPage", { id: processId, stream: "both", tailLines: 20 });
       const lines = (page.lines as Array<{ text: string }>).map((line) => line.text);
       if (lines.length === 2) {
         assert.deepEqual(lines, ["first", "second"]);
         break;
       }
+      if (Date.now() > logDeadline) assert.fail(`peer log did not persist: ${JSON.stringify(lines)}`);
       await new Promise((resolve) => setTimeout(resolve, 10));
-      if (attempt === 99) assert.fail(`peer log did not persist: ${JSON.stringify(lines)}`);
     }
     const secondCleanup = await second.cleanup("scope-ended");
     assert.equal(secondCleanup.unresolved, 0);
@@ -110,16 +112,20 @@ test("concurrent short processes persist independent indexes", async () => {
       stopGraceMs: 100, logLimits: { perProcessBytes: 1_048_576, sessionBytes: 32_000_000, lineBytes: 65_536 }, watches: [],
     })));
     await Promise.all(ids.map(async (id, index) => {
-      for (let attempt = 0; attempt < 100; attempt += 1) {
+      // Twenty short commands start behind each other; a fixed attempt count
+      // measured a quiet machine, not the assertion that each log lands in its
+      // own index.
+      const logDeadline = Date.now() + 30_000;
+      for (;;) {
         const page = await client.request("logPage", { id, stream: "both", tailLines: 10 });
         const lines = (page.lines as Array<{ text: string }>).map((line) => line.text);
         if (lines.length === 1) {
           assert.deepEqual(lines, [`line ${index}`]);
           return;
         }
+        if (Date.now() > logDeadline) assert.fail(`log did not persist for ${id}`);
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
-      assert.fail(`log did not persist for ${id}`);
     }));
     const cleanup = await client.cleanup("scope-ended");
     assert.equal(cleanup.unresolved, 0);

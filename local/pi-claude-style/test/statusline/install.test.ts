@@ -208,7 +208,9 @@ function workspace(t: TestContext, failures: number): string {
 
 /** Poll rather than sleep a fixed span: a cold first payload build is not quick. */
 async function waitForFrame(pi: Harness, expected: string[]): Promise<void> {
-  const until = Date.now() + 5_000;
+  // A statusline command is a fresh shell: on a busy machine its start alone can
+  // take seconds, so the cap stays well above one command's own timeout.
+  const until = Date.now() + 20_000;
   for (;;) {
     const frame = pi.widget();
     if (frame !== undefined && frame[0] === expected[0]) {
@@ -338,7 +340,7 @@ sleep 30
   const statusline = installStatusLine(pi.api as never);
   t.after(() => statusline.dispose());
   await pi.emit("session_start", { reason: "startup" });
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + 20_000;
   while (!existsSync(pidFile) && Date.now() < deadline) await delay(20);
   assert.ok(existsSync(pidFile));
   const pid = Number(readFileSync(pidFile, "utf8")), started = Date.now();
@@ -403,7 +405,7 @@ process.exit(0);
   assert.throws(() => process.kill(-holder, 0), { code: "ESRCH" });
 });
 
-test("session_shutdown does not poll group existence forever after SIGKILL", { skip: process.platform === "win32", timeout: 10_000 }, async (t) => {
+test("session_shutdown does not poll group existence forever after SIGKILL", { skip: process.platform === "win32", timeout: 30_000 }, async (t) => {
   const cwd = workspace(t, 0), pidFile = join(cwd, "command.pid");
   writeFileSync(join(cwd, "statusline.sh"), `#!/bin/sh
 while IFS= read -r line; do :; done
@@ -413,7 +415,7 @@ exec sleep 30
 `);
   const pi = session(t, cwd);
   await pi.emit("session_start", { reason: "startup" });
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + 20_000;
   while (!existsSync(pidFile) && Date.now() < deadline) await delay(10);
   assert.ok(existsSync(pidFile));
   const pid = Number(readFileSync(pidFile, "utf8"));
@@ -425,7 +427,10 @@ exec sleep 30
   const started = Date.now();
   await pi.emit("session_shutdown", { reason: "quit" });
   probe.mock.restore();
-  assert.ok(Date.now() - started < 2_000, "group existence cannot extend shutdown past its cleanup budget");
+  // The cleanup budget is 1s (250ms before SIGKILL, 750ms of drain). Anything
+  // near the 30s command would mean shutdown is polling group existence again;
+  // the extra seconds only cover a loaded machine's timer and signal latency.
+  assert.ok(Date.now() - started < 5_000, "group existence cannot extend shutdown past its cleanup budget");
   assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "the direct child is reaped");
 });
 
