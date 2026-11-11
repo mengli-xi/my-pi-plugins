@@ -66,9 +66,11 @@ const builtinOptions = {
 
 不解析/修改 provider payload，不当 wire proof。按对象/函数 identity 发现 provider 替换，只在仍为自己的 wrapper 时恢复；不可装饰则 capture unavailable。`wirePrefix` 始终 unknown，不声称 cache hit。
 
-共享 cell 为 `Symbol.for("pi.session-runtime.effective-context.v1")`，仅本库拥有。capture 表示 Main 最近实际发送的上下文，不是最新后台数据库；没有 Magic epoch 订阅。有效性只看 session/generation、branch membership、projection reset 和 model/tool/capability 指纹。
+共享 cell 为 `Symbol.for("pi.session-runtime.effective-context.v1")`，仅本库拥有。capture 表示 Main 最近实际发送的上下文，不是最新后台数据库，也不订阅任何第三方事件通道。有效性只看 session/generation、branch membership、projection reset 和 model/tool/capability 指纹。
 
-公开 tool/command sourceInfo 的 canonical Magic 包来源、当前 branch 的 `compaction.details.source === "magic-context"` 或未知请求变换要求有效 capture。来源路径 realpath 后读取所属 manifest，不能靠命令名。`requestTransforms` 只在 fork 时比较当前 capture 的 provider hash 与冻结原生消息并缓存该 capture 的结果；新请求/失效清缓存。结构不合适的 capture 先 invalid，再判断 fallback，另一分支的证据不能授权原生回放；缺 marker 不证明 native-only。
+未知请求变换要求有效 capture。`requestTransforms` 只在 fork 时比较当前 capture 的 provider hash 与冻结原生消息并缓存该 capture 的结果；新请求/失效清缓存。结构不合适的 capture 先 invalid，再判断 fallback，另一分支的证据不能授权原生回放；缺变换标记不证明 native-only。
+
+本库只按原生 origin 精确比对消息身份，不识别第三方请求格式、包名或 `compaction.details` 来源。因此外来的 compaction 摘要和前导注入按未知内容处理：变换标记不会是 native-only，数值 N 因无法证明身份而不可用，`all` 仍可取 capture 原文；旧 session 里遗留的这类 entry 同样不获特殊解释。
 
 ## 选择与 seed
 
@@ -77,14 +79,6 @@ const builtinOptions = {
 需要 capture 而不可用时抛 `EffectiveContextUnavailableError`，`code="effective-context-unavailable"` 且带机器可读 reason。库不静默授权 raw fallback；消费者自行决定是否提示跑 Main 或显式接受原生数据。已明确证明 native-only 可用公开 `buildSessionProjection`，但 `exactRequestPrefix=false`。
 
 数值 N 计完整业务 turn（user、bash/custom 输入、branch summary），要求精确 provenance。只有明确 system/compaction/memory preamble 跨未选 turn 保留；普通 custom/bash 不是全局 preamble，body 跟所属 turn。未知 request-only 注入或含糊 user rewrite 使 N 不可用，all 仍可能可用。不从 raw history 补足 N。重复/自保留 compaction 和 context edit 先由 Pi projection 物化。
-
-### 旧 Magic Context 格式
-
-`src/magic-context-format.ts` 只兼容 Magic Context 0.41.1 请求格式，不加载其 producer/配置/数据库。只有领先、无 tag 的 m[0]/m[1] user pair 且有序 block 词汇、内容形状、相对时间戳都匹配，才识别 text block 单个 canonical `§N§ ` 前缀与首 block temporal comment，用于身份比对。剩余完整消息（含时间、图片、metadata）必须按顺序匹配唯一 native origin。
-
-重复身份、与 envelope 碰撞、未知 block、编辑、metadata 变化拒绝 N。MC 加 tag 前会替换旧 tag，因此有 MC envelope 时，任何 native user-shaped text block 以 `§` 加数字开头都拒绝 N，含合法/坏/残缺前缀、继承 seed 及所有 origin；无 envelope 时 literal 仍精确匹配。多 native 候选同样拒绝。
-
-pair 是 preamble，与 system/native summaries（含折叠历史、memory update）原文保留。seed 不清 tag，不恢复丢弃原文，all 不变。首次 materialization 残留的 dropped-user sentinel 没有可证明身份，N 拒绝，不能回 raw 历史找正文。错误建议 none，另跑 Main 不能修复未知格式/歧义。测试只覆盖兼容格式的选择/seed，不证明真实 DB allocation、tag accounting 或 pipeline。
 
 ### 原生 seed
 

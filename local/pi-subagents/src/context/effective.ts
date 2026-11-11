@@ -50,10 +50,8 @@ export async function describeMainEffectiveContext(pi: ExtensionAPI, ctx: Extens
   };
 }
 
-export function mainRequiresEffectiveCapture(pi: ExtensionAPI, ctx: ExtensionContext, identity: ContextIdentity): boolean {
+export function mainRequiresEffectiveCapture(identity: ContextIdentity): boolean {
   return requiresEffectiveCapture({
-    branch: ctx.sessionManager.getBranch(),
-    sources: [...pi.getAllTools().map((tool) => tool.sourceInfo), ...pi.getCommands().map((command) => command.sourceInfo)],
     requestTransforms: getEffectiveContextStore().requestTransforms(identity.sessionId, identity.generation, identity.capabilityFingerprint),
   });
 }

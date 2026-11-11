@@ -2,7 +2,7 @@
 
 ## 范围与生成
 
-目标为 Pi 1.5.0 的整会话压缩。只用公开 API，TypeScript 直接加载，无宿主私有接缝。本包须是 profile 唯一的 `session_before_compact` owner，不依赖 Magic Context。
+目标为 Pi 1.5.0 的整会话压缩。只用公开 API，TypeScript 直接加载，无宿主私有接缝。本包须是 profile 唯一的 `session_before_compact` owner，不依赖其他压缩插件。
 
 Main/small 使用 prompt version 9。交接正文采用普通 Markdown，说明当前任务和有效要求、已做工作与关键结论、正在做的事和未解问题、下一步；标题与次序仅作引导。新纠正覆盖旧要求，重要发现、失败方案、运行句柄和不确定事实放在对应事项旁。模型不生成用户原话附录或文件清单。没有输出 schema、引用核验、专用提交工具、记忆候选提取、单独不确定项章节或摘要裁剪。
 

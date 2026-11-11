@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
-import { magicContextHasLossyNativePrefix, magicContextPreambleIndices, magicContextUserIdentities } from "#internal/magic-context-format";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { readFileSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Message } from "@earendil-works/pi-ai";
-import type { ExtensionContext, SessionEntry, SourceInfo } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 type Provider = NonNullable<ReturnType<ExtensionContext["modelRegistry"]["getProvider"]>>;
 export interface ModelRef { provider: string; id: string }
@@ -122,7 +119,7 @@ function cell(): ProcessCell {
 export function getEffectiveContextStore(): EffectiveContextStore { return cell().store; }
 export function getEffectiveContextGeneration(sessionId: string): number | undefined { return cell().bindings.get(sessionId)?.generation; }
 
-/** Exact identities plus the bounded Magic Context format; ambiguity refuses numeric N. */
+/** Exact native identities only; unknown injections and ambiguous collisions refuse numeric N. */
 export function mapEffectiveTurns(messages: readonly Message[], origins: readonly NativeMessageOrigin[], knownPreamble: readonly Message[] = []): Pick<EffectiveCapture, "turnAnchors" | "preambleMessageIndices" | "attachedMessageIndices" | "turnMappingReliable"> {
   const nativeUsers = origins.filter((origin) => origin.message.role === "user");
   const byHash = new Map<string, Array<{ origin: NativeMessageOrigin; index: number }>>();
@@ -131,11 +128,6 @@ export function mapEffectiveTurns(messages: readonly Message[], origins: readonl
     const matches = byHash.get(hash) ?? []; matches.push({ origin, index }); byHash.set(hash, matches);
   }
   const preambles = new Set(knownPreamble.filter((message) => message.role === "user").map(contextFingerprint));
-  const magicPreamble = new Set(magicContextPreambleIndices(messages));
-  if (magicPreamble.size && nativeUsers.some(({ message }) => magicContextHasLossyNativePrefix(message))) {
-    // Do not label a lossy turn rewrite as another turn, attached body or preamble.
-    return { turnAnchors: [], preambleMessageIndices: messages.flatMap((message, index) => message.role === "system" ? [index] : []), attachedMessageIndices: [], turnMappingReliable: false };
-  }
   const anchors: TurnAnchor[] = [];
   const preambleMessageIndices: number[] = [];
   const attachedMessageIndices: number[] = [];
@@ -146,15 +138,7 @@ export function mapEffectiveTurns(messages: readonly Message[], origins: readonl
     if (message.role === "system") { preambleMessageIndices.push(messageIndex); continue; }
     if (message.role !== "user") continue;
     const digest = contextFingerprint(message);
-    const identities = magicPreamble.size ? magicContextUserIdentities(message) : [message];
-    const matches = [...new Map(identities.flatMap(identity => byHash.get(contextFingerprint(identity)) ?? []).map(match => [match.index, match])).values()];
-    if (magicPreamble.size && matches.length > 1) { reliable = false; continue; }
-    if (magicPreamble.has(messageIndex)) {
-      // A native turn colliding with the synthetic envelope is not provenance.
-      if (matches.every(({ origin }) => origin.kind === "preamble")) preambleMessageIndices.push(messageIndex);
-      else reliable = false;
-      continue;
-    }
+    const matches = byHash.get(digest) ?? [];
     if (matches.length === 1 && matches[0]!.origin.kind === "turn" && matches[0]!.origin.turnId && !used.has(matches[0]!.origin.turnId!) && matches[0]!.index > lastNativeIndex) {
       const { origin, index } = matches[0]!;
       used.add(origin.turnId!); lastNativeIndex = index;
@@ -308,25 +292,6 @@ export function acquireEffectiveCapture(input: { owner: string; sessionId: strin
   };
 }
 
-/** Uses package metadata at the canonical public source path, never command-name heuristics. */
-export function canonicalSourcePackage(source: SourceInfo): string | undefined {
-  if (source.source === "builtin" || source.path.startsWith("<")) return undefined;
-  const path = isAbsolute(source.path) ? source.path : source.baseDir ? resolve(source.baseDir, source.path) : undefined;
-  if (!path) return undefined;
-  try {
-    let directory = dirname(realpathSync(path));
-    while (true) {
-      try { const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")); if (typeof manifest.name === "string") return manifest.name; } catch {}
-      const parent = dirname(directory); if (parent === directory) return undefined; directory = parent;
-    }
-  } catch { return undefined; }
-}
-export function requiresEffectiveCapture(input: {
-  branch: readonly SessionEntry[];
-  sources?: readonly SourceInfo[];
-  requestTransforms: "native-only" | "transformed" | "unknown";
-}): boolean {
-  return input.requestTransforms !== "native-only" ||
-    input.sources?.some((source) => ["@cortexkit/pi-magic-context", "pi-magic-context"].includes(canonicalSourcePackage(source) ?? "")) === true ||
-    input.branch.some((entry) => entry.type === "compaction" && (entry.details as { source?: unknown } | undefined)?.source === "magic-context");
+export function requiresEffectiveCapture(input: { requestTransforms: "native-only" | "transformed" | "unknown" }): boolean {
+  return input.requestTransforms !== "native-only";
 }

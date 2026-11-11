@@ -64,7 +64,7 @@ child 不注册 close/resume，保留 finish_task。旧 send_message/followup_ta
 
 spawn task_name sibling 唯一，重复拒绝，不复用已完成/closed Agent。role 默认 default，builtin 另有 explorer/worker，trusted-project > user > builtin；role 仅收窄 scope。model 省略按 role/父默认解析，显式 provider/model 只取已授权 scope；bare id 仅唯一时可解析。effort 支持 off/minimal/low/medium/high/xhigh/max 且模型必须支持：显式值优先，之后 role，同模型继承 parent，否则 medium clamp。tier 同样校验，不能静默扩权。
 
-fork_turns 省略 none，接受 none/all 或 canonical 整数 1..100000。选择、旧格式兼容与失败条件由[共享上下文合同](../../pi-session-runtime/docs/runtime.md#选择与-seed)定义，本包接线见[架构合同](architecture.md#上下文-fork-接线)。timeout 范围 60000..86400000ms，优先显式 > role > execution.taskTimeoutMs > 1800000，在 Agent profile 冻结，所有以后 Task 沿用；首次 grant 才开始 wall time。
+fork_turns 省略 none，接受 none/all 或 canonical 整数 1..100000。选择、seed 与失败条件由[共享上下文合同](../../pi-session-runtime/docs/runtime.md#选择与-seed)定义，本包接线见[架构合同](architecture.md#上下文-fork-接线)。timeout 范围 60000..86400000ms，优先显式 > role > execution.taskTimeoutMs > 1800000，在 Agent profile 冻结，所有以后 Task 沿用；首次 grant 才开始 wall time。
 
 ### 2. send_input 状态矩阵
 
