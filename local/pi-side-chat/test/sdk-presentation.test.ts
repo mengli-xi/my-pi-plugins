@@ -129,7 +129,6 @@ test("Side rejects execution-capable presentation declarations and an undeclared
         module: captureEntrypointDescriptorV1(join(directory, "child.ts")), export: "createProvider", config: {}, artifacts: [] } },
       { filename: "child.js" },
     ]) {
-      const sessionId = randomUUID();
       const declaration = captureChildFactoryV1(join(directory, "index.ts"), { module: "dist/child.ts", export: "createClaudeStyleChildExtension", kind: "presentation" });
       assert.throws(() => registry.register({ version: 1, manifest: { version: 1, owner_id: "pi-claude-style",
         main_entrypoint: captureEntrypointDescriptorV1(join(directory, "index.ts")), targets: { "pi-side-chat": {

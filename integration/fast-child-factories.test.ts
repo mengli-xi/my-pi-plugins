@@ -107,3 +107,48 @@ for (const consumer of ["subagents", "side-chat"] as const) for (const reverse o
     }
   });
 }
+
+for (const reverse of [false, true]) test(`Subagents nested Fast context follows the immediate parent, Main changed (${reverse})`, { timeout: 30000 }, async () => {
+  const source = await fixture(), { f } = source;
+  await mkdir(join(f.agentDir, "pi-subagents"), { mode: 0o700 });
+  await writeFile(join(f.agentDir, "pi-subagents", "config.json"), JSON.stringify({ schemaVersion: 2, execution: { maxDepth: 2 } }), { mode: 0o600 });
+  const owners = [piFast, source.registerThirdParty];
+  const runtime = await f.start([source.registerProvider, ...(reverse ? [subagents, ...owners] : [...owners, subagents]), source.captureApi], ["read", "spawn_agent", "send_input", "close_agent", "resume_agent", "wait_agents", "list_agents", "list_subagent_models", "list_subagent_roles"]);
+  runtime.session.setActiveToolsByName(["read", "spawn_agent", "send_input", "close_agent", "resume_agent", "wait_agents", "list_agents", "list_subagent_models", "list_subagent_roles"]);
+  const cell = getProcessServiceCellV1();
+  try {
+    f.faux.setResponses(Array.from({ length: 40 }, () => context => {
+      const last = context.messages.at(-1), text = JSON.stringify(last);
+      if (last?.role === "user" && text.includes("SPAWN_TEST")) return fauxAssistantMessage(fauxToolCall("spawn_agent", { task_name: "fast-child", message: "CHILD_WORK", fork_turns: "none" }), { stopReason: "toolUse" });
+      if (last?.role === "user" && text.includes("CLOSE_PARENT")) return fauxAssistantMessage(fauxToolCall("close_agent", { target: "fast-child" }), { stopReason: "toolUse" });
+      if (last?.role === "user" && text.includes("REOPEN_PARENT")) return fauxAssistantMessage(fauxToolCall("resume_agent", { target: "fast-child" }), { stopReason: "toolUse" });
+      if (last?.role === "user" && text.includes("RESUME_PARENT")) return fauxAssistantMessage(fauxToolCall("send_input", { target: "fast-child", message: "NESTED_PARENT" }), { stopReason: "toolUse" });
+      if (last?.role === "user" && text.includes("NESTED_PARENT")) return fauxAssistantMessage(fauxToolCall("spawn_agent", { task_name: "grandchild", message: "GRANDCHILD_WORK", fork_turns: "none" }), { stopReason: "toolUse" });
+      return fauxAssistantMessage("LOCAL_FAUX_OK");
+    }));
+    await runtime.session.prompt("/fast on");
+    await runtime.session.prompt("SPAWN_TEST");
+    const binding = cell.service!.binding(runtime.session.sessionId)!;
+    assert.ok(binding, JSON.stringify({ messages: runtime.session.messages, errors: f.errors }));
+    const diagnostics = () => ({ agents: binding.host.snapshot().agents, errors: cell.service?.diagnostics(), requests: f.requests });
+    await until(() => binding.host.snapshot().agents[0]?.tasks[0]?.phase === "settled", "first child settled", diagnostics);
+    await runtime.session.prompt("/fast off");
+    assert.equal(getOrCreateChildCapabilityRegistryV1().snapshot(runtime.session.sessionId).registrations.find(item => item.owner_id === "pi-fast")!.factory_context!.enabled, false);
+    const parent = () => binding.host.snapshot().agents.find(item => item.agent.task_name === "fast-child")!;
+    const originalGeneration = parent().agent.runtime_generation;
+    await runtime.session.prompt("CLOSE_PARENT");
+    assert.equal(parent().agent.lifecycle, "closed");
+    await runtime.session.prompt("REOPEN_PARENT");
+    assert.equal(parent().agent.lifecycle, "open");
+    assert.ok(parent().agent.runtime_generation > originalGeneration);
+    await runtime.session.prompt("RESUME_PARENT");
+    await until(() => binding.host.snapshot().agents.some(item => item.agent.depth === 2 && item.tasks[0]?.phase === "settled"), "nested child settled", diagnostics);
+    const grandchild = binding.host.snapshot().agents.find(item => item.agent.depth === 2)!;
+    assert.equal(grandchild.tasks[0]!.outcome, "completed");
+    const requests = f.requests.filter(body => JSON.stringify((body.messages as Array<{ role: string }>).findLast(message => message.role === "user")).includes("GRANDCHILD_WORK"));
+    assert.ok(requests.length);
+    for (const body of requests) { assert.equal(body.service_tier, "priority"); assert.equal(body.third_party_child, true); }
+    assert.equal(grandchild.agent.profile.capabilities.entries.find(entry => entry.owner === "pi-fast")!.child_factory!.context.enabled, true);
+    assert.deepEqual(f.errors, []);
+  } finally { await runtime.dispose(); await cell.service?.close(); cell.service = undefined; cell.promise = undefined; source.cleanup(); }
+});

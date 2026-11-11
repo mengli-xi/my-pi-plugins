@@ -44,7 +44,7 @@ module/artifacts 必须是包内相对路径；absolute、越界、软链逃逸�
 
 binding 可提供同步 `capture_context: () => JSON对象`。snapshot 调用它并深拷贝、冻结结果到该 registration 的 `factory_context`；回调失败会给出 owner 诊断并留下空 context，不影响其他 owner。context 限 32 KiB，不能携带函数、凭据或父 session 的可写 handle。
 
-消费者创建 child 时保存 `ChildFactoryProofV1={version:1,manifest,target_id,context}`。Subagents 将它及 `factory_required` 放入 frozen capability entry 和指纹；Side 在创建 plan 时捕获。后续请求、view detach/rebind、resume 不重新取父会话的可变 context；nested child 只能继承父已冻结的声明与状态，不能从 ambient 新增 owner 扩权。旧 profile 没有新证明时仍可读历史，不自动补证明执行旧工具。
+消费者创建 child 时保存 `ChildFactoryProofV1={version:1,manifest,target_id,context}`。Subagents 将它及 `factory_required` 放入 frozen capability entry 和指纹；Side 在创建 plan 时捕获。后续请求、view detach/rebind、resume 不重新取父会话的可变 context；nested child 只能继承直接父 child 的 frozen proof context，不读取 Main 后来变化的 context；声明也只能继承父已冻结的范围，不能从 ambient 新增 owner 扩权。旧 profile 没有新证明时仍可读历史，不自动补证明执行旧工具。
 
 具名 export 接收消费者明确提供的 options，并返回 Pi `ExtensionFactory`：
 
