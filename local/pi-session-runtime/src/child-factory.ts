@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { validateChildFactoryProofV1, type ChildFactoryProofV1 } from "pi-runtime-contracts/child-capabilities-v1";
-import { loadApprovedFactoryModule } from "./factory-loader.ts";
+import { loadApprovedFactoryModule } from "pi-session-runtime/factory-loader";
 
 /** Ordinary, already-loaded owners use declarations, not a consumer brand catalog. */
 export async function loadChildFactoryV1(input: {
@@ -41,12 +41,14 @@ export async function loadChildFactoryV1(input: {
         } };
         if (key === "registerTool") return (tool: Parameters<ExtensionAPI["registerTool"]>[0]) => {
           if (!target.tools.includes(tool.name)) throw new Error(`undeclared child tool: ${tool.name}`);
+          if (!tool.parameters || typeof tool.parameters !== "object" || Array.isArray(tool.parameters)) throw new Error(`child tool ${tool.name} must define an object parameter schema`);
           input.checkTool?.(tool);
           schedule(() => object.registerTool(tool));
         };
         if (key === "registerProvider") return () => { throw new Error("ordinary child factory cannot register providers; use SDK provider grants"); };
         if (key === "registerCommand") return (name: string, command: Parameters<ExtensionAPI["registerCommand"]>[1]) => {
           if (!target.commands.includes(name)) throw new Error(`undeclared child command: ${name}`);
+          if (typeof command?.handler !== "function") throw new Error(`child command ${name} must define handler()`);
           schedule(() => object.registerCommand(name, command));
         };
         if (key === "on") return (name: string, handler: (...args: unknown[]) => unknown) => {
@@ -60,7 +62,11 @@ export async function loadChildFactoryV1(input: {
           schedule(() => { if (!released) unsubscribe = (object.on as (name: string, handler: (...args: unknown[]) => unknown) => () => void)(name, guardedHandler); });
           return () => { released = true; unsubscribe?.(); };
         };
-        if (["registerMessageRenderer", "registerShortcut", "registerFlag"].includes(String(key))) return (...args: unknown[]) => {
+        if (key === "registerFlag") return (name: string, options: Parameters<ExtensionAPI["registerFlag"]>[1]) => {
+          if (options.default !== undefined && typeof options.default !== options.type) throw new Error(`invalid child flag default: ${name}`);
+          schedule(() => object.registerFlag(name, options));
+        };
+        if (["registerMessageRenderer", "registerEntryRenderer", "registerMarkdownTransformer", "registerToolRenderer", "registerShortcut"].includes(String(key))) return (...args: unknown[]) => {
           schedule(() => (object[key as keyof ExtensionAPI] as (...args: unknown[]) => void)(...args));
         };
         return Reflect.get(object, key);
@@ -71,7 +77,7 @@ export async function loadChildFactoryV1(input: {
         // Pi supports async extensions; preserve both failure isolation and registration order.
         const finish = () => { for (const action of pending) action(); committed = true;
           const cancel = (factory as ExtensionFactory & { cancelPending?: () => Promise<void> }).cancelPending;
-          if (cancel) input.onCancel?.(() => cancel());
+          if (cancel) input.onCancel?.(async () => { try { await cancel.call(factory); } catch (error) { report(error); } });
         };
         if (result && typeof (result as Promise<void>).then === "function") return Promise.resolve(result).then(finish, report);
         finish();

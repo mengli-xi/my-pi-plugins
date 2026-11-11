@@ -58,9 +58,9 @@ binding 可提供同步 `capture_context: () => JSON对象`。snapshot 调用它
 
 共享 loader 在 import 前、await 后及 extension 安装前重验证明，包括 Main/child 文件、实际包名、factory/export 声明和全部 artifacts。经 canonical SDK namespace 表加载具名 export；同路径代码或已知 delegate 的摘要漂移即使重新注册，也不能给旧模块 cache 背书，须启动新进程。JSON object key 顺序不影响证明。
 
-单个可选 factory 的文件/包名漂移、import/export/返回值或安装失败，只跳过该 owner 并给出诊断；其余 factory 继续装载。安装期间的工具、hook、command/renderer 等注册先暂存，成功后提交，失败不留下半份注册。可选 hook 后续失败退役该 owner 的 hook，不中断其他 owner。
+单个可选 factory 的文件/包名漂移、import/export/返回值或安装失败，只跳过该 owner 并给出诊断；其余 factory 继续装载。安装期间的工具、hook、command/renderer 等注册先暂存；工具 schema、命令 handler 和 flag default 在提交前验证，成功后提交，失败不留下半份注册。可选 hook 后续失败退役该 owner 的 hook，不中断其他 owner。
 
-如果它提供 child 明确选择的工具、显式 required capability 或所需 dependency，失败仍拒绝这次 child 装配；不得退回宽松 builtin 或恢复已取消的权限。required 语义与 registry/closure 冲突语义不放宽。取消端口失败保留原 cleanup ownership，不能谎报销毁成功。
+如果它提供 child 明确选择的工具、显式 required capability 或所需 dependency，失败仍拒绝这次 child 装配；不得退回宽松 builtin 或恢复已取消的权限。required 语义与 registry/closure 冲突语义不放宽。required owner 的取消端口失败保留原 cleanup ownership，不能谎报销毁成功；可选 owner 的端口异常只诊断该 owner。
 
 ## ABI 与验证
 
