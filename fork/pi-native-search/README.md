@@ -56,6 +56,8 @@ Main 注册以下命令；参数补全和 parser 使用同一组公开子命令�
 
 50 KB / 2000 lines 只限制 HTTP 抓取返回给模型的正文，不限制下载量。HTTP 抓取不提供独立超时或 SSRF 防护承诺，不能把它当作网络隔离边界。
 
+普通 child factory 的声明与共享装载规则见 [child-capabilities-v1](../../local/pi-runtime-contracts/docs/child-capabilities-v1.md)；外部 provider grant 不由这个声明授予。
+
 ## 验证与使用回归
 
 在已准备依赖的工作区中运行：
@@ -66,7 +68,7 @@ npm run typecheck
 npm test
 ```
 
-包内检查使用离线 HTTP fixture 和 faux provider，覆盖本包工具、配置、凭据、backend 协议及 Main/SDK child 合同；不需要真实 provider 请求。跨插件协作与缺失协作方的联测放在仓库 `integration/`，不能用本包测试替代。
+包内检查使用离线 HTTP fixture 和 faux provider，覆盖本包工具、配置、凭据、backend 协议及 Main/SDK child 合同（含 Subagents/Side 双 target 与执行文件完整性证明）；不需要真实 provider 请求。跨插件协作与缺失协作方的联测放在仓库 `integration/`，不能用本包测试替代。
 
 启动新的 Pi process 后，按需检查这些使用路径；真实搜索和抓取会外传数据并可能计费，先确认目标和授权：
 

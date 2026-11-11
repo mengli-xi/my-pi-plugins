@@ -20,6 +20,8 @@
 
 通过 child-capabilities-v1 声明 required-only bash factory；Subagents 未装不影响 Main，父会话未加载本包时子会话沿用 builtin bash。
 
+普通 child factory 的声明与共享装载规则见 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md)；外部 provider grant 不由这个声明授予。
+
 ## 验证
 
 仓库根运行：

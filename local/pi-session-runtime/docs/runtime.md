@@ -4,6 +4,10 @@
 
 本库不注册 extension、命令或任务，不发现外部 provider。Subagents、Side 等调用方使用捕获、选择、seed、SDK 装配与原生视图 API；Compact 只消费捕获/选择，不创建 child。所有公开 subpath 直接导出 TypeScript，无 build 或根 barrel。修改库后重建编译消费者，并启动新进程。
 
+## 普通 child factory
+
+`child-factory` 共用声明式 loader、冻结证明与失败隔离；完整合同只写在 [child-capabilities-v1](../../pi-runtime-contracts/docs/child-capabilities-v1.md)。它不维护包名或固定路径名单，也不改变下面的外部 provider grant 机制。
+
 ## 外部 SDK provider
 
 `pi-session-runtime/sdk-provider` 拥有精确 grant reader、冻结 proof 编解码、文件检查、binding fence 和批准 factory/observer 的装配。完整 JSON 与范围规则见 [provider 合同](../../pi-subagents/docs/sdk-providers.md)；库本身不加载该消费者的配置。

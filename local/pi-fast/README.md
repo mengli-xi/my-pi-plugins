@@ -38,7 +38,7 @@ session override 优先于全局默认。override 以 `pi-fast:session-state-v1`
 - 影响主 agent loop 请求。
 - **Pi 1.5.0 原生 compaction 不受影响**：它直接调用 `agent.streamFunction`，未经过 Agent 的 `onPayload`，不会触发此 hook。
 - 本仓库 [pi-session-compact](../pi-session-compact/README.md) 的压缩生成也不受影响：main/small（含 chunk、synthesis）和该插件的 native fallback 经 `src/generate.ts` 直接调用 `ctx.modelRegistry.streamSimple`，不传 `onPayload`。继承主请求的消息前缀不等于继承请求 body 的 `service_tier`；本包不会为这些压缩请求增加 priority。
-- **子 session 不跟随**：Subagents、Side Chat 等独立 SDK session 不安装本包的 hook，本包也不注册 child factory。
+- **Subagents 与 Side Chat 跟随创建时的父状态**：Main 通过 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md) 注册 `child.ts` 的 `createFastChildFactory`，子 session 安装相同的请求 hook。创建时捕获实际生效的 fast 状态（session override 优先，否则全局默认），后续父状态变化不改已有 child；child 不注册 `/fast`，不写父 override 或全局文件。不加载本包时 child 请求照常。其他 SDK 消费者只有明确消费该声明才会跟随。Main binding 按 session ID 管理，shutdown 释放全部 binding 和 registration；binding 失败只给诊断，不影响 `/fast` 与主请求注入。
 - 直接调用 `modelRegistry` stream 的扩展绕过此 hook，不受影响。
 - 仅在 fast 生效、`ctx.model.provider === "openai-codex"`、payload 是含字符串 `model` 的对象且没有 `service_tier` 时注入。其他 provider 不变；已有 tier（例如 `models.json` override）优先，原 payload 不被原地修改。
 
@@ -61,4 +61,4 @@ npm run build -w pi-claude-style
 node --test integration/fast-statusline.test.ts
 ```
 
-包内测试覆盖注入、分支恢复、全局默认、写入失败及独立 SDK 的主请求及原生 compaction/直接 stream 不注入边界；跨插件双加载顺序测试见[根 integration](../../integration/README.md)。测试使用临时配置与 faux provider，不发真实 provider 请求，不证明真实服务端性能或人工终端表现。
+包内测试覆盖 child factory 直接注入/不注入、shutdown 后变更声明重新注册、binding 失败降级、分支恢复、全局默认、写入失败及独立 SDK 的主请求及原生 compaction/直接 stream 不注入边界；跨插件双加载顺序测试见[根 integration](../../integration/README.md)。测试使用临时配置与 faux provider，不发真实 provider 请求，不证明真实服务端性能或人工终端表现。

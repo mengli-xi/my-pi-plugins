@@ -32,7 +32,7 @@ test("bash override closes to its owner and the audited child factory reproduces
     assert.equal(resolved.owners[0]!.target.activation, "required-only");
     const entries = resolved.owners.map(owner => ({ owner: owner.owner_id, main_entrypoint: owner.manifest.main_entrypoint.canonical_path,
       child_entrypoint: owner.target.child_entrypoint.canonical_path, sha256: owner.target.child_entrypoint.sha256,
-      tools: [...owner.target.tools], providers: [], hooks: [] }));
+      tools: [...owner.target.tools], providers: [], hooks: [...owner.target.hooks], child_factory: { version: 1 as const, manifest: owner.manifest, target_id: owner.target_id, context: {} }, factory_required: true }));
     const profile = { capabilities: { entries } } as unknown as FrozenProfileV1;
     const input = { profile, agentDir: process.cwd(), sessionId: "bash-child", getBridge: () => undefined };
     const factories = await childExecutionFactories(input);

@@ -5,7 +5,7 @@ interface ClickableComponent extends Component {
   handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined;
 }
 
-/** Copied synchronous presentation contract owned by pi-claude-style. */
+/** Copied synchronous presentation contract owned by the presentation host. */
 const REGISTRY_KEY = Symbol.for("pi.claude-style.custom-entry-presentations.v1");
 
 interface PresentationProvider {

@@ -1,3 +1,5 @@
+import { captureChildFactoryV1, captureEntrypointDescriptorV1, getOrCreateChildCapabilityRegistryV1, type ChildCapabilityBindingHandleV1 } from "pi-runtime-contracts/child-capabilities-v1";
+import { join } from "node:path";
 /**
  * pi-fast — `/fast`, a Claude Code-style fast-output toggle for the OpenAI
  * Codex (ChatGPT OAuth) provider.
@@ -60,6 +62,47 @@ export default function piFast(pi: ExtensionAPI): void {
 
   const globalEnabled = (): boolean => loadEnabled(statePath);
   const effective = (): boolean => sessionOverride ?? globalEnabled();
+
+  const registry = getOrCreateChildCapabilityRegistryV1();
+  const target = { child_entrypoint: captureEntrypointDescriptorV1(join(import.meta.dirname, "child.ts")),
+    child_factory: captureChildFactoryV1(join(import.meta.dirname, "index.ts"), { module: "child.ts", export: "createFastChildFactory", artifacts: ["state.ts"] }),
+    activation: "mirror" as const, commands: [], tools: [], providers: [], hooks: [], requires: [] };
+  const registration = registry.register({ version: 1, manifest: { version: 1, owner_id: "pi-fast", main_entrypoint: captureEntrypointDescriptorV1(join(import.meta.dirname, "index.ts")), targets: { "pi-subagents": target, "pi-side-chat": target } } });
+  const bindings = new Map<string, ChildCapabilityBindingHandleV1>();
+  let generation = 0;
+  const bindSession = (ctx: ExtensionContext): void => {
+    const sessionId = ctx.sessionManager.getSessionId();
+    const bind = (): ChildCapabilityBindingHandleV1 => registry.bind({ version: 1,
+      registrationToken: registration.registrationToken, session_id: sessionId, runtime_generation: ++generation,
+      mode: ctx.mode === "json" ? "print" : ctx.mode, capture_context: () => ({ enabled: effective() }) });
+    try {
+      // Bind first: another registration instance may already own the session, so
+      // only release our own handle after proving the replacement was accepted.
+      const binding = bind();
+      bindings.get(sessionId)?.release();
+      bindings.set(sessionId, binding);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("runtime generation must replace the current binding")) {
+        ctx.ui.notify(`Fast child capability unavailable: ${message}`, "warning");
+        return;
+      }
+      const previous = bindings.get(sessionId);
+      if (!previous) { ctx.ui.notify(`Fast child capability unavailable: ${message}`, "warning"); return; }
+      // Cross-instance stale generation: release the previous handle and retry once.
+      previous.release();
+      bindings.delete(sessionId);
+      try { bindings.set(sessionId, bind()); }
+      catch (retry) { ctx.ui.notify(`Fast child capability unavailable: ${retry instanceof Error ? retry.message : String(retry)}`, "warning"); }
+    }
+  };
+  pi.on("session_start", (_event, ctx) => bindSession(ctx));
+  pi.on("session_shutdown", () => {
+    for (const binding of bindings.values()) binding.release();
+    bindings.clear();
+    registration.release();
+  });
 
   pi.on("before_provider_request", (event, ctx) =>
     applyFastTier(event.payload, ctx.model?.provider, effective()),

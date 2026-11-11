@@ -24,7 +24,7 @@ Pi 加载 `dist/index.js`。构建还生成 `dist/supervisor.js`、`dist/matcher
 
 `dist/child.js` 是 capability descriptor 校验使用的 named SDK factory 导出入口。显式 factory 只注册 `process` tool、ProcessHost 和 Supervisor lifecycle，不安装 `/ps`、strip、statusline 或 TUI，也不安装 Main/Side 的 compaction snapshot helper。
 
-同进程 SDK 装配使用 `dist/child-factory.js` 的 `createProcessesChildFactory({ sessionScopeId, agentDir, getBridge })`。`sessionScopeId` 为该 session ID，`getBridge(scopeId)` 注入 `ProcessWaitBridgeV2`，不需要 child 环境变量。每次安装只拥有对应 scope 的 Host、通知和 shutdown；空 scope 不启动 helper。`dist/child.js` 同时导出该 named factory，保留 SDK catalog 使用的 descriptor 路径与 hash，不依赖旧 OS 环境变量包装。
+同进程 SDK 装配使用 `dist/child-factory.js` 的 `createProcessesChildFactory({ sessionScopeId, agentDir, getBridge })`。`sessionScopeId` 为该 session ID，`getBridge(scopeId)` 注入 `ProcessWaitBridgeV2`，不需要 child 环境变量。每次安装只拥有对应 scope 的 Host、通知和 shutdown；空 scope 不启动 helper。`dist/child.js` 同时导出该 named factory，保留显式 descriptor 路径与 hash；Main 为 Subagents/Side 分别声明模块、export 和完整性证明，格式与通用校验只写在 [child 合同](../../pi-runtime-contracts/docs/child-capabilities-v1.md)，不依赖旧 OS 环境变量包装。
 
 `turn` attention 先经共享的 `pi-runtime-contracts/process-wait-bridge-v2` 请求 Subagent Host admission。只有当前 Task 仍 active，或仍 `waiting_on: process` 并取得 active-only grant，才可触发 child turn。Task 已 final/settled 后到达的 process terminal 只追加 TUI-only lifecycle entry，不进入模型上下文，也不重新唤醒 child。Process wait 只恢复 child 一次，child Completion 再唤醒 direct parent。
 

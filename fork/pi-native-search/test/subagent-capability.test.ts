@@ -48,7 +48,7 @@ function fixture(child: boolean, snapshot = { enabled: true, searchEnabled: true
   };
 }
 
-test("Main registers search tools, command, and Subagent child capability", async () => {
+test("Main registers search tools, command, and both child factory targets", async () => {
   const f = fixture(false);
   try {
     await f.emit("session_start");
@@ -56,10 +56,22 @@ test("Main registers search tools, command, and Subagent child capability", asyn
     assert.deepEqual(f.commands, ["search"]);
     assert.deepEqual(f.active.sort(), ["web_fetch", "web_search"]);
     const registration = getOrCreateChildCapabilityRegistryV1().snapshot("search-main").registrations.find((entry) => entry.owner_id === "pi-native-search");
-    assert.deepEqual(Object.keys(registration?.manifest.targets ?? {}), ["pi-subagents"]);
+    assert.deepEqual(Object.keys(registration?.manifest.targets ?? {}), ["pi-side-chat", "pi-subagents"]);
     assert.deepEqual(registration?.manifest.targets["pi-subagents"]?.tools, ["web_fetch", "web_search"]);
     assert.deepEqual(registration?.manifest.targets["pi-subagents"]?.commands, []);
     assert.match(registration?.manifest.targets["pi-subagents"]?.child_entrypoint.canonical_path ?? "", /extensions\/child\.ts$/u);
+    for (const target of Object.values(registration!.manifest.targets)) {
+      assert.equal(target.activation, "required-only");
+      assert.deepEqual(target.tools, ["web_fetch", "web_search"]);
+      assert.deepEqual(target.commands, []);
+      assert.deepEqual(target.providers, []);
+      assert.equal(target.child_factory?.package_name, "pi-native-search");
+      assert.equal(target.child_factory?.module, "extensions/child.ts");
+      assert.equal(target.child_factory?.export, "createRegisteredSearchChildFactory");
+      assert.deepEqual(target.child_factory?.artifacts, ["extensions/index.ts"]);
+      assert.match(target.child_factory?.files[1]?.canonical_path ?? "", /extensions\/index\.ts$/u);
+      assert.match(target.child_factory?.files[1]?.sha256 ?? "", /^[a-f0-9]{64}$/u);
+    }
     await f.emit("session_shutdown");
   } finally { f.restore(); }
 });

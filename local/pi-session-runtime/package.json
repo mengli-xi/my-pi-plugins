@@ -9,6 +9,7 @@
     "./effective-context": "./src/effective-context.ts",
     "./native-child-context": "./src/native-child-context.ts",
     "./session-assembly": "./src/session-assembly.ts",
+    "./child-factory": "./src/child-factory.ts",
     "./factory-loader": "./src/factory-loader.ts",
     "./sdk-provider": "./src/sdk-provider.ts",
     "./managed-interactive": "./src/managed-interactive.ts",

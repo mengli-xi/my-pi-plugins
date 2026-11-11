@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   captureEntrypointDescriptorV1,
+  captureChildFactoryV1,
   getOrCreateChildCapabilityRegistryV1,
   type ChildCapabilityBindingHandleV1,
 } from "pi-runtime-contracts/child-capabilities-v1";
@@ -10,6 +11,7 @@ export function installClaudeStyleChildCapability(distDirectory: string) {
   const registry = getOrCreateChildCapabilityRegistryV1();
   const childEntrypoint = captureEntrypointDescriptorV1(join(distDirectory, "child.ts"));
   const target = {
+    child_factory: captureChildFactoryV1(join(distDirectory, "index.ts"), { kind: "presentation", module: "dist/child.ts", export: "createClaudeStyleChildExtension" }),
     child_entrypoint: childEntrypoint,
     activation: "mirror" as const,
     commands: [],

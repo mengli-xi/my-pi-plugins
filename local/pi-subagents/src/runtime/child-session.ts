@@ -95,10 +95,10 @@ export class ChildSession {
     const checkProviders = () => { for (const check of providerChecks) check(); };
     checkProviders();
     const tools = createChildTools(input);
-    let cancelProcesses: (() => Promise<void>) | undefined;
+    const cancellations = new Map<string, () => Promise<void>>();
     const disposers = new Set<() => void>();
     const cleanup = () => { for (const dispose of disposers) dispose(); disposers.clear(); };
-    const extensions = await childExecutionFactories({ ...input, onExecutionDispose: dispose => disposers.add(dispose), sessionId: input.host.identity.sessionId, getBridge: tools.getBridge, onTaskCancel: cancel => { cancelProcesses = cancel; } });
+    const extensions = await childExecutionFactories({ ...input, onExecutionDispose: dispose => disposers.add(dispose), sessionId: input.host.identity.sessionId, getBridge: tools.getBridge, onTaskCancel: (cancel, owner) => { cancellations.set(owner, cancel); } });
     const view = new ManagedInteractive(input.host.report, input.host.interrupt);
     const taskName = input.host.tools.identity().taskPath.split("/").at(-1)!;
     // CC's light run recorder belongs to execution, even before the first UI. Its renderer stays detached.
@@ -127,7 +127,7 @@ export class ChildSession {
       }
       if (input.newExecution) await tools.conversation.activateNewExecution();
       runtime.session.setActiveToolsByName([...active]);
-      return new ChildSession(input.host, runtime, tools, view, () => cancelProcesses, cleanup, checkProviders);
+      return new ChildSession(input.host, runtime, tools, view, () => async () => { await Promise.all([...cancellations.values()].map(cancel => cancel())); }, cleanup, checkProviders);
     } catch (error) { try { await runtime.dispose(); } finally { cleanup(); } throw error; }
   }
   async preflight(systemPromptBytes: number): Promise<void> {

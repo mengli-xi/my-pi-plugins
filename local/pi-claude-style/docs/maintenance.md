@@ -6,7 +6,7 @@
 
 Pi 唯一加载第三方 factory，CC 只用公开 `registerToolRenderer` resolver 装饰 renderer。不得恢复 hosted loader、`ExtensionAPI` proxy、settings discovery、旧 tool-definition lookup 或 execution definitions。新工具默认通用 grouped，native 是需要说明理由的例外；adapter 拒绝/报错保留原生或通用语义 fallback，不改变执行结果。
 
-七个 built-in 工具的默认 active 集合由 profile owner 用 `defaultTools` 配置，CC 不调用 `setActiveTools` 抢 CLI/SDK 的冻结选择，不放宽 timeout owner 的 schema。presentation descriptor 的 tools/providers/commands 为空，Subagents/Side exact guard 必须同步。
+七个 built-in 工具的默认 active 集合由 profile owner 用 `defaultTools` 配置，CC 不调用 `setActiveTools` 抢 CLI/SDK 的冻结选择，不放宽 timeout owner 的 schema。presentation descriptor 的 tools/providers/commands 为空，由 manifest 校验和 Subagents/Side 共用的 loader 注册拦截保持这一约束，见 [child 合同](../../pi-runtime-contracts/docs/child-capabilities-v1.md)。
 
 Goal/Todo/Processes/Capacity 的持久化、真实计量、认证和网络由领域 owner 负责。CC 只读带版本 semantic DTO，校验 session/shape/version；broadcast 配同步 request/reply，领域 owner 缺席时降级，不反向启动它。一个 channel 有一个 schema owner，一个 statusline key 有一个 producer；`processes` 领域归 Processes，展示贡献唯一归 CC。
 

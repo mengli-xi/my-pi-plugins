@@ -34,5 +34,6 @@ npm test -w pi-runtime-contracts
 ## 文档
 
 - [docs/continuation-v1.md](docs/continuation-v1.md)：lease/Wake API 与同步 consumer receipt 合同。
+- [docs/child-capabilities-v1.md](docs/child-capabilities-v1.md)：普通 child factory 声明、冻结、装载、权限与失败合同。
 - [docs/registries.md](docs/registries.md)：共享 registry 的版本、ABI 和降级。
 - [旧 ABI fixture](test/fixtures/child-registry-abi1/README.md)：混合代际测试为何保留旧实现。

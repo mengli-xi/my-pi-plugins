@@ -51,6 +51,7 @@ export function createChildTools(input: { host: ChildHostPort; profile: FrozenPr
     pi.on("session_start", (_event, ctx) => { conversation!.bind(ctx); });
     lifecycle = installChildLifecycle(pi, {
       ready: host.ready, taskId: host.taskId,
+      processWaitOwnerIds: () => profile.capabilities.entries.filter(entry => entry.hooks.includes("execution/process-wait-v2")).map(entry => entry.owner),
       identity: () => ({ ...host.identity, ownerKey: host.identity.mainSessionId }),
       frozenModel: () => ({ provider: profile.provider, modelId: profile.model, reasoningEffort: profile.reasoning_effort, serviceTier: profile.service_tier }),
       processAdmission: host.processAdmission, recordProcessWait: host.recordProcessWait, settled: host.settled, report: host.report, shutdown: host.shutdown,

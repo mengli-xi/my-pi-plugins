@@ -1,6 +1,5 @@
 import { VERSION } from "@earendil-works/pi-coding-agent";
-import { realpathSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { isSyntheticToolSourcePath, sourcePath } from "pi-runtime-contracts/child-capabilities-v1";
 import { supportsSdkProviderV1 } from "./sdk-provider.js";
 import type { ResolvedAgentRoleV1 } from "../roles/types.js";
 import {
@@ -40,11 +39,7 @@ function cleanLines(value: readonly string[] | undefined): readonly string[] {
   return Object.freeze(value.map((line) => cleanText(line, "tool prompt guideline")));
 }
 function canonicalToolParameters(value: unknown): unknown { const projected = JSON.parse(JSON.stringify(value)) as unknown; return JSON.parse(canonicalJson(projected)) as unknown; }
-function sourcePath(source: ToolSourceInfoV1): string {
-  const candidate = isAbsolute(source.path) ? source.path : source.baseDir ? resolve(source.baseDir, source.path) : "";
-  if (!candidate) throw new Error("extension tool source has no canonical base");
-  return realpathSync(candidate);
-}
+
 
 export function resolveToolCapabilityClosureV1(input: {
   readonly activeToolNames: readonly string[];
@@ -103,7 +98,7 @@ export function resolveToolCapabilityClosureV1(input: {
     else if (tool.sourceInfo.path === `<sdk:${name}>`) {
       if (!wildcard) throw new Error(`SDK tool is not reproducible: ${name}`);
       diagnostics.push(Object.freeze({ code: "wildcard-omitted", tool: name, reason: "sdk-tool" })); continue;
-    } else if (!tool.sourceInfo.path.startsWith("<")) {
+    } else if (!isSyntheticToolSourcePath(tool.sourceInfo.path)) {
       const path = sourcePath(tool.sourceInfo);
       const provenanceOwner = byEntrypoint.get(path);
       if (!provenanceOwner) {

@@ -78,6 +78,8 @@ name 在 live process 中必须唯一，最多 16 个 terminal column。kind 为
 
 SDK child/Side factory 的导出、scope ownership 和 lazy runtime 约定见[宿主与界面合同](docs/PI_HOST_DEPENDENCIES.md)。各可选插件独立加载或缺失都不能授予额外执行权限。
 
+普通 child factory 的声明与共享装载规则见 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md)；外部 provider grant 不由这个声明授予。
+
 ## 验证
 
 在仓库根目录运行：

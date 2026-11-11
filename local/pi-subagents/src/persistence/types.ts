@@ -11,7 +11,7 @@ export interface RoleSnapshotV1 { name: string; source: "built-in" | "user" | "p
 // requires this proof. The capability fingerprint includes it as structured data.
 export interface ExecutionFactoryProofV1 { version: 1; canonical_path: string; sha256: string; exports: string[] }
 export interface BuiltinExtensionProofV1 { version: 1; pi_version: string }
-export interface CapabilityEntryV1 { builtin_proof?: BuiltinExtensionProofV1; execution_factory?: ExecutionFactoryProofV1; sdk_provider?: import("pi-session-runtime/sdk-provider").SdkProviderProofV1; owner: string; main_entrypoint: string; child_entrypoint: string; tools: string[]; providers: string[]; hooks: string[]; sha256: string }
+export interface CapabilityEntryV1 { child_factory?: import("pi-runtime-contracts/child-capabilities-v1").ChildFactoryProofV1; factory_required?: boolean; builtin_proof?: BuiltinExtensionProofV1; execution_factory?: ExecutionFactoryProofV1; sdk_provider?: import("pi-session-runtime/sdk-provider").SdkProviderProofV1; owner: string; main_entrypoint: string; child_entrypoint: string; tools: string[]; providers: string[]; hooks: string[]; sha256: string }
 export interface CapabilityToolDefinitionV1 { name: string; definition_sha256: string; owner_id?: string }
 export interface CapabilitySnapshotV1 { version: 1; fingerprint: string; active_tools: string[]; tool_definitions: CapabilityToolDefinitionV1[]; entries: CapabilityEntryV1[] }
 export interface FrozenProfileV1 {

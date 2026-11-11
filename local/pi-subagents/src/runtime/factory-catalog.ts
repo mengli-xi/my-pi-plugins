@@ -1,60 +1,61 @@
-import { dirname, join, basename } from "node:path";
-import * as piAgentCore from "@earendil-works/pi-agent-core";
-import * as typebox from "typebox";
-import { loadApprovedFactoryModule } from "pi-session-runtime/factory-loader";
-async function approved(path: string, names: string[], expectedSha256?: string): Promise<Record<string, (...args: any[]) => any>> {
-  const assembly = await import("pi-session-runtime/session-assembly");
-  // Approved factories must use the SDK that owns session assembly, not this
-  // consumer's separately resolved Pi copy. Keep the shared identity fail-closed.
-  const publicModules = { ...assembly.getSessionAssemblyPublicModules(), "@earendil-works/pi-agent-core": piAgentCore, "typebox": typebox };
-  const { captureEntrypointDescriptorV1 } = await import("../capabilities/manifest.js");
-  const descriptor = expectedSha256 === undefined ? undefined : captureEntrypointDescriptorV1(path);
-  if (descriptor && descriptor.sha256 !== expectedSha256) throw new Error(`capability-drift: execution factory changed: ${path}`);
-  return await loadApprovedFactoryModule({ path, exports: names, publicModules, ...(descriptor ? { codeDescriptors: [descriptor] } : {}) }) as Record<string, (...args: any[]) => any>;
-}
-import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import type { ExtensionFactory, InlineExtension } from "@earendil-works/pi-coding-agent";
 import type { ProcessWaitBridgeV2 } from "pi-runtime-contracts/process-wait-bridge-v2";
 import type { FrozenProfileV1 } from "../persistence/types.js";
 import type { ViewLifecycle } from "pi-session-runtime/managed-interactive";
 import { loadSdkProviderFactoryV1, sdkProviderBindingFenceV1 } from "pi-session-runtime/sdk-provider";
 import { getOrCreateChildCapabilityRegistryV1, type ChildCapabilityRegistrySnapshotV1 } from "../capabilities/registry.js";
-import { revalidateExecutionFactoryV1 } from "../capabilities/execution-factory.js";
+import { loadChildFactoryV1 } from "pi-session-runtime/child-factory";
+import * as piAgentCore from "@earendil-works/pi-agent-core";
+import * as typebox from "typebox";
 import { builtinRoleApiV1, validateBuiltinEntryV1 } from "../capabilities/builtin.js";
 
-// CC's presentation-only descriptor owns no tools/providers; execution claims
-// fail closed. Retired Pinned entries keep the same empty presentation shape:
-// skip them without reading their deleted entrypoint or treating them as tools.
 function isPresentationEntry(entry: FrozenProfileV1["capabilities"]["entries"][number]) {
-  return entry.hooks.some(hook => hook.startsWith("presentation/")) && entry.providers.length === 0
-    && entry.hooks.every(hook => hook.startsWith("presentation/"))
-    && entry.tools.length === 0;
+  return entry.child_factory?.manifest.targets[entry.child_factory.target_id]?.child_factory?.kind === "presentation"
+    || !entry.child_factory && entry.hooks.length > 0 && entry.hooks.every(hook => hook.startsWith("presentation/")) && entry.providers.length === 0 && entry.tools.length === 0;
 }
-
+function matchesDeclaredFactory(entry: FrozenProfileV1["capabilities"]["entries"][number]): boolean {
+  const proof = entry.child_factory;
+  if (!proof || proof.target_id !== "pi-subagents") return false;
+  const declared = proof.manifest.targets[proof.target_id];
+  return !!declared && proof.manifest.owner_id === entry.owner
+    && proof.manifest.main_entrypoint.canonical_path === entry.main_entrypoint
+    && declared.child_entrypoint.canonical_path === entry.child_entrypoint
+    && declared.child_entrypoint.sha256 === entry.sha256
+    && JSON.stringify(declared.tools) === JSON.stringify(entry.tools)
+    && JSON.stringify(declared.providers.map(provider => provider.provider_id)) === JSON.stringify(entry.providers)
+    && JSON.stringify(declared.hooks) === JSON.stringify(entry.hooks);
+}
+function factoryMismatch(entry: FrozenProfileV1["capabilities"]["entries"][number], reason: string): void {
+  const message = `capability-unavailable: ${reason}`;
+  if (entry.factory_required) throw new Error(message);
+  console.warn(`child factory ${entry.owner}: ${message}; skipped`);
+}
+async function factoryPublicModules() {
+  const assembly = await import("pi-session-runtime/session-assembly");
+  return { ...assembly.getSessionAssemblyPublicModules(), "@earendil-works/pi-agent-core": piAgentCore, typebox };
+}
 export async function childPresentationFactories(profile: FrozenProfileV1, lifecycle: ViewLifecycle, taskName: string): Promise<ExtensionFactory[]> {
   const result: ExtensionFactory[] = [];
-  for (const entry of profile.capabilities.entries.filter(item => item.hooks.includes("presentation/claude-style-v1"))) {
-    const owner = entry.owner;
-    if (!isPresentationEntry(entry)) throw new Error("capability-unavailable: invalid child presentation capability");
-    const path = entry.child_entrypoint, directory = dirname(path);
-    // CC's precompiled .ts entry keeps Pi 1.5 loader/host component identity.
-    // Only this audited dist target is accepted; other suffixes fail closed.
-    if (basename(path) !== "child.ts" || basename(directory) !== "dist") throw new Error(`capability-unavailable: unknown presentation target ${path}`);
-    const manifest = JSON.parse(await readFile(join(dirname(directory), "package.json"), "utf8"));
-    if (manifest.name !== owner || createHash("sha256").update(await readFile(path)).digest("hex") !== entry.sha256) throw new Error(`capability-drift: ${owner}`);
-    const name = "createClaudeStyleChildExtension";
-    const module = await approved(path, [name]);
-    result.push(module[name]!({ target: "subagent", taskName, returnLabel: "Alt+/ Main", readOnlyStatusline: true, viewLifecycle: lifecycle }));
+  for (const entry of profile.capabilities.entries.filter(isPresentationEntry)) {
+    if (!entry.child_factory) continue; // Retired presentation remains readable, not executable.
+    if (!matchesDeclaredFactory(entry)) {
+      factoryMismatch(entry, "invalid child presentation proof/entry mismatch"); continue;
+    }
+    const factory = await loadChildFactoryV1({ proof: entry.child_factory, publicModules: await factoryPublicModules(), required: entry.factory_required,
+      options: { target: "subagent", taskName, returnLabel: "Alt+/ Main", readOnlyStatusline: true, viewLifecycle: lifecycle } });
+    if (factory) result.push(factory);
   }
   return result;
 }
 
-/** Audited mapping only. An owner name alone never authorizes an arbitrary module. */
-export async function childExecutionFactories(input: { profile: FrozenProfileV1; agentDir: string; sessionId: string; getBridge: (sessionId: string) => ProcessWaitBridgeV2 | undefined; onTaskCancel?: (cancel: () => Promise<void>) => void; registry?: ChildCapabilityRegistrySnapshotV1; parentEvents?: import("@earendil-works/pi-coding-agent").ExtensionAPI["events"]; onExecutionDispose?: (dispose: () => void) => void }): Promise<InlineExtension[]> {
+/** Builtins and external providers retain their separate authorization paths. */
+export async function childExecutionFactories(input: { profile: FrozenProfileV1; agentDir: string; sessionId: string; getBridge: (sessionId: string) => ProcessWaitBridgeV2 | undefined; onTaskCancel?: (cancel: () => Promise<void>, owner: string) => void; registry?: ChildCapabilityRegistrySnapshotV1; parentEvents?: import("@earendil-works/pi-coding-agent").ExtensionAPI["events"]; onExecutionDispose?: (dispose: () => void) => void }): Promise<InlineExtension[]> {
   const factories: InlineExtension[] = [], builtins = new Set<string>();
   for (const entry of input.profile.capabilities.entries) {
-    if (isPresentationEntry(entry)) continue;
+    if (isPresentationEntry(entry)) {
+      if (entry.child_factory && !matchesDeclaredFactory(entry)) factoryMismatch(entry, "invalid child presentation proof/entry mismatch");
+      continue;
+    }
     if ([entry.owner, entry.main_entrypoint, entry.child_entrypoint].some(value => typeof value === "string" && value.startsWith("builtin:"))) {
       const { getSessionAssemblyPublicModules } = await import("pi-session-runtime/session-assembly");
       const sdk = getSessionAssemblyPublicModules()["@earendil-works/pi-coding-agent"];
@@ -81,32 +82,19 @@ export async function childExecutionFactories(input: { profile: FrozenProfileV1;
         fence: sdkProviderBindingFenceV1(input.registry, () => getOrCreateChildCapabilityRegistryV1().snapshot(input.registry!.session_id), entry.owner, proof), onDispose: input.onExecutionDispose }));
       continue;
     }
-    if (entry.providers.length) throw new Error(`capability-unavailable: frozen provider has no SDK proof: ${entry.owner}`);
-    const target = entry.child_entrypoint;
-    const bytes = await readFile(target);
-    if (createHash("sha256").update(bytes).digest("hex") !== entry.sha256) throw new Error(`capability-drift: ${entry.owner}`);
-    const directory = dirname(target), root = dirname(directory);
-    const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { name?: string };
-    if (entry.owner === "pi-processes" && manifest.name === "pi-processes" && basename(target) === "child.js" && basename(directory) === "dist") {
-      const proof = await revalidateExecutionFactoryV1(entry);
-      const module = await approved(proof.canonical_path, proof.exports, proof.sha256);
-      factories.push(pi => {
-        const factory = module.createProcessesChildFactory({ agentDir: input.agentDir, sessionScopeId: input.sessionId, getBridge: input.getBridge });
-        if (typeof factory.cancelPending !== "function") throw new Error("capability-unavailable: Processes child factory has no Task cancellation port");
-        factory(pi);
-        input.onTaskCancel?.(() => factory.cancelPending());
-      });
-    } else if (entry.owner === "pi-native-search" && manifest.name === "pi-native-search" && basename(target) === "child.ts" && basename(directory) === "extensions") {
-      const proof = await revalidateExecutionFactoryV1(entry);
-      const module = await approved(proof.canonical_path, proof.exports, proof.sha256);
-      factories.push(module.createSearchChildFactory(module.loadSearchConfig(input.agentDir), { backendEvents: input.parentEvents }));
-    } else if (entry.owner === "pi-bash-timeout" && manifest.name === "pi-bash-timeout" && basename(target) === "child.ts" && basename(directory) === "extensions") {
-      // Pi 1.5's same-name bash override is reproduced only by this declared
-      // TS target and named factory. Unknown package/path/export or hash drift
-      // fails closed through the audited catalog and approved loader.
-      const module = await approved(target, ["createBashTimeoutChildFactory"]);
-      factories.push(module.createBashTimeoutChildFactory());
-    } else throw new Error(`capability-unavailable: unknown SDK child target ${entry.owner}: ${target}`);
+    if (!entry.child_factory) {
+      if (entry.providers.length) throw new Error(`capability-unavailable: frozen provider has no SDK proof: ${entry.owner}`);
+      if (entry.tools.length > 0) throw new Error(`capability-unavailable: frozen execution factory proof is missing: ${entry.owner}; prepare a new profile`);
+      console.warn(`child factory ${entry.owner}: declaration missing; skipped`);
+      continue;
+    }
+    if (!matchesDeclaredFactory(entry)) {
+      factoryMismatch(entry, "child factory proof/entry mismatch"); continue;
+    }
+    const factory = await loadChildFactoryV1({ proof: entry.child_factory, publicModules: await factoryPublicModules(), required: entry.factory_required,
+      options: { target: "subagent", agentDir: input.agentDir, sessionScopeId: input.sessionId, getBridge: input.getBridge, backendEvents: input.parentEvents },
+      onCancel: cancel => input.onTaskCancel?.(cancel, entry.owner) });
+    if (factory) factories.push(factory);
   }
   return factories;
 }

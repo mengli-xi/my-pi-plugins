@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { captureEntrypointDescriptorV1 as capture, getOrCreateChildCapabilityRegistryV1, validateChildCapabilityManifestV1 } from "pi-runtime-contracts/child-capabilities-v1";
+import { captureChildFactoryV1, captureEntrypointDescriptorV1 as capture, getOrCreateChildCapabilityRegistryV1, validateChildCapabilityManifestV1 } from "pi-runtime-contracts/child-capabilities-v1";
 import { approveSdkProviderV1, sdkProviderApprovalV1 } from "pi-session-runtime/sdk-provider";
 import { ViewLifecycle } from "pi-session-runtime/managed-interactive";
 import { childExecutionFactories, childPresentationFactories } from "../../src/runtime/factory-catalog.ts";
@@ -13,7 +13,7 @@ import { childViewExtension } from "../../src/runtime/child-session.ts";
 import type { FrozenProfileV1 } from "../../src/persistence/types.ts";
 
 test("old frozen Pinned entries need no file while CC entrypoint drift remains enforced", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "cc-presentation-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "cc-presentation-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "dist"));
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "pi-claude-style", type: "module" }));
@@ -23,10 +23,11 @@ import * as tui from "@earendil-works/pi-tui";
 export function createClaudeStyleChildExtension() { return pi => pi.capture(codingAgent.AgentSession, ai.normalizeContext, tui.Container); }`;
   const path = join(root, "dist/child.ts");
   await writeFile(path, source);
+  const childFactory = { version: 1 as const, target_id: "pi-subagents", context: {}, manifest: { version: 1 as const, owner_id: "pi-claude-style", main_entrypoint: capture(path), targets: { "pi-subagents": { child_entrypoint: capture(path), child_factory: captureChildFactoryV1(path, { module: "dist/child.ts", export: "createClaudeStyleChildExtension", kind: "presentation" }), activation: "mirror" as const, commands: [], tools: [], providers: [], hooks: ["presentation/claude-style-v1"], requires: [] } } } };
   const profile = { capabilities: { entries: [
     { owner: "pi-pinned-layout", providers: [], tools: [], hooks: ["presentation/pinned-layout-v1"],
       child_entrypoint: join(root, "retired/dist/child.js"), sha256: "0".repeat(64) },
-    { owner: "pi-claude-style", providers: [], tools: [],
+    { owner: "pi-claude-style", main_entrypoint: path, providers: [], tools: [], child_factory: childFactory, factory_required: true,
       hooks: ["presentation/claude-style-v1"], child_entrypoint: path,
       sha256: createHash("sha256").update(source).digest("hex") },
   ] } } as unknown as FrozenProfileV1;
@@ -47,9 +48,8 @@ export function createClaudeStyleChildExtension() { return pi => pi.capture(codi
     const changed = { ...profile, capabilities: { ...profile.capabilities,
       entries: profile.capabilities.entries.map(entry => entry.owner === "pi-claude-style" ? { ...entry, ...change } : entry),
     } };
-    if (change.hooks) assert.deepEqual(await childPresentationFactories(changed, lifecycle, "old-child"), []);
-    else await assert.rejects(childPresentationFactories(changed, lifecycle, "old-child"), /invalid child presentation/);
-    await assert.rejects(childExecutionFactories({ profile: changed, agentDir: root, sessionId: "old-child", getBridge: () => undefined }), /unknown SDK child target|no SDK proof/);
+    await assert.rejects(childPresentationFactories(changed, lifecycle, "old-child"), /invalid child presentation/);
+    await assert.rejects(childExecutionFactories({ profile: changed, agentDir: root, sessionId: "old-child", getBridge: () => undefined }), /invalid child presentation|proof\/entry mismatch/);
   }
   for (const target of ["dist/child.js", "src/child.ts"]) {
     const wrongPath = join(root, target);
@@ -58,13 +58,13 @@ export function createClaudeStyleChildExtension() { return pi => pi.capture(codi
     const changed = { ...profile, capabilities: { ...profile.capabilities,
       entries: profile.capabilities.entries.map(entry => entry.owner === "pi-claude-style" ? { ...entry, child_entrypoint: wrongPath } : entry),
     } };
-    await assert.rejects(childPresentationFactories(changed, lifecycle, "old-child"), /unknown presentation target/);
+    await assert.rejects(childPresentationFactories(changed, lifecycle, "old-child"), /proof\/entry mismatch/);
   }
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "other-presentation", type: "module" }));
-  await assert.rejects(childPresentationFactories(profile, lifecycle, "old-child"), /capability-drift: pi-claude-style/);
+  await assert.rejects(childPresentationFactories(profile, lifecycle, "old-child"), /capability-drift|live file identity/);
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "pi-claude-style", type: "module" }));
   await writeFile(path, source + "\n// rebuilt");
-  await assert.rejects(childPresentationFactories(profile, lifecycle, "old-child"), /capability-drift: pi-claude-style/);
+  await assert.rejects(childPresentationFactories(profile, lifecycle, "old-child"), /capability-drift|live file identity/);
 });
 
 test("SDK catalog executes only an explicitly granted factory and rejects old provider-only profiles", async t => {
@@ -108,13 +108,14 @@ test("absent presentation uses native Pi while a differently named owner can pro
   await extension({ registerMessageRenderer: (name: string, fn: any) => { assert.equal(name, "subagent-task-resume"); renderer = fn; } } as never);
   await view.prepare(); await view.prepare(); assert.equal(nativeBindings, 1);
   assert.ok(renderer({ content: "native notice" }, {}, { fg: (_tone: string, text: string) => text }));
-  const root = await mkdtemp(join(tmpdir(), "presentation-standin-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "presentation-standin-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "dist"));
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "presentation-standin", type: "module" }));
   const source = `export function createClaudeStyleChildExtension(options) { return pi => pi.capture(options); }`;
   const path = join(root, "dist/child.ts"); await writeFile(path, source);
-  const profile = { capabilities: { entries: [{ owner: "presentation-standin", providers: [], tools: [], hooks: ["presentation/claude-style-v1"], child_entrypoint: path, sha256: createHash("sha256").update(source).digest("hex") }] } } as unknown as FrozenProfileV1;
+  const childFactory = { version: 1 as const, target_id: "pi-subagents", context: {}, manifest: { version: 1 as const, owner_id: "presentation-standin", main_entrypoint: capture(path), targets: { "pi-subagents": { child_entrypoint: capture(path), child_factory: captureChildFactoryV1(path, { module: "dist/child.ts", export: "createClaudeStyleChildExtension", kind: "presentation" }), activation: "mirror" as const, commands: [], tools: [], providers: [], hooks: ["presentation/claude-style-v1"], requires: [] } } } };
+  const profile = { capabilities: { entries: [{ child_factory: childFactory, main_entrypoint: path, owner: "presentation-standin", providers: [], tools: [], hooks: ["presentation/claude-style-v1"], child_entrypoint: path, sha256: createHash("sha256").update(source).digest("hex") }] } } as unknown as FrozenProfileV1;
   const lifecycle = new ViewLifecycle(), factories = await childPresentationFactories(profile, lifecycle, "child");
   let options: any; await factories[0]!({ capture: (value: any) => { options = value; } } as never);
   assert.equal(options.target, "subagent"); assert.equal(options.taskName, "child"); assert.equal(options.viewLifecycle, lifecycle);

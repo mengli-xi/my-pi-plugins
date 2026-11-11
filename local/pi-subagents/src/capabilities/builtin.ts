@@ -31,7 +31,7 @@ export function validateBuiltinEntryV1(entry: CapabilityEntryV1, profile: Frozen
   const token = entry.owner;
   if (!isBuiltinExtensionV1(token)) throw new Error(`capability-unavailable: unsupported built-in child owner: ${token}`);
   if (entry.main_entrypoint !== token || entry.child_entrypoint !== token
-    || entry.providers.length || entry.hooks.length || entry.sdk_provider || entry.execution_factory || !entry.builtin_proof
+    || entry.providers.length || entry.hooks.length || entry.sdk_provider || entry.child_factory || entry.execution_factory || !entry.builtin_proof
     || entry.builtin_proof.version !== 1 || entry.builtin_proof.pi_version !== piVersion || entry.sha256 !== builtinEntrypointDigestV1(token, piVersion)
     || !entry.tools.length || new Set(entry.tools).size !== entry.tools.length) throw new Error(`capability-unavailable: invalid frozen built-in proof: ${token}`);
   const definitions = profile.capabilities.tool_definitions.filter(tool => tool.owner_id === token);

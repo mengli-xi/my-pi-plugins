@@ -18,7 +18,7 @@
 
 ## 可选协作与降级
 
-显式 factory/模型/工具由调用方批准，ambient 发现关闭。CC presentation 可选。原版 Pi 1.5.0 可交接命名主题视图但不保证主题热更新，首次提示；补丁双面能力匹配才启用热更新，单面/未知拒绝，详见主题合同。
+普通 factory 按 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md) 的已加载声明装载，模型/工具仍由调用方投影；外部 SDK provider 保持独立 grant，ambient 发现关闭。presentation 可选。原版 Pi 1.5.0 可交接命名主题视图但不保证主题热更新，首次提示；补丁双面能力匹配才启用热更新，单面/未知拒绝，详见主题合同。
 
 ## 验证
 

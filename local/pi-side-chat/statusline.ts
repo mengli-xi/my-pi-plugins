@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CacheObservation } from "./cache-observation.ts";
 
-/** Copied contract owned by pi-claude-style; see docs/pi/events.md. */
+/** Copied contract owned by the presentation host; see docs/pi/events.md. */
 const STATUS_LINE_ROW_CHANNEL = "statusline:row";
 const STATUS_LINE_ROW_KEY = "side-chat";
 const FALLBACK_WIDGET_KEY = "side-chat-status";
