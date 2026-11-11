@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -7,6 +8,7 @@ import xterm from "@xterm/headless";
 import { installedPiVersion, piBin } from "../../../scripts/pi-checks.mjs";
 
 const binary = piBin();
+assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(), installedPiVersion());
 const artifactRoot = process.env.CC_CHILD_UI_ARTIFACTS ?? mkdtempSync(join(tmpdir(), "cc-child-ui-"));
 async function runScenario(scenario) {
 const root = join(artifactRoot, scenario);

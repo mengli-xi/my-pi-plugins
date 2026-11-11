@@ -25,6 +25,7 @@ try {
   if (!existsSync(binary)) {
     throw new Error(`找不到 Pi CLI：${binary}。先在仓库根运行 bun install，或用 PI_BIN 指定可执行文件。`);
   }
+  // 冷启动或机器繁忙时 pi --version 可能要几十秒；宁可多等，避免长门禁里误判。
   const version = execFileSync(binary, ["--version"], { env, encoding: "utf8", timeout: 120_000 }).trim();
   if (version !== installedPiVersion()) throw new Error(`Pi CLI ${version} 与已安装 SDK ${installedPiVersion()} 不一致：${binary}`);
   for (const [command, ...args] of commands) {

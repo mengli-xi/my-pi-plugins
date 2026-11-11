@@ -143,7 +143,11 @@ export async function main(args) {
     const peers = Object.entries(pkg.peerDependencies ?? {}).filter(([name]) => isPiDependency(name));
     if (!pkg.directory.startsWith("fork/")) continue;
     for (const [name, range] of peers) {
-      report.manual.push({ package: pkg.name, name, range, reason: "fork 包 peer 不自动改写；如按目标版本修改，须同步记入该 fork 的 LOCAL_PATCHES.md" });
+      // "*" 总能覆盖目标版本；简单范围改写后不变说明已对齐，都不再提示。
+      if (range === "*") continue;
+      const aligned = updatePiVersions({ peerDependencies: { [name]: range } }, options.version, { peers: true });
+      if (!aligned.manual.length && aligned.manifest.peerDependencies[name] === range) continue;
+      report.manual.push({ package: pkg.name, name, range, reason: "fork 包 peer 保持上游原样，不自动改写；确认它是否覆盖目标版本，要改就同步记入该 fork 的 LOCAL_PATCHES.md" });
     }
   }
   const step = async (stage, pkg, item, command, commandArgs, cwd = checkout, extraEnv = {}) => {

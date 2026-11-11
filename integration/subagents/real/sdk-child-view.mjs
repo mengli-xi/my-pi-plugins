@@ -7,8 +7,8 @@ import { execFileSync } from "node:child_process";
 import xterm from "@xterm/headless";
 
 const pkg = resolve(dirname(fileURLToPath(import.meta.url)), "../../../local/pi-subagents");
-const binary = process.argv[2];
-if (!binary) throw new Error("Usage: bun test/real/sdk-child-view.mjs /path/to/pi-next");
+const binary = process.argv[2] ?? process.env.PI_PATCHED_CLI;
+if (!binary) throw new Error("Usage: bun integration/subagents/real/sdk-child-view.mjs <patched-cli>，或设置 PI_PATCHED_CLI");
 const root = process.env.PI_SDK_VIEW_ARTIFACTS ?? mkdtempSync(join(tmpdir(), "pi-sdk-view-"));
 mkdirSync(root, { recursive: true });
 const agent = join(root, "agent"); mkdirSync(agent, { recursive: true });
