@@ -167,3 +167,25 @@ for (const state of ["未批准", "文件不存在", "文件损坏"]) {
       agentDir: fx.root, registeredProviderIds: ["fixture"], providerId: "anthropic" }).providerOwnerId, undefined);
   });
 }
+
+
+test("one approved provider owner remains usable beside an unapproved declaration in either order", t => {
+  const fx = registryFixture(t);
+  const approved = fx.snapshot.registrations.find(item => item.owner_id === "provider")!.manifest;
+  const registration = fx.registry.register({ version: 1, manifest: { ...approved, owner_id: "unapproved-provider" } });
+  fx.registry.bind({ version: 1, registrationToken: registration.registrationToken, session_id: "session", runtime_generation: 1, mode: "rpc" });
+  const snapshot = fx.registry.snapshot("session");
+  for (const registrations of [snapshot.registrations, [...snapshot.registrations].reverse()]) {
+    const input = { activeToolNames: [], allTools: [], role: role([]), registry: { ...snapshot, registrations }, agentDir: fx.root,
+      registeredProviderIds: ["fixture"], providerId: "fixture" };
+    assert.equal(resolveToolCapabilityClosureV1(input).providerOwnerId, "provider");
+  }
+  writeFileSync(join(fx.root, "sdk-provider-grants.json"), '{"version":1,"grants":[]}');
+  assert.throws(() => resolveToolCapabilityClosureV1({ activeToolNames: [], allTools: [], role: role([]), registry: snapshot,
+    agentDir: fx.root, registeredProviderIds: ["fixture"], providerId: "fixture" }), error => {
+    assert.match(String(error), /未授权/);
+    for (const owner of ["provider", "unapproved-provider"]) assert.ok(String(error).includes(owner));
+    return true;
+  });
+  assert.equal(existsSync(join(fx.root, "factory-executed")), false);
+});

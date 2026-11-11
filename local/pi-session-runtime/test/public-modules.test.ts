@@ -9,10 +9,14 @@ import { getSessionAssemblyPublicModules } from "../src/session-assembly.ts";
 import { approveSdkProviderV1, sdkProviderApprovalV1, loadSdkProviderFactoryV1 } from "../src/sdk-provider.ts";
 import { loadChildFactoryV1 } from "../src/child-factory.ts";
 
-// Explicit Pi 1.5 contract: do not derive the fixture's imports from our implementation.
-const names = ["@earendil-works", "@mariozechner"].flatMap(scope => [
-  "pi-coding-agent", "pi-agent-core", "pi-tui", "pi-ai/providers/all", "pi-ai/compat", "pi-ai/models", "pi-ai/oauth", "pi-ai",
-].map(name => `${scope}/${name}`)).concat(["typebox", "typebox/compile", "typebox/value", "@sinclair/typebox", "@sinclair/typebox/compile", "@sinclair/typebox/value"]);
+// Read Pi's actual extension table: an upstream alias addition/removal must fail
+// the key-set assertion even when every existing fixture import still succeeds.
+const { VIRTUAL_MODULES } = await import(new URL("./core/extensions/virtual-modules.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
+const names = Object.keys(VIRTUAL_MODULES);
+
+test("canonical public module keys match the installed Pi extension loader table", () => {
+  assert.deepEqual(Object.keys(getSessionAssemblyPublicModules()).sort(), [...names].sort());
+});
 
 test("SDK and ordinary child factories see every official Main loader alias with identical exported objects", async t => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-public-modules-")));

@@ -65,6 +65,7 @@ node scripts/pi-upgrade-check.mjs 1.6.0 --apply  # 全部通过才更新版本�
 | terminal-focus | 光标渲染结构、终端生命周期、聚焦输入 | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
 | exit-command | 无 | 真实 Pi 中的 `/exit` 注册、临时会话错误提示 | 秒级；宿主进程上限两分钟 |
 | side-chat | 无 | 子视图实例探针 | 秒级；宿主进程上限半分钟 |
+| session-runtime | 无 | Main/child 公开模块对象身份 | 秒级；宿主进程上限两分钟 |
 | cc-memory | 无 | faux provider、冻结 system、compact 与 resume | 数十秒；单次等待上限约一分钟 |
 | session-compact | 无 | faux provider、压缩与恢复材料、有效上下文 | 数十秒；单次等待上限半分钟 |
 | scheduler | 无 | 构建、Node CLI 自动启动、faux 定时执行、mailbox source 与恢复矩阵；拦截服务管理器与桌面通知 | 数分钟；单场景等待通常最多十几秒 |

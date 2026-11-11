@@ -50,12 +50,10 @@ function markerRealm(marker: unknown): string {
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
-const aiView = require(fileURLToPath(new URL("./core/extensions/pi-ai-extension-view.js", import.meta.resolve("@earendil-works/pi-coding-agent"))));
-const current = Object.fromEntries(["pi-coding-agent", "pi-agent-core", "pi-tui", "pi-ai", "pi-ai/compat", "pi-ai/models", "pi-ai/oauth", "pi-ai/providers/all"].map(name => ["@earendil-works/" + name,
-  name === "pi-coding-agent" ? Object.freeze({ ...codingAgent, THEME_WATCH_CAPABILITY: ${JSON.stringify(marker) ?? "undefined"} }) : name === "pi-ai" || name === "pi-ai/compat" ? aiView : require(fileURLToPath(import.meta.resolve("@earendil-works/" + name)))]));
-const publicModules = Object.freeze({ ...current,
-  ...Object.fromEntries(Object.entries(current).map(([name, module]) => [name.replace("@earendil-works/", "@mariozechner/"), module])),
-  ...Object.fromEntries(["typebox", "typebox/compile", "typebox/value"].flatMap(name => [[name, require(fileURLToPath(import.meta.resolve(name)))], [name.replace("typebox", "@sinclair/typebox"), require(fileURLToPath(import.meta.resolve(name)))]])),
+const { VIRTUAL_MODULES } = require(fileURLToPath(new URL("./core/extensions/virtual-modules.js", import.meta.resolve("@earendil-works/pi-coding-agent"))));
+const markerSdk = Object.freeze({ ...codingAgent, THEME_WATCH_CAPABILITY: ${JSON.stringify(marker) ?? "undefined"} });
+const publicModules = Object.freeze({ ...VIRTUAL_MODULES,
+  "@earendil-works/pi-coding-agent": markerSdk, "@mariozechner/pi-coding-agent": markerSdk,
 });
 Object.defineProperty(globalThis, Symbol.for("pi.session-runtime.session-assembly-realm.v1"), {
   value: Object.freeze({ version: 1, sdkVersion: codingAgent.VERSION, publicModules }),

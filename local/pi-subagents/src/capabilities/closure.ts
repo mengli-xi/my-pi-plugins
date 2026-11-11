@@ -1,6 +1,5 @@
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, VERSION } from "@earendil-works/pi-coding-agent";
 import { assertSdkProviderModelApprovedV1 } from "pi-session-runtime/sdk-provider";
-import { VERSION } from "@earendil-works/pi-coding-agent";
 import { isSyntheticToolSourcePath, sourcePath } from "pi-runtime-contracts/child-capabilities-v1";
 import { supportsSdkProviderV1 } from "./sdk-provider.js";
 import type { ResolvedAgentRoleV1 } from "../roles/types.js";

@@ -53,7 +53,7 @@ const builtinOptions = {
 - 上述八项的 `@mariozechner/*` 兼容名称；
 - `typebox`、`typebox/compile`、`typebox/value` 及同对象的 `@sinclair/typebox` 对应名称。
 
-extension/bundled host 复用正式 loader 注入的 namespace；原生 Node 的 pi-ai 根是 core-only，因此只从已解析的同一 SDK 目录读取固定的 `core/extensions/pi-ai-extension-view.js`，复用其模块缓存，不合成替代函数、不解析另一套 SDK。此 SDK-relative seam 固定 Pi 1.5，升级须与正式 loader 联测。普通 child、presentation、Search 与 SDK provider/observer 都传原表，不再以调用方 Core/TypeBox 覆盖宿主对象。
+extension/bundled host 复用正式 loader 注入的 namespace；原生 Node 的 pi-ai 根是 core-only，因此只从已解析的同一 SDK 目录读取固定的 `core/extensions/pi-ai-extension-view.js`，复用其模块缓存，不合成替代函数、不解析另一套 SDK。此 SDK-relative seam 固定 Pi 1.5；离线测试直接从已安装 Pi 的 `virtual-modules.js` 读取 `VIRTUAL_MODULES`，断言 key 集合相等，避免本地列表自比自；真实 `check:host` 对照 Main 与实际 child 的 `StringEnum`、`openAIResponsesApi` 对象身份。升级检查包含这两项。普通 child、presentation、Search 与 SDK provider/observer 都传原表，不再以调用方 Core/TypeBox 覆盖宿主对象。
 
 首次调用发布不可写/不可配置的 `Symbol.for("pi.session-runtime.session-assembly-realm.v1")`，值为冻结 `{version:1,sdkVersion:codingAgent.VERSION,publicModules}`；后续同版本 copy 必须复用该表。
 
@@ -61,7 +61,7 @@ extension/bundled host 复用正式 loader 注入的 namespace；原生 Node 的
 
 未知 schema、可变/畸形 holder、缺函数或版本冲突抛错，不替换、不降级。managed view 拒绝非 canonical AgentSession。registry 与 CJS cache 同寿命，跨 session 保留。调用方应保留首次 import 的 getter，并将其表传给 `loadApprovedFactoryModule()`；自己提供的 SessionManager 仍归自己，需要 class identity 时也须从 canonical namespace 创建，不克隆已有 writer。
 
-`Symbol.for("pi.session-runtime.factory-loader-realms.v1")` 保存 `{version:1,paths:Map<approvedPath,frozen namespaces[]>,digests:Map<canonicalPath,sha256>}`。每次 import/cache lookup 前声明该路径的全部公开别名 namespace（固定顺序）；冲突可见拒绝，不返回错误 realm 的工厂。声明跨失败/shutdown 保留，因为部分模块可能已缓存。未知 holder 拒绝。此保护不代替 owner 的 path/package/hash/export 检查，也不提供任意多 realm 隔离；不完整或旧格式的 realm 不能补授权，须新进程。
+`Symbol.for("pi.session-runtime.factory-loader-realms.v1")` 保存 `{version:1,paths:Map<approvedPath,frozen publicModules>,digests:Map<canonicalPath,sha256>}`。每次 import/cache lookup 前从传入的同一张公开表固定该路径的全部 key 与 namespace，不另存别名名单；冲突可见拒绝，不返回错误 realm 的工厂。声明跨失败/shutdown 保留，因为部分模块可能已缓存。未知 holder 拒绝。此保护不代替 owner 的 path/package/hash/export 检查，也不提供任意多 realm 隔离；旧格式的 realm 不能补授权，须新进程。
 
 本地回归用两个真实同版本物理 SDK、两个 assembly/loader 和同一 factory 路径，覆盖 native/Jiti 先后、重复交替、真实 session/runner/manager/mode identity、冲突 holder，以及 FakeTerminal 下 keybindings 的原引用恢复；不启动终端或 provider。
 

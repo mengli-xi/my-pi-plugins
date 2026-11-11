@@ -34,6 +34,9 @@ test("all public aliases fence same-path cache reuse; different tables never sha
   for (const name of Object.keys(modules)) {
     await assert.rejects(loadApprovedFactoryModule({ path, exports: ["inspect"], publicModules: { ...modules, [name]: {} } }), /SDK realm changed/);
   }
+  await assert.rejects(loadApprovedFactoryModule({ path, exports: ["inspect"], publicModules: { ...modules, "future-public-module": {} } }), /SDK realm changed/);
+  const { "@earendil-works/pi-ai/compat": _compat, ...missingAlias } = modules;
+  await assert.rejects(loadApprovedFactoryModule({ path, exports: ["inspect"], publicModules: missingAlias }), /SDK realm changed/);
   const otherCore = { Agent: () => "other" };
   const second = await loadApprovedFactoryModule({ path: secondPath, exports: ["inspect"], publicModules: { ...modules, "@earendil-works/pi-agent-core": otherCore } });
   assert.equal((second.inspect as () => typeof otherCore)().Agent, otherCore.Agent);

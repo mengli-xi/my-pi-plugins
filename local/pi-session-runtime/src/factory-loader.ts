@@ -6,21 +6,20 @@ type FactoryModule = Readonly<Record<string, unknown>>;
 interface LoaderState { readonly importModule: (path: string) => Promise<FactoryModule>; readonly modules: Map<string, Promise<FactoryModule>> }
 const loaders = new WeakMap<object, Promise<LoaderState>>();
 const realmKey = Symbol.for("pi.session-runtime.factory-loader-realms.v1");
-const namespaceNames = ["@earendil-works", "@mariozechner"].flatMap(scope => [
-  "pi-coding-agent", "pi-agent-core", "pi-tui", "pi-ai", "pi-ai/compat", "pi-ai/models", "pi-ai/oauth", "pi-ai/providers/all",
-].map(name => `${scope}/${name}`)).concat(["typebox", "typebox/compile", "typebox/value", "@sinclair/typebox", "@sinclair/typebox/compile", "@sinclair/typebox/value"]);
-interface FactoryRealms { readonly version: 1; readonly paths: Map<string, readonly (object | undefined)[]>; readonly digests: Map<string, string> }
+interface FactoryRealms { readonly version: 1; readonly paths: Map<string, Readonly<Record<string, object>>>; readonly digests: Map<string, string> }
 function claimFactoryRealm(path: string, modules: Readonly<Record<string, object>>): void {
   const global = globalThis as typeof globalThis & { [realmKey]?: FactoryRealms };
   if (!Object.hasOwn(global, realmKey)) Object.defineProperty(global, realmKey, { value: Object.freeze({ version: 1, paths: new Map(), digests: new Map() }) });
   const descriptor = Object.getOwnPropertyDescriptor(global, realmKey)!;
   const realms = descriptor.value as FactoryRealms | undefined;
   if (!realms || realms.version !== 1 || !(realms.paths instanceof Map) || !(realms.digests instanceof Map) || !Object.isFrozen(realms) || descriptor.configurable || descriptor.writable) throw new Error("Incompatible approved factory realm registry");
-  const namespaces = namespaceNames.map(name => modules[name]);
+  // The supplied public table is the sole alias list. Pin keys as well as values,
+  // so a newly added alias cannot silently bypass the process-wide cache fence.
+  const names = Object.keys(modules);
   const previous = realms.paths.get(path);
-  if (previous && (!Array.isArray(previous) || previous.length !== namespaceNames.length || !Object.isFrozen(previous))) throw new Error("Incompatible approved factory realm registry");
-  if (previous && namespaces.some((namespace, index) => namespace !== previous[index])) throw new Error(`Approved factory SDK realm changed for ${path}; use the process-wide session-assembly namespaces`);
-  if (!previous) realms.paths.set(path, Object.freeze(namespaces));
+  if (previous && (Array.isArray(previous) || typeof previous !== "object" || !Object.isFrozen(previous))) throw new Error("Incompatible approved factory realm registry");
+  if (previous && (Object.keys(previous).length !== names.length || names.some(name => !Object.hasOwn(previous, name) || modules[name] !== previous[name]))) throw new Error(`Approved factory SDK realm changed for ${path}; use the process-wide session-assembly namespaces`);
+  if (!previous) realms.paths.set(path, Object.freeze({ ...modules }));
 }
 
 /**

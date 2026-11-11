@@ -121,10 +121,16 @@ export function revalidateSdkProviderProofV1(proof: SdkProviderProofV1, agentDir
  */
 export function assertSdkProviderModelApprovedV1(snapshot: ChildCapabilityRegistrySnapshotV1, agentDir: string, targetId: string, providerId: string): void {
   if (snapshot.conflicts.length) throw new Error("SDK provider registry conflict");
+  const rejected: { owner: string; error: unknown }[] = [];
   for (const item of snapshot.registrations) {
-    if (item.manifest.targets[targetId]?.sdk_provider_factory?.provider_id === providerId) {
-      approveSdkProviderV1(agentDir, item.manifest, targetId, []);
-    }
+    if (item.manifest.targets[targetId]?.sdk_provider_factory?.provider_id !== providerId) continue;
+    try { approveSdkProviderV1(agentDir, item.manifest, targetId, []); return; }
+    catch (error) { rejected.push({ owner: item.owner_id, error }); }
+  }
+  if (rejected.length) {
+    throw new AggregateError(rejected.map(item => item.error),
+      `SDK provider 未授权：${providerId}（未批准 owner: ${rejected.map(item => item.owner).join(", ")}，target: ${targetId}）。请在 ${join(agentDir, "sdk-provider-grants.json")} 中审阅并批准至少一个声明。`,
+    );
   }
 }
 export function approvedSdkProviderRegistrationsV1(snapshot: ChildCapabilityRegistrySnapshotV1, agentDir: string, targetId: string) {

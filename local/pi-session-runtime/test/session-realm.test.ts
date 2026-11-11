@@ -81,7 +81,8 @@ async function sameProcessRealmMatrix(first: "native" | "jiti") {
     assert.equal(getSessionAssemblyPublicModules(), modules);
     assert.equal(foreignAssembly.getSessionAssemblyPublicModules(), modules);
     assert.ok(Object.isFrozen(modules));
-    assert.equal(Object.keys(modules).length, 22);
+    const { VIRTUAL_MODULES } = await import(new URL("./core/extensions/virtual-modules.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
+    assert.deepEqual(Object.keys(modules).sort(), Object.keys(VIRTUAL_MODULES).sort());
     assert.equal(modules["@earendil-works/pi-ai/compat"], modules["@earendil-works/pi-ai"]);
     const sdk = modules["@earendil-works/pi-coding-agent"];
     assert.equal(sdk.AgentSession, first === "native" ? physicalSdk.AgentSession : foreignSdk.AgentSession);

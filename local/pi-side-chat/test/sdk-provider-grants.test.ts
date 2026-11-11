@@ -36,6 +36,7 @@ test("Side never derives external provider authority from Subagents; explicit Si
   const context = { sessionManager: { getSessionId: () => root }, model, scopedModels: [{ model }], modelRegistry: { getAvailable: () => provider.provider.getModels(), getRegisteredProviderIds: () => ["custom"], getProvider: () => reference } };
   const pi = { getActiveTools: () => [], getAllTools: () => [] };
   await assert.rejects(sideExecutionPlan(pi as never, context as never, root), /current provider has no approved Side factory/);
+  register("unapproved-side-provider", "pi-side-chat", true);
   const side = register("side-provider", "pi-side-chat", true);
   for (const state of ["未批准", "文件不存在", "文件损坏"]) {
     await t.test(state, async () => {
@@ -44,7 +45,7 @@ test("Side never derives external provider authority from Subagents; explicit Si
       else writeFileSync(path, state === "文件损坏" ? "{" : '{"version":1,"grants":[]}');
       await assert.rejects(sideExecutionPlan(pi as never, context as never, root), error => {
         assert.match(String(error), /未授权/);
-        for (const text of ["custom", "pi-side-chat", path]) assert.ok(String(error).includes(text));
+        for (const text of ["custom", "pi-side-chat", path, "side-provider", "unapproved-side-provider"]) assert.ok(String(error).includes(text));
         return true;
       });
       assert.equal(existsSync(marker), false);

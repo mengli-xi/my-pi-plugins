@@ -27,7 +27,11 @@
 ```sh
 npm run typecheck -w pi-session-runtime
 npm test -w pi-session-runtime
+npm run check:host -w pi-session-runtime
+PI_BIN=/path/to/pi npm run check:host -w pi-session-runtime
 ```
+
+离线测试直接读取已安装 Pi 的 `virtual-modules.js`，对照公开别名 key 集合，Pi 新增/删除别名会使测试失败。`check:host` 经真实 CLI loader 与实际 SDK child 比较 `StringEnum`、`openAIResponsesApi` 的对象身份，不发模型请求；默认检查仓库 Node CLI，可用 `PI_BIN` 检查编译版或 unbundled CLI。升级检查会运行本包 `test` 和 `check:host`。
 
 补丁专用测试：`npm run test:patched-host -w pi-session-runtime`。需要匹配的补丁 SDK，不能用 marker fixture 替代。
 
