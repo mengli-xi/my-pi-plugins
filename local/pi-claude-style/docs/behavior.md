@@ -571,8 +571,8 @@ Subagent 每次绑定 TUI 时先同步挂载本视图的目录、model 和 effor
 再等待 statusline command 更新；command 慢或失败时保留该帧，不借用 Main 的分段。
 Side factory 沿用原有首帧内容策略。
 Main 在 `session_start` 用公开 `setFooter` 同步挂载两行模板，保留 CP/MEM 与 cache 的布局；
-有 Todo 等第三行贡献项时才显示第三行。贡献项出现或撤回带来的一行布局跳动是接受的行为；
-贡献项照常更新，不等 shell 成功。
+有 Todo 或 row-3 贡献项（Goal、Processes、Model Capacity）时才显示第三行；命令自己只输出两行时由 host 补一行空的第三行，
+使兜底帧和命令帧在同样内容下行数一致。贡献项出现或撤回带来的一行布局跳动是接受的行为；贡献项照常更新，不等 shell 成功。
 Main 模板也保留 Fast 与 Todo slot；命令持续失败时，完成 Todo 的计数仍可点击展开完成列表。
 命令成功后替换为真实输出，失败、超时或空输出保留上次成功帧；尚未成功时保留兜底帧。
 Main 冷启动在 `session_start` 之前仍可能显示原生 footer；不增加私有启动接口。

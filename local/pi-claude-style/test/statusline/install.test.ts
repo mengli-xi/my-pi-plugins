@@ -272,6 +272,34 @@ test("Main mounts a synchronous CC fallback and keeps live contributions when it
   assert.equal(pi.widget()![1], "CP:1 │ MEM:3", "compaction contribution updates without a shell success");
 });
 
+test("a row-3 contribution keeps its own row in the fallback and in a two-row command frame", async (t) => {
+  const cwd = workspace(t, 0);
+  writeFileSync(join(cwd, "statusline.sh"), "#!/bin/sh\nwhile IFS= read -r line; do :; done\nsleep 30\n");
+  const pi = session(t, cwd, {
+    initialLines: MAIN_INITIAL_LINES, initialContributionLine: MAIN_INITIAL_CONTRIBUTION_LINE,
+  });
+  await pi.emit("session_start", { reason: "startup" });
+  // Goal/Processes/Model Capacity all target row 3. Without a Todo the frame
+  // would be two rows, and a row meant for the third line would be clamped
+  // onto row 2 or lost — moving content whenever the command appeared.
+  pi.emitEvent("statusline:row", { key: "goal", placement: "inline", row: 3, align: "right", line: "Goal active" });
+  assert.equal(pi.widget()!.length, 3, "the fallback grows to three rows for a row-3 contribution");
+  assert.match(pi.widget()![2]!, /Goal active/);
+  assert.doesNotMatch(pi.widget()![1]!, /Goal active/, "the Goal row is not clamped onto row 2");
+  // A command that prints two rows must keep the same three-row height.
+  writeFileSync(join(cwd, "statusline.sh"), "#!/bin/sh\nwhile IFS= read -r line; do :; done\nprintf 'one\\ntwo\\n'\n");
+  await pi.emit("turn_end", {});
+  const until = Date.now() + 5_000;
+  while (!pi.widget()?.[0]?.includes("one") && Date.now() < until) await delay(20);
+  assert.deepEqual(pi.widget()!.map((line) => line.trimEnd()).slice(0, 2), ["one", "two"]);
+  assert.equal(pi.widget()!.length, 3, "a two-row command keeps the third row while Goal needs it");
+  assert.match(pi.widget()![2]!, /Goal active/);
+  pi.emitEvent("statusline:row", { key: "goal" });
+  const settled = Date.now() + 5_000;
+  while (pi.widget()!.length !== 2 && Date.now() < settled) await delay(20);
+  assert.equal(pi.widget()!.length, 2, "withdrawing the last row-3 contribution leaves the two normal rows");
+});
+
 test("Main updates its fallback cache slot before a slow command returns", async (t) => {
   const cwd = workspace(t, 0);
   writeFileSync(join(cwd, "statusline.sh"), "#!/bin/sh\nwhile IFS= read -r line; do :; done\nsleep 30\n");

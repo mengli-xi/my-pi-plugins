@@ -15,7 +15,7 @@ payload 含 cwd/workspace、model/provider、effort/effort_level、session id、
 
 projection 只写 user/assistant 的标识、parent 和 assistant usage，不把正文、thinking 或 tool payload 复制进去；**这不限制脚本通过 `pi.session_file` 或自身权限读取原始会话。** analyzer 从公开当前 branch 取数据，按 count/tail id 版本复用解析结果，append 只处理新增条目；branch 改变/失效时重建。同一 invocation 的写操作串行，unchanged branch 不反复解析或重写。
 
-包内默认脚本 `assets/statusline.mjs` 输出两行主体和可选第三行：第一行是目录、model/provider、effort、Fast slot，以及轮次、压缩次数和会话时长；第二行是上下文占用、累计输入/输出与 cache read/write token，以及 host 提供的 CH/RU/M slot；第三行用于 Todo slot 和贡献项，无内容时不显示。目录会按终端宽度缩短，空间不足时优先保留目录而省略轮次/压缩计数。Git 状态由 editor chrome 显示。
+包内默认脚本 `assets/statusline.mjs` 输出两行主体和可选第三行：第一行是目录、model/provider、effort、Fast slot，以及轮次、压缩次数和会话时长；第二行是上下文占用、累计输入/输出与 cache read/write token，以及 host 提供的 CH/RU/M slot；第三行用于 Todo slot 和 row-3 贡献项，没有内容时不输出。行数由内容决定：host 在命令不足三行但存在 row-3 贡献（Goal、Processes、Model Capacity）时补一行空的第三行再放贡献项，因此兜底帧和任意命令帧在同样内容下行数一致；用户自带的两行命令也能用上第三行。目录会按终端宽度缩短，空间不足时优先保留目录而省略轮次/压缩计数。Git 状态由 editor chrome 显示。
 
 默认脚本读 stdin，并会读取 `pi.session_file` 的原始 JSONL 计算 turn/compaction 等计数与 legacy 缺字段 fallback；它不读 `transcript_path`、用户配置、日志或数据库，不访问网络，也没有其他静态仓库外依赖。它读取原始会话时会接触正文所在文件，即使只保留数字摘要也不构成正文读取隔离。脚本按文件 identity/size/mtime/ctime 检查版本，只缓存数字摘要，canonical 内容相同不写；显式 0/null 具有权威性，不从旧分支复活 usage。缓存默认为系统临时目录下的 `pi-claude-style-statusline-<uid>`，可用 `PI_CLAUDE_STYLE_STATUSLINE_CACHE_DIR` 指到隔离目录。这里描述的是内置脚本的实现，不代表任意用户 command 的权限限制。
 
@@ -37,7 +37,7 @@ compaction 在 branch 顺序中位于有效 usage 之后时立即清掉旧 reque
 
 ## 首帧、刷新与贡献项
 
-Main 在 `session_start` 同步挂载两行 CC 模板，有第三行贡献内容时再加一行；Subagent attach 同步挂载本视图的 cwd/model/effort 只读帧，Side 保留自身首帧策略。Main 冷启动在 session_start 前仍可能出现原生 footer，不假称零帧。成功 command 替换兜底；失败、空输出和 timeout 保留上次成功帧，无成功帧则保留兜底。尚无成功输出时有有界 1s/3s/8s backoff，event refresh 重置；apply 前复核 context owner，不能写回已替换 UI。
+Main 在 `session_start` 同步挂载两行 CC 模板，有 Todo 或 row-3 贡献内容时才加第三行（命令帧同样按 row-3 贡献补行）；Subagent attach 同步挂载本视图的 cwd/model/effort 只读帧，Side 保留自身首帧策略。Main 冷启动在 session_start 前仍可能出现原生 footer，不假称零帧。成功 command 替换兜底；失败、空输出和 timeout 保留上次成功帧，无成功帧则保留兜底。尚无成功输出时有有界 1s/3s/8s backoff，event refresh 重置；apply 前复核 context owner，不能写回已替换 UI。
 
 最后成功帧按 session、command 与配置校验后用于 reload handoff，不借用其他 session 或 Main/child 帧。view detach 清理本视图；session 切换 cache 失效，replacement 的 session_start 刷新。不要依赖不存在的 session_switch/session_fork event。
 

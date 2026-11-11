@@ -324,13 +324,22 @@ export default function (
     // Slots first: markers change column widths, and interaction spans must be
     // measured against what actually reaches the screen. The host owns the
     // separator, including its neutral tone; contributors own their content.
-    const template = initialContributionLine === undefined ? lines : [...lines, initialContributionLine];
+    const template = [...lines];
+    const commandRows = template.length;
+    if (initialContributionLine !== undefined) template.push(initialContributionLine);
+    // A row-3 contribution (Goal, Processes, Model Capacity) belongs on the
+    // third line for every command, not only for the bundled script: a shorter
+    // command would otherwise clamp it onto row 2 and the footer would lose a
+    // row the moment the command replaced the fallback frame.
+    while (template.length < 3 && contributed.targetsRow(3)) template.push("");
     const slotted = contributed.composeSlots(template);
     const separator = ctx.ui?.theme?.fg
       ? ctx.ui.theme.fg("dim", INLINE_SEPARATOR)
       : INLINE_SEPARATOR;
     const spliced = contributed.spliceInline(slotted.lines, separator);
-    if (initialContributionLine !== undefined && spliced.lines.at(-1)?.trim() === "") {
+    // Keep only rows that carry something; the padding and an unfilled
+    // fallback row exist to give a contribution a place to land.
+    while (spliced.lines.length > commandRows && spliced.lines.at(-1)?.trim() === "") {
       spliced.lines.pop();
       spliced.spans.pop();
     }

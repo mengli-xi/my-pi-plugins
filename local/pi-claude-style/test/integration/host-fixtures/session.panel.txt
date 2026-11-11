@@ -13,7 +13,7 @@
 ── Session info ──────────────────────────────────────────────────────────────────────────────────────────────── 1-12/<n>
 
    File:                                                                                                               █
-   <ROOT>/sessions/<iso>_<uuid>.jsonl
+   <ROOT>/sessions/<iso>_<uuid>.jsonl █
    ID: <uuid>   █
                                                                                                                        █
    Messages                                                                                                            █

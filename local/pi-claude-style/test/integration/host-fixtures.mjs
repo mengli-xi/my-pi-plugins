@@ -256,8 +256,10 @@ function normalize(screen, root) {
     // Where that row wraps depends on the temp root length, so it is joined
     // into one canonical line, and the panel's "1-12/22" range (which shrinks
     // by one when the row does not wrap) keeps only its visible anchor.
-    .replace(/(<ROOT>\/sessions\/<iso>_<uuid>)[^\n]*\n\s*(?:<uuid>)?\.jsonl[^\n]*/gu,
-      "$1.jsonl")
+    // The panel's right border is kept so the row still reads as panel content;
+    // this one row is not part of the width or wrapping assertions.
+    .replace(/(<ROOT>\/sessions\/<iso>_<uuid>)([^\n]*)\n\s*(?:<uuid>)?\.jsonl([^\n]*)/gu,
+      (_match, path, before, after) => `${path}.jsonl${before.includes("█") || after.includes("█") ? " █" : ""}`)
     .replace(/(── Session info ─+\s+\d+-\d+\/)\d+/gu, "$1<n>")
     .replace(/\n+$/u, "\n");
 }
@@ -281,13 +283,23 @@ function snapshotRegion(text, endAtEditor = false) {
     return `${lines.slice(start, editor + 2).join("\n")}\n`;
   }
   let end = lines.length;
-  // Default CC/footer rows end the screen. A clipped CC path row (`work │ …`)
-  // is still recognised instead of depending on a complete temporary path.
-  const footerRow = (line) =>
-    line.startsWith("<ROOT>") || line.includes("(fixture) fixture-model") ||
-    /\bfixture-model\(fixture\)/u.test(line) || /\bCH[:<]/u.test(line) ||
-    /^\[[\d.]+k?\/(?:<n>|\d)/u.test(line);
-  while (end > start && (lines[end - 1].trim() === "" || footerRow(lines[end - 1]))) end--;
+  // The statusline footer is the last block on screen: the path/model row, the
+  // accounting row, and — when a Todo/Goal/Processes row is contributed — one
+  // more row under it. Cut before the path row instead of classifying every
+  // footer row by its text, so a contributed row of any wording cannot leak in.
+  const accountingRow = (line) => /\bCH[:<]/u.test(line) || /^\[[\d.]+k?\/(?:<n>|\d)/u.test(line);
+  const accounting = lines.findLastIndex((line, index) => index >= start && accountingRow(line));
+  if (accounting > start && accounting >= lines.length - 2) {
+    end = accounting - 1;
+  } else {
+    // No statusline answered (a panel, or a command that never produced a
+    // frame): fall back to Pi's native cwd/provider footer shapes.
+    const nativeFooter = (line) =>
+      line.startsWith("<ROOT>") || line.includes("(fixture) fixture-model") ||
+      /\bfixture-model\(fixture\)/u.test(line);
+    while (end > start && nativeFooter(lines[end - 1])) end--;
+  }
+  while (end > start && lines[end - 1].trim() === "") end--;
   return `${lines.slice(start, end).join("\n")}\n`;
 }
 

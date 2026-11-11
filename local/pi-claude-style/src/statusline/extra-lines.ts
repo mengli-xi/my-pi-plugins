@@ -218,6 +218,16 @@ export class ContributedRows {
   }
 
   /**
+   * Whether a contribution is addressed to `row` (1-based) or below.
+   *
+   * The host pads a shorter frame up to that row, so a row meant for the
+   * normal third line keeps row three instead of being clamped onto row two.
+   */
+  targetsRow(row: number): boolean {
+    return [...this.rows.values()].some((entry) => entry.placement === "inline" && entry.row >= row);
+  }
+
+  /**
    * The handler for the nth appended row, if it has one.
    *
    * Index rather than key: a click arrives as a screen row, and the caller
