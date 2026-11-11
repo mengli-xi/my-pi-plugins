@@ -264,6 +264,19 @@
       "name": "pi-runtime-contracts",
       "version": "0.1.0",
     },
+    "local/pi-scheduler": {
+      "name": "pi-scheduler",
+      "version": "0.1.0",
+      "dependencies": {
+        "pi-li-uikit": "^0.1.0",
+        "pi-session-inject": "^0.1.0",
+      },
+      "peerDependencies": {
+        "@earendil-works/pi-coding-agent": "^1.5.0",
+        "@earendil-works/pi-tui": "^1.5.0",
+        "typebox": "*",
+      },
+    },
     "local/pi-session-compact": {
       "name": "pi-session-compact",
       "version": "0.1.0",
@@ -900,6 +913,8 @@
     "pi-rewind": ["pi-rewind@workspace:local/pi-rewind"],
 
     "pi-runtime-contracts": ["pi-runtime-contracts@workspace:local/pi-runtime-contracts"],
+
+    "pi-scheduler": ["pi-scheduler@workspace:local/pi-scheduler"],
 
     "pi-session-compact": ["pi-session-compact@workspace:local/pi-session-compact"],
 
