@@ -12,6 +12,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import * as physicalSdk from "@earendil-works/pi-coding-agent";
 import * as physicalAi from "@earendil-works/pi-ai";
 import * as physicalTui from "@earendil-works/pi-tui";
+import * as physicalCore from "@earendil-works/pi-agent-core";
+import * as typebox from "typebox";
+import * as typeboxCompile from "typebox/compile";
+import * as typeboxValue from "typebox/value";
 import type { AgentSessionRuntime, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { assembleChildSession, getSessionAssemblyPublicModules } from "../src/session-assembly.ts";
@@ -53,7 +57,15 @@ async function sameProcessRealmMatrix(first: "native" | "jiti") {
     assert.notEqual(foreignSdk.InteractiveMode, physicalSdk.InteractiveMode);
     assert.notEqual(foreignAi.getCurrentSystemPrompt, physicalAi.getCurrentSystemPrompt);
     assert.notEqual(foreignTui.getKeybindings, physicalTui.getKeybindings);
-    const physicalModules = { "@earendil-works/pi-coding-agent": foreignSdk, "@earendil-works/pi-ai": foreignAi, "@earendil-works/pi-tui": foreignTui };
+    const foreignView = await import(pathToFileURL(join(foreignDependencies, peers[0]!, "dist/core/extensions/pi-ai-extension-view.js")).href);
+    const physicalModules = {
+      "@earendil-works/pi-coding-agent": foreignSdk, "@earendil-works/pi-ai": foreignView, "@earendil-works/pi-tui": foreignTui,
+      "@earendil-works/pi-agent-core": physicalCore,
+      "@earendil-works/pi-ai/models": await import(pathToFileURL(join(foreignDependencies, peers[1]!, "dist/models.js")).href),
+      "@earendil-works/pi-ai/oauth": await import(pathToFileURL(join(foreignDependencies, peers[1]!, "dist/oauth.js")).href),
+      "@earendil-works/pi-ai/providers/all": await import(pathToFileURL(join(foreignDependencies, peers[1]!, "dist/providers/all.js")).href),
+      typebox, "typebox/compile": typeboxCompile, "typebox/value": typeboxValue,
+    };
     const foreignAssembly = await loadApprovedFactoryModule({ path: assemblyPath,
       exports: ["assembleChildSession", "getSessionAssemblyPublicModules"], publicModules: physicalModules,
     }) as unknown as Pick<typeof import("../src/session-assembly.ts"), "assembleChildSession" | "getSessionAssemblyPublicModules">;
@@ -69,7 +81,8 @@ async function sameProcessRealmMatrix(first: "native" | "jiti") {
     assert.equal(getSessionAssemblyPublicModules(), modules);
     assert.equal(foreignAssembly.getSessionAssemblyPublicModules(), modules);
     assert.ok(Object.isFrozen(modules));
-    assert.deepEqual(Object.keys(modules).sort(), ["@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-tui"]);
+    assert.equal(Object.keys(modules).length, 22);
+    assert.equal(modules["@earendil-works/pi-ai/compat"], modules["@earendil-works/pi-ai"]);
     const sdk = modules["@earendil-works/pi-coding-agent"];
     assert.equal(sdk.AgentSession, first === "native" ? physicalSdk.AgentSession : foreignSdk.AgentSession);
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, Symbol.for("pi.session-runtime.session-assembly-realm.v1"))!;
@@ -140,7 +153,7 @@ export function inspect(session) {
     }
     const otherSdk = sdk.AgentSession === physicalSdk.AgentSession ? foreignSdk : physicalSdk;
     const otherModules = { "@earendil-works/pi-coding-agent": otherSdk,
-      "@earendil-works/pi-ai": modules["@earendil-works/pi-ai"] === physicalAi ? foreignAi : physicalAi,
+      "@earendil-works/pi-ai": modules["@earendil-works/pi-ai"].getCurrentSystemPrompt === physicalAi.getCurrentSystemPrompt ? foreignAi : physicalAi,
       "@earendil-works/pi-tui": modules["@earendil-works/pi-tui"] === physicalTui ? foreignTui : physicalTui };
     for (const loader of [loadApprovedFactoryModule, foreignLoader.loadApprovedFactoryModule]) {
       for (const name of peers) await assert.rejects(loader({ path, exports: ["inspect"], publicModules: { ...modules, [name]: otherModules[name as keyof typeof otherModules] } }), /Approved factory SDK realm changed/);

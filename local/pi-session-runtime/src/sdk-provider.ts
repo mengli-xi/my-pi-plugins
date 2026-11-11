@@ -97,7 +97,14 @@ export function sdkProviderApprovalV1(manifest: ChildCapabilityManifestV1, targe
 }
 export function approveSdkProviderV1(agentDir: string, manifest: ChildCapabilityManifestV1, targetId: string, modelScope: readonly string[]): SdkProviderProofV1 {
   const current = sdkProviderApprovalV1(manifest, targetId);
-  if (!grants(agentDir).some(grant => canonical(grant) === canonical(current))) throw new Error(`SDK provider has no exact grant: ${manifest.owner_id}/${targetId}`);
+  const providerId = current.manifest.targets[targetId]!.sdk_provider_factory!.provider_id;
+  try {
+    if (!grants(agentDir).some(grant => canonical(grant) === canonical(current))) throw new Error("没有匹配当前声明的批准");
+  } catch (cause) {
+    const missing = (cause as NodeJS.ErrnoException).code === "ENOENT";
+    const reason = missing ? "批准文件不存在" : cause instanceof Error && cause.message === "没有匹配当前声明的批准" ? "没有匹配当前声明的批准（no exact grant）" : "批准文件损坏或不可读取";
+    throw new Error(`SDK provider 未授权：${providerId}（owner: ${manifest.owner_id}，target: ${targetId}）；${reason}。请在 ${join(agentDir, "sdk-provider-grants.json")} 中审阅并批准此 provider 的 ${targetId} 声明。`, { cause });
+  }
   return decodeSdkProviderProofV1({ version: 1, ...current, model_scope: [...modelScope] });
 }
 export function sdkProviderProofNarrowsV1(child: SdkProviderProofV1 | undefined, parent: SdkProviderProofV1 | undefined): boolean {
@@ -108,6 +115,17 @@ export function revalidateSdkProviderProofV1(proof: SdkProviderProofV1, agentDir
   const parsed = decodeSdkProviderProofV1(proof);
   if (parsed.target_id !== targetId || canonical(parsed.model_scope) !== canonical(modelScope)) throw new Error("SDK provider proof target/model scope changed");
   approveSdkProviderV1(agentDir, parsed.manifest, targetId, modelScope);
+}
+/** Admission must diagnose the selected declaration BEFORE discovery hides unapproved models.
+ * No declaration means no new authority/error; consumers retain their unsupported-provider policy.
+ */
+export function assertSdkProviderModelApprovedV1(snapshot: ChildCapabilityRegistrySnapshotV1, agentDir: string, targetId: string, providerId: string): void {
+  if (snapshot.conflicts.length) throw new Error("SDK provider registry conflict");
+  for (const item of snapshot.registrations) {
+    if (item.manifest.targets[targetId]?.sdk_provider_factory?.provider_id === providerId) {
+      approveSdkProviderV1(agentDir, item.manifest, targetId, []);
+    }
+  }
 }
 export function approvedSdkProviderRegistrationsV1(snapshot: ChildCapabilityRegistrySnapshotV1, agentDir: string, targetId: string) {
   if (snapshot.conflicts.length) throw new Error("SDK provider registry conflict");

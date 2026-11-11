@@ -44,6 +44,25 @@ for (const surface of ["Main UI", "canonical SDK"]) test(`theme-watch contract p
   });
 });
 
+// Build a complete valid realm, changing only the marker under test.
+function markerRealm(marker: unknown): string {
+  return `
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+const require = createRequire(import.meta.url);
+const aiView = require(fileURLToPath(new URL("./core/extensions/pi-ai-extension-view.js", import.meta.resolve("@earendil-works/pi-coding-agent"))));
+const current = Object.fromEntries(["pi-coding-agent", "pi-agent-core", "pi-tui", "pi-ai", "pi-ai/compat", "pi-ai/models", "pi-ai/oauth", "pi-ai/providers/all"].map(name => ["@earendil-works/" + name,
+  name === "pi-coding-agent" ? Object.freeze({ ...codingAgent, THEME_WATCH_CAPABILITY: ${JSON.stringify(marker) ?? "undefined"} }) : name === "pi-ai" || name === "pi-ai/compat" ? aiView : require(fileURLToPath(import.meta.resolve("@earendil-works/" + name)))]));
+const publicModules = Object.freeze({ ...current,
+  ...Object.fromEntries(Object.entries(current).map(([name, module]) => [name.replace("@earendil-works/", "@mariozechner/"), module])),
+  ...Object.fromEntries(["typebox", "typebox/compile", "typebox/value"].flatMap(name => [[name, require(fileURLToPath(import.meta.resolve(name)))], [name.replace("typebox", "@sinclair/typebox"), require(fileURLToPath(import.meta.resolve(name)))]])),
+});
+Object.defineProperty(globalThis, Symbol.for("pi.session-runtime.session-assembly-realm.v1"), {
+  value: Object.freeze({ version: 1, sdkVersion: codingAgent.VERSION, publicModules }),
+});
+`;
+}
+
 test("managed handoff rejects incompatible markers before drain/stop and releases its lease", async () => {
   // This focused guard test deliberately supplies marker fixtures over the real public
   // SDK functions. It does not claim that a stock SDK implements the theme-watch patch.
@@ -51,15 +70,7 @@ test("managed handoff rejects incompatible markers before drain/stop and release
     await execute(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
 import assert from "node:assert/strict";
 import * as codingAgent from "@earendil-works/pi-coding-agent";
-import * as ai from "@earendil-works/pi-ai";
-import * as tui from "@earendil-works/pi-tui";
-const publicModules = Object.freeze({
-  "@earendil-works/pi-coding-agent": Object.freeze({ ...codingAgent, THEME_WATCH_CAPABILITY: ${JSON.stringify(sdk) ?? "undefined"} }),
-  "@earendil-works/pi-ai": ai, "@earendil-works/pi-tui": tui,
-});
-Object.defineProperty(globalThis, Symbol.for("pi.session-runtime.session-assembly-realm.v1"), {
-  value: Object.freeze({ version: 1, sdkVersion: codingAgent.VERSION, publicModules }),
-});
+${markerRealm(sdk)}
 const { TerminalOwner } = await import(${JSON.stringify(new URL("../src/terminal-owner.ts", import.meta.url).href)});
 let drains = 0, stops = 0;
 const terminal = { write() {}, setTitle() {}, setProgress() {}, setProgramStatus() {}, drainInput: async () => { drains++; } };
@@ -80,15 +91,7 @@ test("managed handoff accepts exact marker fixtures and retains named-theme reje
   await execute(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
 import assert from "node:assert/strict";
 import * as codingAgent from "@earendil-works/pi-coding-agent";
-import * as ai from "@earendil-works/pi-ai";
-import * as tui from "@earendil-works/pi-tui";
-const publicModules = Object.freeze({
-  "@earendil-works/pi-coding-agent": Object.freeze({ ...codingAgent, THEME_WATCH_CAPABILITY: ${JSON.stringify(capability)} }),
-  "@earendil-works/pi-ai": ai, "@earendil-works/pi-tui": tui,
-});
-Object.defineProperty(globalThis, Symbol.for("pi.session-runtime.session-assembly-realm.v1"), {
-  value: Object.freeze({ version: 1, sdkVersion: codingAgent.VERSION, publicModules }),
-});
+${markerRealm(capability)}
 const { TerminalOwner } = await import(${JSON.stringify(new URL("../src/terminal-owner.ts", import.meta.url).href)});
 let drains = 0, stops = 0, restores = 0, setting = "light/dark";
 const terminal = { write() {}, setTitle() {}, setProgress() {}, setProgramStatus() {}, drainInput: async () => { drains++; } };
@@ -114,16 +117,7 @@ test("stock handoff warns once across Main bindings and skips same-theme restore
   await execute(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
 import assert from "node:assert/strict";
 import * as codingAgent from "@earendil-works/pi-coding-agent";
-import * as ai from "@earendil-works/pi-ai";
-import * as tui from "@earendil-works/pi-tui";
-// Marker absence fixture also keeps this contract test runnable with patched peers.
-const publicModules = Object.freeze({
-  "@earendil-works/pi-coding-agent": Object.freeze({ ...codingAgent, THEME_WATCH_CAPABILITY: undefined }),
-  "@earendil-works/pi-ai": ai, "@earendil-works/pi-tui": tui,
-});
-Object.defineProperty(globalThis, Symbol.for("pi.session-runtime.session-assembly-realm.v1"), {
-  value: Object.freeze({ version: 1, sdkVersion: codingAgent.VERSION, publicModules }),
-});
+${markerRealm(undefined)}
 const { TerminalOwner } = await import(${JSON.stringify(new URL("../src/terminal-owner.ts", import.meta.url).href)});
 let notices = [], drains = 0, stops = 0, starts = 0, themes = [];
 const terminal = { write() {}, setTitle() {}, setProgress() {}, setProgramStatus() {}, drainInput: async () => { drains++; } };

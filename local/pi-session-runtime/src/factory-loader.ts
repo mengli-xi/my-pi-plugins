@@ -6,7 +6,9 @@ type FactoryModule = Readonly<Record<string, unknown>>;
 interface LoaderState { readonly importModule: (path: string) => Promise<FactoryModule>; readonly modules: Map<string, Promise<FactoryModule>> }
 const loaders = new WeakMap<object, Promise<LoaderState>>();
 const realmKey = Symbol.for("pi.session-runtime.factory-loader-realms.v1");
-const namespaceNames = ["@earendil-works/pi-coding-agent", "@earendil-works/pi-ai", "@earendil-works/pi-tui"] as const;
+const namespaceNames = ["@earendil-works", "@mariozechner"].flatMap(scope => [
+  "pi-coding-agent", "pi-agent-core", "pi-tui", "pi-ai", "pi-ai/compat", "pi-ai/models", "pi-ai/oauth", "pi-ai/providers/all",
+].map(name => `${scope}/${name}`)).concat(["typebox", "typebox/compile", "typebox/value", "@sinclair/typebox", "@sinclair/typebox/compile", "@sinclair/typebox/value"]);
 interface FactoryRealms { readonly version: 1; readonly paths: Map<string, readonly (object | undefined)[]>; readonly digests: Map<string, string> }
 function claimFactoryRealm(path: string, modules: Readonly<Record<string, object>>): void {
   const global = globalThis as typeof globalThis & { [realmKey]?: FactoryRealms };
@@ -37,7 +39,7 @@ export async function loadApprovedFactoryModule(input: {
   const identity = input.publicModules["@earendil-works/pi-coding-agent"];
   if (!identity) throw new Error("Host coding-agent namespace is required");
   // Jiti integrates with the process-wide CJS cache even across loader copies. Pin the
-  // three Pi namespaces before any import; never return a cached factory from another realm.
+  // public namespaces before any import; never return a cached factory from another realm.
   const path = captureEntrypointDescriptorV1(input.path).canonical_path;
   claimFactoryRealm(path, input.publicModules);
   const checkCode = (): void => {
@@ -51,15 +53,15 @@ export async function loadApprovedFactoryModule(input: {
     }
   };
   checkCode();
-  let pending = loaders.get(identity);
+  let pending = loaders.get(input.publicModules);
   if (!pending) {
     pending = (async () => {
       const { createJiti } = await import("jiti");
       const jiti = createJiti(import.meta.url, { virtualModules: { ...input.publicModules }, tryNative: false, moduleCache: true });
       return { importModule: (path: string) => jiti.import<FactoryModule>(pathToFileURL(path).href), modules: new Map<string, Promise<FactoryModule>>() };
     })();
-    loaders.set(identity, pending);
-    pending.catch(() => { if (loaders.get(identity) === pending) loaders.delete(identity); });
+    loaders.set(input.publicModules, pending);
+    pending.catch(() => { if (loaders.get(input.publicModules) === pending) loaders.delete(input.publicModules); });
   }
   const state = await pending;
   let module = state.modules.get(path);

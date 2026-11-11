@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, realpathSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
@@ -13,7 +13,8 @@ test("Side never derives external provider authority from Subagents; explicit Si
   t.after(() => rmSync(root, { recursive: true, force: true }));
   writeFileSync(join(root, "package.json"), '{"name":"unbranded-sdk-fixture","type":"module"}');
   writeFileSync(join(root, "child.ts"), "export {};");
-  writeFileSync(join(root, "factory.ts"), "export function create(options) { return pi => pi.record(options); }");
+  const marker = join(root, "factory-executed");
+  writeFileSync(join(root, "factory.ts"), `import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "executed"); export function create(options) { return pi => pi.record(options); }`);
   const descriptor = capture(join(root, "child.ts"));
   const target = { child_entrypoint: descriptor, activation: "required-only" as const, commands: [], tools: [], hooks: [], requires: [], providers: [{ provider_id: "custom", service_tiers: [], service_tier_application: "none" as const }],
     sdk_provider_factory: { provider_id: "custom", package_manifest: capture(join(root, "package.json")), module: capture(join(root, "factory.ts")), export: "create", config: {}, artifacts: [] } };
@@ -36,7 +37,19 @@ test("Side never derives external provider authority from Subagents; explicit Si
   const pi = { getActiveTools: () => [], getAllTools: () => [] };
   await assert.rejects(sideExecutionPlan(pi as never, context as never, root), /current provider has no approved Side factory/);
   const side = register("side-provider", "pi-side-chat", true);
-  await assert.rejects(sideExecutionPlan(pi as never, context as never, root), /current provider has no approved Side factory/);
+  for (const state of ["未批准", "文件不存在", "文件损坏"]) {
+    await t.test(state, async () => {
+      const path = join(root, "sdk-provider-grants.json");
+      if (state === "文件不存在") rmSync(path);
+      else writeFileSync(path, state === "文件损坏" ? "{" : '{"version":1,"grants":[]}');
+      await assert.rejects(sideExecutionPlan(pi as never, context as never, root), error => {
+        assert.match(String(error), /未授权/);
+        for (const text of ["custom", "pi-side-chat", path]) assert.ok(String(error).includes(text));
+        return true;
+      });
+      assert.equal(existsSync(marker), false);
+    });
+  }
   writeFileSync(join(root, "sdk-provider-grants.json"), JSON.stringify({ version: 1, grants: [sdkProviderApprovalV1(side, "pi-side-chat")] }));
   const plan = await sideExecutionPlan(pi as never, context as never, root);
   assert.deepEqual(plan.modelScope, ["custom/allowed"]);
@@ -47,6 +60,6 @@ test("Side never derives external provider authority from Subagents; explicit Si
   assert.throws(plan.beforeExecution, /provider replaced/);
   reference = provider.provider;
   writeFileSync(join(root, "sdk-provider-grants.json"), '{"version":1,"grants":[]}');
-  assert.throws(plan.beforeExecution, /no exact grant/);
+  assert.throws(plan.beforeExecution, /未授权/);
   await plan.beforeDispose("startup-failed");
 });

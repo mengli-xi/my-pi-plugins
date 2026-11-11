@@ -27,9 +27,11 @@
     "test:patched-host": "node --experimental-strip-types --test test/session-realm.test.ts test/terminal-frames.test.ts test/terminal-owner.test.ts"
   },
   "peerDependencies": {
+    "@earendil-works/pi-agent-core": "^1.5.0",
     "@earendil-works/pi-ai": "^1.5.0",
     "@earendil-works/pi-coding-agent": "^1.5.0",
-    "@earendil-works/pi-tui": "^1.5.0"
+    "@earendil-works/pi-tui": "^1.5.0",
+    "typebox": "*"
   },
   "dependencies": {
     "jiti": "2.7.0",

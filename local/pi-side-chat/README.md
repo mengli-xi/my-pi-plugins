@@ -34,7 +34,7 @@ Side 优先继承 Main 最近真正发给模型的请求与稳定 tail，不继�
 
 Side/BTW 都会调用选定 provider，发送继承上下文并产生独立请求与费用；不是纯本地功能，也没有额外的固定服务端。BTW 不提供工具、不写入 Main transcript。OpenAI Responses 可复用 `prompt_cache_key`，但 session/request ID 独立；是否命中远端 cache 只看 provider usage，不作保证。
 
-Side 工具只从 Main active tools 与 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md) 的已加载 owner 声明共同投影；factory 装载与 Subagents 共用共享 loader，不维护插件白名单。Main 启用必填 timeout 的 bash 时，Side 必须使用同一 required-only factory 与定义指纹，不能回退宽松 builtin。外部 provider 必须有独立 `pi-side-chat` target 和实际 agentDir 下的批准；Subagents 的声明或批准不外溢。缺少必要执行 factory、模型授权或发生漂移时拒绝创建 Side。
+Side 工具只从 Main active tools 与 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md) 的已加载 owner 声明共同投影；factory 装载与 Subagents 共用共享 loader，不维护插件白名单。Main 启用必填 timeout 的 bash 时，Side 必须使用同一 required-only factory 与定义指纹，不能回退宽松 builtin。外部 provider 必须有独立 `pi-side-chat` target 和实际 agentDir 下的批准；Subagents 的声明或批准不外溢。所选 provider 已声明 SDK factory 但未批准（包括批准文件缺失或损坏）时，明确提示 provider、`pi-side-chat` target 和实际 `sdk-provider-grants.json` 批准路径，不静默隐藏所选模型或换模型；完整授权合同见[外部 SDK provider](../pi-subagents/docs/sdk-providers.md)。缺少必要执行 factory、模型授权或发生漂移时拒绝创建 Side。
 
 没有 CC Style 时使用原生 Pi 界面；可选 presentation 装载失败时给出诊断并使用原生界面；明确 required 的 capability 仍拒绝。状态栏贡献无人接收时用原生状态，不阻断 Side/BTW。
 
