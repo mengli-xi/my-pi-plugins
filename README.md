@@ -55,6 +55,7 @@ pi -e "$PWD/local/pi-todo"
 | [pi-fast](local/pi-fast/README.md) | 插件 | OpenAI Codex priority 请求开关 |
 | [pi-goal](fork/pi-goal/README.md) | Fork 插件 | 持续推进目标、完成审计、预算与 durable 续跑 |
 | [pi-li-uikit](local/pi-li-uikit/README.md) | 共享库 | 面板、选择器、鼠标和剪贴板组件 |
+| [pi-li-uikit-gallery](local/pi-li-uikit-gallery/README.md) | 插件 | UIKit 交互式组件展示（开发用） |
 | [pi-mcp-adapter](fork/pi-mcp-adapter/README.md) | Fork 插件 | MCP 网关、按需连接、OAuth、Apps 与 durable 后台结果 |
 | [pi-model-capacity](local/pi-model-capacity/README.md) | 插件 | 容量、订阅窗口和余额观测 |
 | [pi-model-prompts](local/pi-model-prompts/README.md) | 插件 | 模型规则、命名提示词与片段汇总 |
@@ -108,7 +109,7 @@ pi -e "$PWD/local/pi-todo"
 | `presentation/claude-style-v1` | [CC Style](local/pi-claude-style/README.md)，具名 `dist/child.ts` factory | Subagents、Side Chat，外部 SDK 消费者 | child 使用 Pi 原生渲染，输入/历史/返回不变 |
 | `pi.claude-style.custom-entry-presentations.v1` | [CC Style](local/pi-claude-style/README.md) | Subagents completion、Skills Loaded 行、Processes lifecycle；外部 entry renderer | 各 producer 保留自己的 fallback，不改变正文或投递 proof |
 | `pi.claude-style.editor-image-source.v2` | [CC Style](local/pi-claude-style/README.md) | Rewind | 整体退为无路径 `[Image]`，不暴露临时文件路径 |
-| `pi.pinned-layout.editor-slot-geometry.v1` | [CC fullscreen](local/pi-claude-style/README.md) | UIKit editor-overlay | 原生布局估算，仍保持安全关闭 |
+| `pi.pinned-layout.editor-slot-geometry.v1` | [CC fullscreen](local/pi-claude-style/README.md) | UIKit editor-overlay（含开发用 Gallery） | 原生布局估算，仍保持安全关闭 |
 | `continuation-v1` / `pi.runtime-contracts.continuation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) | Subagents、Processes、[Goal](fork/pi-goal/docs/protocols.md#continuation-与-obligation)，外部 producer | 无 Wake consumer 时 producer fallback；共享库本身不调模型 |
 | `process-wait-bridge-v2` / `pi.subagents.process-wait-bridge.v2` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义，Subagents 注册 | 批准的 Processes child factory | 无合法 Task/grant 则 record-only，不恢复已取消任务 |
 | `process-wait-bridge-v1` / `pi.subagents.process-wait-bridge.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 保留旧 API | 外部旧进程消费者 | 无 bridge 无协作 continuation；不与 V2 混用 |

@@ -176,6 +176,17 @@
         "@earendil-works/pi-tui": "^1.5.0",
       },
     },
+    "local/pi-li-uikit-gallery": {
+      "name": "pi-li-uikit-gallery",
+      "version": "0.1.0",
+      "dependencies": {
+        "pi-li-uikit": "^0.1.0",
+      },
+      "peerDependencies": {
+        "@earendil-works/pi-coding-agent": "^1.5.0",
+        "@earendil-works/pi-tui": "^1.5.0",
+      },
+    },
     "local/pi-model-capacity": {
       "name": "pi-model-capacity",
       "version": "0.1.0",
@@ -859,6 +870,8 @@
     "pi-fast": ["pi-fast@workspace:local/pi-fast"],
 
     "pi-li-uikit": ["pi-li-uikit@workspace:local/pi-li-uikit"],
+
+    "pi-li-uikit-gallery": ["pi-li-uikit-gallery@workspace:local/pi-li-uikit-gallery"],
 
     "pi-mcp-adapter": ["pi-mcp-adapter@workspace:fork/pi-mcp-adapter"],
 

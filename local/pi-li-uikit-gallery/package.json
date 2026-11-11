@@ -1,0 +1,24 @@
+{
+  "name": "pi-li-uikit-gallery",
+  "version": "0.1.0",
+  "description": "Interactive /uikit gallery for pi-li-uikit components",
+  "type": "module",
+  "private": true,
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --import ../../ts-resolve.mjs --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "pi-li-uikit": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0"
+  }
+}
