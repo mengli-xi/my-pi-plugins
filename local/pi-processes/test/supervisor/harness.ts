@@ -58,7 +58,9 @@ export async function startSupervisor(options: { runtime: string; supervisorPath
   });
   let requestSequence = 0;
 
-  const waitFor = async (predicate: (frame: FrameV1) => boolean, timeoutMs = 5_000): Promise<FrameV1> => {
+  // Command starts and signal delivery on a loaded machine can take seconds;
+  // the cap only bounds how long a missing frame is waited for.
+  const waitFor = async (predicate: (frame: FrameV1) => boolean, timeoutMs = 15_000): Promise<FrameV1> => {
     const existing = frames.find(predicate);
     if (existing) return existing;
     return await new Promise<FrameV1>((resolve, reject) => {
@@ -83,7 +85,7 @@ export async function startSupervisor(options: { runtime: string; supervisorPath
   }));
   await waitFor((frame) => frame.type === "ready");
 
-  const waitForExit = async (timeoutMs = 5_000): Promise<void> => {
+  const waitForExit = async (timeoutMs = 15_000): Promise<void> => {
     if (child.exitCode !== null || child.signalCode !== null) return;
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {

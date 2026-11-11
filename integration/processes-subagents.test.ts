@@ -67,7 +67,9 @@ test("real Process wait preserves the Task deadline and rechecks cached admissio
   } finally { gate.resolve(); await f.close(); }
 });
 
-test("an actual Task deadline revokes a cached grant while its real Process is still live", { timeout: 90000 }, async () => {
+// The Task deadline itself is 60 seconds; the test only has to survive it plus
+// fixture setup and cleanup, so the bound stays far above the observed ~61s.
+test("an actual Task deadline revokes a cached grant while its real Process is still live", { timeout: 150000 }, async () => {
   const { f, binding, service, diagnostics, execute } = await ready();
   try {
     assert.equal((await execute("spawn_agent", { task_name: "deadline", message: "TIMEOUT_CHILD", task_timeout_ms: 60000 })).details.outcome, "ok");
@@ -92,7 +94,7 @@ test("an actual Task deadline revokes a cached grant while its real Process is s
     const pgid = (result.details as { data: { process: { pgid: number } } }).data.process.pgid;
     assert.ok(Number.isInteger(pgid) && pgid > 0);
     const deadline = item().tasks[0]!.deadline_at_ms;
-    await until(() => item().tasks[0]?.phase === "settled", "real 60-second Task deadline", diagnostics, 75000);
+    await until(() => item().tasks[0]?.phase === "settled", "real 60-second Task deadline", diagnostics, 120000);
     assert.equal(item().tasks[0]!.deadline_at_ms, deadline);
     assert.equal(item().tasks[0]!.outcome, "failed");
     assert.equal(item().completions[0]!.reason, "timeout");

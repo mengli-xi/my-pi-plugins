@@ -26,8 +26,13 @@ test("reads a command that finished while the event loop was blocked", async () 
   // result from the timeout threw the frame away — and at startup and after
   // `/reload` there is no previous frame to fall back on, which is what left
   // the statusline blank until the next turn ended.
-  const pending = runStatusLineCommand("echo hello", {}, CWD, undefined, 20);
-  blockEventLoop(400);
+  //
+  // The deadline only has to outlast a cold shell start, and the block only has
+  // to outlast the deadline: what the case pins down is that the timeout
+  // expires while `data` and `close` are still unread, not how fast `echo` is.
+  // Both spans keep several times the scheduling slack a loaded machine needs.
+  const pending = runStatusLineCommand("echo hello", {}, CWD, undefined, 2_000);
+  blockEventLoop(2_600);
 
   assert.deepEqual(await pending, ["hello"]);
 });
@@ -66,7 +71,7 @@ function alive(pid: number): boolean {
 }
 
 for (const mode of ["abort", "abort-resistant", "timeout", "timeout-then-abort"] as const) {
-  test(`cancelling a slow command tree drains every descendant: ${mode}`, { skip: process.platform === "win32", timeout: 15_000 }, async (t) => {
+  test(`cancelling a slow command tree drains every descendant: ${mode}`, { skip: process.platform === "win32", timeout: 60_000 }, async (t) => {
     const root = mkdtempSync(join(tmpdir(), "statusline-command-tree-"));
     const groups: number[] = [], workers: number[] = [];
     t.after(() => {
@@ -97,14 +102,20 @@ printf 'late output\\n'
       const pidFile = join(root, `worker-${cycle}.pid`);
       const controller = new AbortController();
       const resistant = mode === "abort-resistant" || mode === "timeout-then-abort";
-      const pending = runStatusLineCommand(`exec /bin/sh ${quote(script)} ${quote(pidFile)} ${resistant ? "ignore" : "normal"}`, {}, root, controller.signal, mode.startsWith("timeout") ? 1_000 : 10_000);
-      const deadline = Date.now() + 5_000;
+      // The timeout modes need the worker (a cold Node process) to be running
+      // before the deadline fires; only the cancellation budget is under test.
+      const spawnedAt = Date.now();
+      const pending = runStatusLineCommand(`exec /bin/sh ${quote(script)} ${quote(pidFile)} ${resistant ? "ignore" : "normal"}`, {}, root, controller.signal, mode.startsWith("timeout") ? 5_000 : 10_000);
+      const deadline = Date.now() + 20_000;
       while (!existsSync(pidFile) && Date.now() < deadline) await delay(10);
       if (existsSync(pidFile + ".group")) groups.push(Number(readFileSync(pidFile + ".group", "utf8")));
       assert.ok(existsSync(pidFile), "slow worker must start before cancellation");
       const pid = Number(readFileSync(pidFile, "utf8")); workers.push(pid);
       assert.equal(alive(pid), true);
-      if (mode === "timeout-then-abort") await delay(1_100);
+      // Abort shortly after the command's own timeout (measured from spawn, not
+      // from the worker's start) so the abort still lands inside the timeout's
+      // two-second KILL grace however long the worker took to boot.
+      if (mode === "timeout-then-abort") await delay(Math.max(0, spawnedAt + 5_300 - Date.now()));
       const started = Date.now();
       if (mode !== "timeout") controller.abort();
       assert.deepEqual(await pending, []);

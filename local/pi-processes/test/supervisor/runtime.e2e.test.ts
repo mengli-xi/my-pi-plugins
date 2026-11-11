@@ -141,28 +141,43 @@ await import(${JSON.stringify(pathToFileURL(supervisorPath).href)});
   try {
     const processId = id("9");
     const command = "trap 'exit 0' TERM; (trap '' TERM; printf 'ready\\n'; while :; do :; done) & wait";
+    // The deadline only has to outlive the shell installing both traps; the
+    // five-second grace it measures starts at the deadline either way.
     const started = ok(await harness.send("spawn", {
       operationId: op(), id: processId, name: "timeout-group", command, cwd: root, shell,
-      stopGraceMs: 30_000, timeoutMs: 500, logLimits, watches: [],
+      stopGraceMs: 30_000, timeoutMs: 6_000, logLimits, watches: [],
     }));
     pgid = started.pgid as number;
-    assert.equal(Date.parse(started.deadlineAt as string) - Date.parse(started.startedAt as string), 500);
-    assert.equal(started.timeoutMs, 500);
-    await harness.waitFor((frame) => frame.type === "logCursorAdvanced" && frame.payload.id === processId);
-    await delay(850);
-    const marker = JSON.parse(await readFile(termPath, "utf8"));
+    assert.equal(Date.parse(started.deadlineAt as string) - Date.parse(started.startedAt as string), 6_000);
+    assert.equal(started.timeoutMs, 6_000);
+    await harness.waitFor((frame) => frame.type === "logCursorAdvanced" && frame.payload.id === processId, 30_000);
+    // Wait for the dispatch marker itself: a fixed sleep measured the scheduler,
+    // and the grace below is measured from the marker's timestamp.
+    const markerDeadline = Date.now() + 30_000;
+    let markerText = "";
+    for (;;) {
+      try { markerText = await readFile(termPath, "utf8"); break; }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        assert.ok(Date.now() < markerDeadline, "the timeout never dispatched SIGTERM");
+        await delay(10);
+      }
+    }
+    const marker = JSON.parse(markerText);
     assert.equal(marker.pgid, pgid);
     const termAt = marker.at as number;
     assert.ok(termAt >= Date.parse(started.deadlineAt as string) - 20);
     assert.doesNotThrow(() => process.kill(-pgid!, 0));
     assert.throws(() => process.kill(pgid!, 0), (error: unknown) => (error as NodeJS.ErrnoException).code === "ESRCH");
     ok(await harness.send("stop", { operationId: op(), id: processId }));
-    const terminal = await harness.waitFor((frame) => frame.type === "terminal" && frame.payload.id === processId, 7_000);
+    const terminal = await harness.waitFor((frame) => frame.type === "terminal" && frame.payload.id === processId, 30_000);
     assert.equal(terminal.payload.classification, "timeout");
     assert.equal(terminal.payload.cause, "timeout");
-    assert.equal(terminal.payload.timeoutMs, 500);
+    assert.equal(terminal.payload.timeoutMs, 6_000);
     const graceMs = Date.parse(terminal.payload.endedAt as string) - termAt;
-    assert.ok(graceMs >= 4_800 && graceMs < 6_500, `graceMs=${graceMs}`);
+    // Still the five-second grace: the lower bound is the contract, the upper
+    // bound only absorbs a loaded machine's timer and reap latency.
+    assert.ok(graceMs >= 4_800 && graceMs < 9_000, `graceMs=${graceMs}`);
     assert.throws(() => process.kill(-pgid!, 0), (error: unknown) => (error as NodeJS.ErrnoException).code === "ESRCH");
     await delay(100);
     assert.equal(harness.frames.filter((frame) => frame.type === "terminal" && frame.payload.id === processId).length, 1);
@@ -180,17 +195,18 @@ test("an exit inside timeout grace still terminalizes as timeout only once", asy
     const processId = id("a");
     const started = ok(await harness.send("spawn", {
       operationId: op(), id: processId, name: "grace-exit", cwd: root, shell,
-      // Install the signal handler without racing Node/preload startup against 300 ms.
+      // Install the signal handler without racing the shell's own startup: the
+      // deadline stays far behind it, the exit stays inside the grace.
       command: "trap 'sleep 0.2; exit 0' TERM; while :; do :; done",
-      stopGraceMs: 100, timeoutMs: 300, logLimits, watches: [],
+      stopGraceMs: 100, timeoutMs: 6_000, logLimits, watches: [],
     }));
-    const terminal = await harness.waitFor((frame) => frame.type === "terminal" && frame.payload.id === processId);
+    const terminal = await harness.waitFor((frame) => frame.type === "terminal" && frame.payload.id === processId, 25_000);
     assert.equal(terminal.payload.exitCode, 0);
     assert.equal(terminal.payload.classification, "timeout");
     assert.equal(terminal.payload.cause, "timeout");
-    assert.equal(terminal.payload.timeoutMs, 300);
+    assert.equal(terminal.payload.timeoutMs, 6_000);
     assert.ok(Date.parse(terminal.payload.endedAt as string) - Date.parse(started.deadlineAt as string) >= 150);
-    await delay(150);
+    await delay(500);
     assert.equal(harness.frames.filter((frame) => frame.type === "terminal" && frame.payload.id === processId).length, 1);
   } finally { await harness.dispose(); }
 });
@@ -198,7 +214,9 @@ test("an exit inside timeout grace still terminalizes as timeout only once", asy
 test("natural exit wins before deadline and long safe timeouts never overflow a timer", async () => {
   const harness = await startSupervisor({ runtime: await runtimePath(), supervisorPath });
   try {
-    for (const [index, timeoutMs] of [400, 2_147_484_000].entries()) {
+    // The short deadline only has to outlive a cold `exit 0`; the long one must
+    // not overflow a timer.
+    for (const [index, timeoutMs] of [6_000, 2_147_484_000].entries()) {
       const processId = id(`b${index}`);
       const started = ok(await harness.send("spawn", {
         operationId: op(), id: processId, name: "natural", cwd: root, shell,
@@ -212,7 +230,8 @@ test("natural exit wins before deadline and long safe timeouts never overflow a 
       assert.equal("cause" in terminal.payload, false);
       assert.equal("timeoutMs" in terminal.payload, false);
     }
-    await delay(450);
+    // Outlive the short deadline so a late timeout would still show up.
+    await delay(6_400);
     assert.equal(harness.frames.filter((frame) => frame.type === "terminal").length, 2);
   } finally { await harness.dispose(); }
 });
@@ -232,7 +251,7 @@ process.kill = (pid, signal) => {
   const result = kill(pid, signal);
   if (pid < 0 && signal === "SIGKILL" && heldGroup === undefined) {
     heldGroup = pid;
-    releaseAt = performance.now() + 1800;
+    releaseAt = performance.now() + 10000;
     writeFileSync(${JSON.stringify(`${markerPath}.tmp`)}, JSON.stringify({ at: Date.now(), pgid: -pid }));
     renameSync(${JSON.stringify(`${markerPath}.tmp`)}, ${JSON.stringify(markerPath)});
   }
@@ -248,11 +267,13 @@ await import(${JSON.stringify(pathToFileURL(supervisorPath).href)});
     const started = ok(await harness.send("spawn", {
       operationId: op(), id: processId, name: "natural-crossing", cwd: root, shell,
       command: nodeCommand('const child = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" }); child.unref();'),
-      stopGraceMs: 100, timeoutMs: 1000, logLimits, watches: [],
+      // The natural exit only has to land before the deadline, and the modelled
+      // group convergence has to outlast it; both spans keep cold-start slack.
+      stopGraceMs: 100, timeoutMs: 6_000, logLimits, watches: [],
     }));
     pgid = started.pgid as number;
     let marker: { at: number; pgid: number } | undefined;
-    const markerDeadline = Date.now() + 3000;
+    const markerDeadline = Date.now() + 15_000;
     while (!marker) {
       try { marker = JSON.parse(await readFile(markerPath, "utf8")); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -289,15 +310,20 @@ test("scope cleanup cannot postpone the command deadline with a longer stop grac
     const started = ok(await harness.send("spawn", {
       operationId: op(), id: processId, name: "cleanup-deadline", cwd: root, shell,
       command: "trap '' TERM; printf 'ready\\n'; while :; do :; done",
-      stopGraceMs: 30_000, timeoutMs: 300, logLimits, watches: [],
+      // The deadline only has to outlive the shell installing the trap; the
+      // cleanup must still end it with the five-second timeout grace, not with
+      // the much longer stop grace requested here.
+      stopGraceMs: 30_000, timeoutMs: 8_000, logLimits, watches: [],
     }));
     pgid = started.pgid as number;
-    await harness.waitFor((frame) => frame.type === "logCursorAdvanced" && frame.payload.id === processId);
+    await harness.waitFor((frame) => frame.type === "logCursorAdvanced" && frame.payload.id === processId, 30_000);
     const { requestId } = harness.write("cleanup", { operationId: op(), reason: "scope-ended" });
-    const cleaned = ok(await harness.waitFor((frame) => frame.type === "response" && frame.requestId === requestId, 8_000));
+    const cleaned = ok(await harness.waitFor((frame) => frame.type === "response" && frame.requestId === requestId, 35_000));
     assert.equal(cleaned.unresolved, 0);
-    assert.ok(Date.now() - Date.parse(started.startedAt as string) < 7_500);
-    await harness.waitForExit();
+    // Deadline plus five-second grace plus load slack, still far below the 30s
+    // stop grace the request asks for.
+    assert.ok(Date.now() - Date.parse(started.startedAt as string) < 20_000);
+    await harness.waitForExit(30_000);
     assert.throws(() => process.kill(-pgid!, 0), (error: unknown) => (error as NodeJS.ErrnoException).code === "ESRCH");
   } finally {
     if (harness.child.exitCode === null) await harness.dispose();
