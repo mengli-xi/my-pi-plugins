@@ -1,0 +1,34 @@
+{
+  "name": "pi-fast",
+  "version": "0.1.0",
+  "description": "/fast — a Claude Code-style fast-output toggle: priority service tier on the OpenAI Codex (ChatGPT OAuth) provider.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "extension",
+    "fast",
+    "service-tier",
+    "openai",
+    "codex"
+  ],
+  "files": [
+    "index.ts",
+    "state.ts",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --import ../../ts-resolve.mjs --test --test-reporter=spec test/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0"
+  }
+}
