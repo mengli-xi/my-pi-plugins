@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fauxAssistantMessage, normalizeContext, type Message } from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
   acquireEffectiveCapture, contextFingerprint, getEffectiveContextStore, mapEffectiveTurns,
-  requiresEffectiveCapture, EffectiveContextStore, type ContextIdentity, type EffectiveCapture, type RequestCandidate,
+  requiresEffectiveCapture, EffectiveContextStore, type ContextIdentity, type EffectiveCapture, type NativeMessageOrigin, type RequestCandidate,
 } from "../src/effective-context.ts";
 import { buildNativeChildSnapshot, describeNativeContext, EffectiveContextUnavailableError, selectEffectiveContext, stableMessagePrefix, writeNativeChildSnapshot } from "../src/native-child-context.ts";
 
@@ -108,10 +108,8 @@ test("capture validity covers generation, branch resets, fingerprints and native
     assert.throws(() => select(changed, "all", observed, true), /projection-changed/);
     assert.equal(select(changed, "all", observed).source, "native-projection");
   }
-  assert.equal(requiresEffectiveCapture({ branch, requestTransforms: "unknown" }), true);
-  assert.equal(requiresEffectiveCapture({ branch, requestTransforms: "native-only" }), false);
-  const magic = structuredClone(branch); append(magic, { type: "compaction", firstKeptEntryId: "e0", summary: "headings only", tokensBefore: 1, details: { source: "magic-context" } });
-  assert.equal(requiresEffectiveCapture({ branch: magic, requestTransforms: "native-only" }), true);
+  assert.equal(requiresEffectiveCapture({ requestTransforms: "unknown" }), true);
+  assert.equal(requiresEffectiveCapture({ requestTransforms: "native-only" }), false);
 });
 
 test("R1: a later transformed request revokes native-only fallback, including after invalidation", () => {
@@ -126,7 +124,7 @@ test("R1: a later transformed request revokes native-only fallback, including af
   store.put(second, store.revision(identity.sessionId), origins);
   assert.equal(store.requestTransforms(identity.sessionId, identity.generation, identity.capabilityFingerprint), "transformed");
   append(branch, { type: "context_edit", targetId: "e1", replacement: null });
-  const required = () => requiresEffectiveCapture({ branch, requestTransforms: store.requestTransforms(identity.sessionId, identity.generation, identity.capabilityFingerprint) });
+  const required = () => requiresEffectiveCapture({ requestTransforms: store.requestTransforms(identity.sessionId, identity.generation, identity.capabilityFingerprint) });
   assert.throws(() => select(branch, "all", store.get(identity.sessionId, identity.generation), required()), /projection-changed/);
   store.invalidate(identity.sessionId, "native-compaction");
   assert.equal(store.requestTransforms(identity.sessionId, identity.generation, identity.capabilityFingerprint), "unknown");
@@ -200,17 +198,61 @@ test("R4: numeric forks discard older bash/custom turns while retaining only exp
   assert.match(text, /latest custom/); assert.doesNotMatch(text, /first custom|first response/);
 });
 
-test("Magic registration is recognized by canonical source package, not a command-looking name", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "magic-provenance-"));
-  try {
-    const source = join(dir, "entry.ts"); await writeFile(source, "");
-    await writeFile(join(dir, "package.json"), JSON.stringify({ name: "@cortexkit/pi-magic-context" }));
-    const alias = join(dir, "alias.ts"); await symlink(source, alias);
-    const info = { path: alias, source: dir, origin: "package" as const, scope: "user" as const };
-    assert.equal(requiresEffectiveCapture({ branch: [], sources: [info], requestTransforms: "native-only" }), true);
-    await writeFile(join(dir, "package.json"), JSON.stringify({ name: "unrelated" }));
-    assert.equal(requiresEffectiveCapture({ branch: [], sources: [{ ...info, source: "magic-context" }], requestTransforms: "native-only" }), false);
-  } finally { await rm(dir, { recursive: true, force: true }); }
+test("duplicate native identity refuses numeric N instead of picking one turn", () => {
+  const request = user("same request");
+  const origin = (kind: "turn" | "preamble" | "body", turnId: string): NativeMessageOrigin => ({ message: request, kind, turnId });
+  // Two candidate turns, or a turn colliding with a retained preamble or attached body, are ambiguous.
+  assert.equal(mapEffectiveTurns([request], [origin("turn", "first"), origin("turn", "second")]).turnMappingReliable, false);
+  assert.equal(mapEffectiveTurns([request], [origin("turn", "only"), origin("preamble", "pre")]).turnMappingReliable, false);
+  assert.equal(mapEffectiveTurns([request], [origin("turn", "only"), origin("body", "body")]).turnMappingReliable, false);
+  assert.equal(mapEffectiveTurns([request], [origin("body", "left"), origin("body", "right")]).turnMappingReliable, false);
+  // Repeated native preamble copies stay a retained preamble rather than becoming a turn.
+  const preambleOnly = mapEffectiveTurns([request], [origin("preamble", "left"), origin("preamble", "right")]);
+  assert.equal(preambleOnly.turnMappingReliable, true);
+  assert.deepEqual(preambleOnly.turnAnchors, []);
+  assert.deepEqual(preambleOnly.preambleMessageIndices, [0]);
+});
+
+test("a repeated request identity cannot reuse one native turn", () => {
+  const request = user("repeated");
+  const origins: NativeMessageOrigin[] = [{ message: request, kind: "turn", turnId: "e0" }];
+  const mapping = mapEffectiveTurns([request, request], origins);
+  assert.equal(mapping.turnMappingReliable, false);
+  assert.deepEqual(mapping.turnAnchors, [{ entryId: "e0", messageIndex: 0 }]);
+});
+
+test("multi-block user content maps one turn only while every part stays byte-identical", () => {
+  const rich = { role: "user", timestamp: 3, content: [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }, { type: "text", text: "first" }, { type: "text", text: "second" }] } as Message;
+  const origins: NativeMessageOrigin[] = [{ message: rich, kind: "turn", turnId: "rich" }];
+  const mapping = mapEffectiveTurns([rich], origins);
+  assert.equal(mapping.turnMappingReliable, true);
+  assert.deepEqual(mapping.turnAnchors, [{ entryId: "rich", messageIndex: 0 }]);
+  const changedImage = structuredClone(rich) as any;
+  changedImage.content[0].data = "Y2hhbmdlZA==";
+  assert.equal(mapEffectiveTurns([changedImage], origins).turnMappingReliable, false);
+  const signed = structuredClone(rich) as any;
+  signed.content[1].textSignature = "added metadata";
+  assert.equal(mapEffectiveTurns([signed], origins).turnMappingReliable, false);
+});
+
+test("two identical requests against two identical native turns refuse instead of pairing", () => {
+  const request = user("same request");
+  const origins: NativeMessageOrigin[] = [{ message: request, kind: "turn", turnId: "e0" }, { message: request, kind: "turn", turnId: "e1" }];
+  const mapping = mapEffectiveTurns([request, request], origins);
+  assert.equal(mapping.turnMappingReliable, false);
+  assert.deepEqual(mapping.turnAnchors, []);
+});
+
+test("a compaction entry with unknown details does not by itself require capture", () => {
+  const branch = branchOf([user("kept turn"), answer("kept answer")]);
+  append(branch, { type: "compaction", firstKeptEntryId: "e0", summary: "summary from an unknown producer", tokensBefore: 4000, details: { source: "fixture-compaction-producer" } });
+  append(branch, { type: "message", message: answer("latest answer") });
+  assert.equal(requiresEffectiveCapture({ requestTransforms: "native-only" }), false);
+  const all = select(branch, "all", undefined, false);
+  assert.equal(all.source, "native-projection");
+  assert.equal(all.exactRequestPrefix, false);
+  assert.match(JSON.stringify(all.messages), /summary from an unknown producer/);
+  assert.match(JSON.stringify(select(branch, "1", undefined, false).messages), /kept turn|latest answer/);
 });
 
 test("provider ownership, one-shot request fence, frozen candidate leaf and structural invalidation", () => {

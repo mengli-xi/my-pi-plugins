@@ -88,8 +88,7 @@ export class MainContextSource {
     if (capture && captureInvalidReason(capture, input)) {
       store.invalidate(current.sessionId, captureInvalidReason(capture, input)!); capture = undefined;
     }
-    const requiresCapture = !acceptNativeOnce && requiresEffectiveCapture({ branch,
-      sources: [...this.pi.getAllTools().map(tool => tool.sourceInfo), ...this.pi.getCommands().map(command => command.sourceInfo)],
+    const requiresCapture = !acceptNativeOnce && requiresEffectiveCapture({
       requestTransforms: store.requestTransforms(current.sessionId, current.generation, current.capabilityFingerprint) });
     try { return selectEffectiveContext({ ...input, capture, requiresCapture, unavailableReason: store.reason(current.sessionId) }); }
     catch (error) {

@@ -23,7 +23,7 @@ export async function freshHost(t: TestContext, message = "Reply exactly SUBAGEN
   if (order === "reverse") owners.reverse();
   const main = spawn(piBinary, ["--offline", "--mode", "rpc", "--session", session, ...(fullProfile ? [] : ["--no-extensions"]), ...(process.env.PI_MAILBOX_JOINT === "1" ? ["-e", join(pkg, "test/fixtures/mailbox-joint-cutoff.ts")] : []), "-e", join(pkg, "test/fixtures/faux-subagent-provider.ts"), ...owners.flatMap(path => ["-e", path]), "-e", join(pkg, "test/fixtures/sdk-host-control.ts"),
     ...extra, ...(fullProfile ? [] : ["--no-skills", "--no-prompt-templates", "--no-context-files"]), "--provider", "fixture", "--model", "faux-1", "--thinking", "off", "--approve"], {
-    cwd: root, env: { ...process.env, ...(runtimeTmp ? { TMPDIR: runtimeTmp } : {}), HOME: root, XDG_CONFIG_HOME: join(root, ".config"), XDG_DATA_HOME: join(root, ".local/share"), MAGIC_CONTEXT_STORAGE_DIR: join(root, "mc"), PI_SCHEDULER_BINARY: piBinary, PI_CODING_AGENT_DIR: agentDir, PI_NEXT_AGENT_DIR: agentDir, PI_OFFLINE: "1",
+    cwd: root, env: { ...process.env, ...(runtimeTmp ? { TMPDIR: runtimeTmp } : {}), HOME: root, XDG_CONFIG_HOME: join(root, ".config"), XDG_DATA_HOME: join(root, ".local/share"), PI_SCHEDULER_BINARY: piBinary, PI_CODING_AGENT_DIR: agentDir, PI_NEXT_AGENT_DIR: agentDir, PI_OFFLINE: "1",
       PI_SUBAGENTS_TEST_ASYNC: "1", PI_SUBAGENTS_TEST_MESSAGE: message, PI_SUBAGENTS_HOST_CONTROL: root, PI_SUBAGENTS_TEST_LOG: join(root, "provider.jsonl") }, stdio: ["pipe", "pipe", "pipe"],
   });
   const records: any[] = []; let stderr = "", pending = "", serial = 0;

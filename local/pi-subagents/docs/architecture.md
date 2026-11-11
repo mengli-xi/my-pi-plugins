@@ -174,7 +174,7 @@ profile/工具/factory snapshot 是 admission proof，prepare/native artifact/ha
 
 ## 上下文 Fork 接线
 
-`spawn_agent.fork_turns` 的参数范围见[工具合同](usage.md#1-工具集合与权限)。Subagents 把解析结果交给共享库，不维护 capture、Magic 格式解码、数值 turn 映射或原生 seed 的另一套规则。完整合同分别见 [有效请求捕获](../../pi-session-runtime/docs/runtime.md#有效请求捕获)、[选择与 seed](../../pi-session-runtime/docs/runtime.md#选择与-seed)及[旧格式兼容](../../pi-session-runtime/docs/runtime.md#旧-magic-context-格式)。
+`spawn_agent.fork_turns` 的参数范围见[工具合同](usage.md#1-工具集合与权限)。Subagents 把解析结果交给共享库，不维护 capture、数值 turn 映射或原生 seed 的另一套规则。完整合同分别见 [有效请求捕获](../../pi-session-runtime/docs/runtime.md#有效请求捕获)及[选择与 seed](../../pi-session-runtime/docs/runtime.md#选择与-seed)。
 
 Main binding 在 `src/index.ts` 通过 `src/context/effective.ts` 租用共享 capture，并把公开 provider 回调接到 lease 确认端口；child 的同类监听由 `src/context/capture.ts` 安装。shutdown/reload 退役各自 binding，具体确认与失效条件由共享库合同定义。
 

@@ -16,7 +16,7 @@ test("Subagent preparation uses shared effective selection for none/N/all and le
   manager.appendMessage({ role: "user", content: "RAW_BEFORE_COMPRESSION_ONLY", timestamp: 1 });
   manager.appendMessage(fauxAssistantMessage("old answer"));
   const anchor = manager.appendMessage({ role: "user", content: "retained turn", timestamp: 2 });
-  manager.appendCompaction("headings only", anchor, 100, { source: "magic-context" }, true);
+  manager.appendCompaction("headings only", anchor, 100, { source: "fixture-compaction-producer" }, true);
   manager.appendMessage(fauxAssistantMessage("retained answer"));
   const provider: any = { streamSimple(_model: unknown, _context: unknown, options: any) { options?.onResponse?.(); return {}; } };
   const model = { provider: "faux", id: "model", api: "faux", input: ["text"], contextWindow: 64000, maxTokens: 512, reasoning: false };

@@ -627,7 +627,7 @@ Completion 与 Mailbox message 是原生模型可见 Pi history。package contex
 - 绝不丢弃不同 Completion/Mailbox ID；
 - 将矛盾或 malformed package message 当作 inert sanitized text，并降级 health；
 - 保留 Pi compaction 和 tool-call/result semantics；
-- 绝不只因 Magic Context 或 Pi compaction 从当前 model context 移除了旧项目而重新交付。
+- 绝不只因 Pi compaction 从当前 model context 移除了旧项目而重新交付。
 
 Delivery proof 是 native active-branch/latest-compaction lineage 加 durable Inbox state。Mailbox body tombstone 还需要如 persistence 所定义的后续 package checkpoint。
 

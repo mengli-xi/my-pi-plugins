@@ -26,7 +26,7 @@ export async function prepareEffectiveChildSession(pi: ExtensionAPI, ctx: Extens
   const reason = captureInvalidReason(capture, selectionInput);
   if (capture && reason) store.invalidate(identity.sessionId, reason);
   // Evidence from another branch/projection cannot authorize this fork's native fallback.
-  selectionInput.requiresCapture = input.forkTurns !== "none" && mainRequiresEffectiveCapture(pi, ctx, identity);
+  selectionInput.requiresCapture = input.forkTurns !== "none" && mainRequiresEffectiveCapture(identity);
   const selection = selectEffectiveContext(selectionInput);
   return buildNativeChildSnapshot({
     selection, cwd: ctx.cwd, model: input.model,
