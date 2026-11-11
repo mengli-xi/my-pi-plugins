@@ -52,6 +52,7 @@ pi -e "$PWD/local/pi-todo"
 | [pi-cc-memory](local/pi-cc-memory/README.md) | 插件 | 项目记忆与冻结索引 |
 | [pi-claude-style](local/pi-claude-style/README.md) | 插件 | 工具、Thinking、编辑器和默认状态栏展示 |
 | [pi-effort](local/pi-effort/README.md) | 插件 | 推理档位滑杆与受控 ultra 提示 |
+| [pi-exit-command](local/pi-exit-command/README.md) | 插件 | `/exit` 复制重开当前会话的命令后退出 |
 | [pi-fast](local/pi-fast/README.md) | 插件 | OpenAI Codex priority 请求开关 |
 | [pi-goal](fork/pi-goal/README.md) | Fork 插件 | 持续推进目标、完成审计、预算与 durable 续跑 |
 | [pi-li-uikit](local/pi-li-uikit/README.md) | 共享库 | 面板、选择器、鼠标和剪贴板组件 |

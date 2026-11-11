@@ -161,6 +161,13 @@
         "@earendil-works/pi-tui": "^1.5.0",
       },
     },
+    "local/pi-exit-command": {
+      "name": "pi-exit-command",
+      "version": "0.1.0",
+      "peerDependencies": {
+        "@earendil-works/pi-coding-agent": "^1.5.0",
+      },
+    },
     "local/pi-fast": {
       "name": "pi-fast",
       "version": "0.1.0",
@@ -866,6 +873,8 @@
     "pi-claude-style": ["pi-claude-style@workspace:local/pi-claude-style"],
 
     "pi-effort": ["pi-effort@workspace:local/pi-effort"],
+
+    "pi-exit-command": ["pi-exit-command@workspace:local/pi-exit-command"],
 
     "pi-fast": ["pi-fast@workspace:local/pi-fast"],
 

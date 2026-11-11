@@ -1,0 +1,27 @@
+{
+  "name": "pi-exit-command",
+  "version": "0.1.0",
+  "description": "Copy a restart command for the current session to the clipboard, then exit Pi.",
+  "type": "module",
+  "private": true,
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "session",
+    "clipboard"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-transform-types --test tests/*.test.ts",
+    "check": "npm run typecheck && npm test",
+    "check:host": "node ../../scripts/check-host.mjs node scripts/check-host.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0"
+  }
+}
