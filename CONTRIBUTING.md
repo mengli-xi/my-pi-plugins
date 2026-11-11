@@ -66,6 +66,7 @@ node scripts/pi-upgrade-check.mjs 1.6.0 --apply  # 全部通过才更新版本�
 | side-chat | 无 | 子视图实例探针 | 秒级；宿主进程上限半分钟 |
 | cc-memory | 无 | faux provider、冻结 system、compact 与 resume | 数十秒；单次等待上限约一分钟 |
 | session-compact | 无 | faux provider、压缩与恢复材料、有效上下文 | 数十秒；单次等待上限半分钟 |
+| scheduler | 无 | 构建、Node CLI 自动启动、faux 定时执行、mailbox source 与恢复矩阵；拦截服务管理器与桌面通知 | 数分钟；单场景等待通常最多十几秒 |
 | mcp-adapter | 无 | 构建、真实 CLI 启动及其 SDK 依赖图加载生产 dist | 数十秒；子进程上限半分钟 |
 
 这些检查不调用真实 provider、不读取或修改用户日常配置。没有 `check:host` 的包（Subagents、Goal、Processes、Session Inject 等）只在各包 real/native 套件和根 `integration/` 的 `test:integration:*` 里跑真实宿主测试，不属于这个门禁，升级后要另行运行。这些检查也都不证明真实 provider、人工终端与输入法、没有探针的私有行为兼容。`test:patched-host` 及补丁联测不纳入原版宿主门禁；**只要 Pi 版本改变，`host-patches/` 必须按[补丁 README](host-patches/pi/v1.5.0/README.md#回滚升级与边界)重新 pin 上游及 hashes、重新构建和验证**，不能把旧补丁直接套到新版。

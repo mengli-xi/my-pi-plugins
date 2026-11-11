@@ -4,7 +4,7 @@
 
 ## 安装与加载
 
-开发本仓库需要 Node.js 22.19+、Bun 1.3+ 和 Pi 1.5.0。Bun 是开发前提：依赖安装和 6 个包的构建都用它，多份 clone 共用 bun 全局缓存、不重复占盘；日常 `npm run` 脚本不变，用 Node 自带的 npm 即可。Node 直接运行 TypeScript 的测试建议使用 Node 24。**没有构建产物的插件不需要 Bun，也不需要安装本仓库依赖**（Pi 从本地路径直接加载，不读根 lock）；CC Style、Session Naming、Subagents、Processes、Goal、MCP Adapter 这 6 个包要先在仓库根用 bun 安装依赖并构建，使用它们需要 Bun。将下面的仓库地址占位符换成实际地址：
+开发本仓库需要 Node.js 22.19+、Bun 1.3+ 和 Pi 1.5.0。Bun 是开发前提：依赖安装和 7 个包的构建都用它，多份 clone 共用 bun 全局缓存、不重复占盘；日常 `npm run` 脚本不变，用 Node 自带的 npm 即可。Node 直接运行 TypeScript 的测试建议使用 Node 24。**没有构建产物的插件不需要 Bun，也不需要安装本仓库依赖**（Pi 从本地路径直接加载，不读根 lock）；CC Style、Session Naming、Subagents、Processes、Goal、MCP Adapter、Scheduler 这 7 个包要先在仓库根用 bun 安装依赖并构建，使用它们需要 Bun。将下面的仓库地址占位符换成实际地址：
 
 ```sh
 git clone <仓库地址> pi-packages
@@ -17,6 +17,7 @@ npm run build -w pi-subagents
 npm run build -w pi-processes
 npm run build -w @narumitw/pi-goal
 npm run build -w pi-mcp-adapter
+npm run build -w pi-scheduler
 
 # 从本地路径安装一个插件；Pi 直接加载，不复制、不安装本地包依赖
 pi install "$PWD/local/pi-todo"
@@ -64,6 +65,7 @@ pi -e "$PWD/local/pi-todo"
 | [pi-processes](local/pi-processes/README.md) | 插件 | 监督后台命令、滚动日志、进程通知与 deadline |
 | [pi-rewind](local/pi-rewind/README.md) | 插件 | 会话裁剪、归档和校验恢复 |
 | [pi-runtime-contracts](local/pi-runtime-contracts/README.md) | 共享库 | 不依赖 Pi 的版本化协调协议 |
+| [pi-scheduler](local/pi-scheduler/README.md) | 插件 | 持久定时任务、独立 daemon 与会话信箱投递 |
 | [pi-session-compact](local/pi-session-compact/README.md) | 插件 | 整会话压缩、恢复材料与原文检索 |
 | [pi-session-inject](local/pi-session-inject/README.md) | 共享库 | 持久信箱、安全投递和 ACK |
 | [pi-session-naming](local/pi-session-naming/README.md) | 插件 | settled 后自动生成会话标题 |
@@ -115,7 +117,7 @@ pi -e "$PWD/local/pi-todo"
 | `process-wait-bridge-v1` / `pi.subagents.process-wait-bridge.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 保留旧 API | 外部旧进程消费者 | 无 bridge 无协作 continuation；不与 V2 混用 |
 | `goal-continuation-obligation-v1` / `pi.goal.continuation-obligation.v1` | [Runtime Contracts](local/pi-runtime-contracts/README.md) 定义，[Goal](fork/pi-goal/docs/protocols.md#continuation-与-obligation) 注册 reader | Subagents、Processes fallback | 无 reader 返回 none；unknown 保留 pending，不抢 continuation |
 | `pi.subagents.producer-continuation-proof.v1` | [Subagents](local/pi-subagents/README.md) | Goal claimant | 无兼容 registry 时不 claim Subagents，producer 自行唤醒 |
-| `pi-session-inject/mailbox-v1` | [Session Inject](local/pi-session-inject/README.md) | Goal、Subagents、Processes、MCP Apps/OAuth/Tasks、Compact 只读过滤及外部 producer | 这是共享库硬依赖；无 active owner 保留 pending，不私发 fallback |
+| `pi-session-inject/mailbox-v1` | [Session Inject](local/pi-session-inject/README.md) | Goal、Subagents、Processes、Scheduler、MCP Apps/OAuth/Tasks、Compact 只读过滤及外部 producer | 这是共享库硬依赖；无 active owner 保留 pending，不私发 fallback |
 | `pi.session-runtime.effective-context.v1`、`pi.session-runtime.session-assembly-realm.v1`、`pi.session-runtime.factory-loader-realms.v1` | [Session Runtime](local/pi-session-runtime/README.md) | Subagents、Side Chat、Compact、外部 SDK owner | 无 capture 按合同拒绝/重建；realm 冲突拒绝，不拿错 SDK 执行 |
 | `pi.session-runtime.terminal-owner.v1`、`pi.session-runtime.terminal-gate.v1` | [Session Runtime](local/pi-session-runtime/README.md) | managed child view | 无 lease 不交接，保留 Main，不影响 headless |
 | `pi.claude-style.internals.v1` | [CC Style 诊断 registry](local/pi-claude-style/docs/maintenance.md#调度观测与兼容) | Side Chat probe 贡献 | 无 CC 仅不汇总诊断；Side 自行验证，不授予执行或视图权限 |
