@@ -11,7 +11,7 @@ import {
 import { fauxProvider } from "@earendil-works/pi-ai";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import installStatusLine from "../../src/statusline/install.ts";
-import { MAIN_INITIAL_LINES } from "../../src/statusline/initial-lines.ts";
+import { MAIN_INITIAL_LINES, MAIN_INITIAL_CONTRIBUTION_LINE } from "../../src/statusline/initial-lines.ts";
 import { clearConfigCache } from "../../src/statusline/config.ts";
 
 test("Pi 1.5 SDK displays built-in output without a command or any provider request", { timeout: 15_000 }, async (t) => {
@@ -37,7 +37,7 @@ test("Pi 1.5 SDK displays built-in output without a command or any provider requ
       resourceLoaderOptions: { noExtensions: true, noSkills: true, noPromptTemplates: true, noContextFiles: true, noThemes: true,
         disabledBuiltinExtensions: ["mcp", "codemode", "tool-search", "llama.cpp"], extensionFactories: [pi => {
           pi.registerProvider(provider.provider);
-          installStatusLine(pi, undefined, { initialLines: MAIN_INITIAL_LINES });
+          installStatusLine(pi, undefined, { initialLines: MAIN_INITIAL_LINES, initialContributionLine: MAIN_INITIAL_CONTRIBUTION_LINE });
         }] } });
     assert.deepEqual(services.resourceLoader.getExtensions().errors, []);
     const result = await createAgentSessionFromServices({ services, sessionManager, sessionStartEvent,
@@ -56,10 +56,12 @@ test("Pi 1.5 SDK displays built-in output without a command or any provider requ
     const render = () => footer?.render(120).join("\n").replace(/\x1b\[[0-9;]*m/g, "") ?? "";
     assert.deepEqual(errors, []);
     assert.match(render(), /statusline-model\(cc-statusline-faux\)/, "synchronous fallback");
+    assert.equal(footer?.render(120).length, 2, "fallback uses the normal two-row layout");
     const deadline = Date.now() + 8_000;
     // R/W accounting is produced by the asset, not by MAIN_INITIAL_LINES.
     while (!render().includes("R:0·W:0") && Date.now() < deadline) await delay(20);
     assert.match(render(), /↑0·↓0.*R:0·W:0/, "external default script replaced the fallback");
+    assert.equal(footer?.render(120).length, 2, "default command does not change height without contributions");
     assert.match(render(), /statusline-model\(cc-statusline-faux\)/);
     assert.doesNotMatch(render(), /\[\[pi:slot:/, "host composed semantic slots");
     assert.deepEqual(errors, []);

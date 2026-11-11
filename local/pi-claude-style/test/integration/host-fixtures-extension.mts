@@ -146,11 +146,19 @@ export default function hostFixture(pi) {
       if (!await tui.copyActiveSelectionToClipboard()) throw new Error("no active selection to copy");
     } });
   }
+  // CC reports a run's average t/s only once the generation clock covers real
+  // time (500 ms). The clock starts at the first streamed delta, so a fast pace
+  // (or one chunk for the whole answer) leaves almost no measured generation
+  // and the done row loses its t/s column. One token per chunk plus the pace
+  // the harness passes keeps several deltas and their gaps inside the window;
+  // long-answer scenarios keep the fast default.
+  const tokensPerSecond = Number(process.env.CC_HOST_FIXTURE_TPS ?? 4000);
   const faux = (provider, ids) => fauxProvider({
     provider,
     api: `${provider}-api`,
     models: ids.map((id) => ({ id, name: id, reasoning: true, contextWindow: 65536, maxTokens: 4096 })),
-    tokensPerSecond: 4000,
+    tokensPerSecond,
+    tokenSize: { min: 1, max: 1 },
   });
   const primary = faux("fixture", ["fixture-model", "fixture-model-large"]);
   primary.setResponses(Array.from({ length: 64 }, () => respond));

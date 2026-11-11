@@ -1,5 +1,8 @@
 ╭ user <time> ────╮
 │  FIXTURE_GROUPED survey the inputs                                                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+  Read 3 files, ran 1 shell command · Thinking <d>
 
 ─────────────────────────────────────────────────────────────────────────────── Tool transcript > Activity transcript ──
 

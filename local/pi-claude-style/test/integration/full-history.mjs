@@ -12,6 +12,10 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const cols = Number(process.env.CC_FULL_HISTORY_COLS ?? 120);
 const inputs = process.env.CC_FULL_HISTORY_INPUTS === "1";
 const unload = process.env.CC_FULL_HISTORY_UNLOAD === "1";
+// The fixture expands the first compaction; it reads the token count from here
+// instead of deriving it a second time from its own variant flags.
+const firstCompactionIndex = 50;
+const firstCompactionTokens = unload ? 10_000 + firstCompactionIndex : 10_000;
 const session = join(root, "home/agent/sessions/history.jsonl");
 for (const dir of ["home/agent/sessions", "work"]) mkdirSync(join(root, dir), { recursive: true });
 const rows = [{ type: "session", version: 3, id: "12345678-1234-1234-1234-123456789abc", timestamp: "2026-10-19T00:00:00.000Z", cwd: join(root, "work") }];
@@ -22,14 +26,14 @@ for (let index = 0; index < (inputs ? 150 : unload ? 1400 : 520); index++) {
   for (let response = 0; response < (inputs ? 10 : 1); response++) {
   append({ type: "message", message: { role: "assistant", content: [{ type: "text", text: `HISTORY_ANSWER_${index}` }], api: "history-test-api", provider: "history-test", model: "offline", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: index * 2 + 1 } });
   }
-  if (!inputs && (unload ? [50, 700, 1100].includes(index) : [50, 360].includes(index))) append({ type: "compaction", summary: `SUMMARY_AT_${index}`, firstKeptEntryId: index === 50 ? "entry-41" : rows.find(entry => entry.message?.content === `HISTORY_USER_${unload ? 680 : 340}`).id, tokensBefore: unload ? 10000 + index : 10000 });
+  if (!inputs && (unload ? [50, 700, 1100].includes(index) : [50, 360].includes(index))) append({ type: "compaction", summary: `SUMMARY_AT_${index}`, firstKeptEntryId: index === 50 ? "entry-41" : rows.find(entry => entry.message?.content === `HISTORY_USER_${unload ? 680 : 340}`).id, tokensBefore: index === firstCompactionIndex ? firstCompactionTokens : unload ? 10000 + index : 10000 });
 }
 writeFileSync(session, rows.map(row => JSON.stringify(row)).join("\n") + "\n");
 writeFileSync(join(root, "home/agent/settings.json"), JSON.stringify({ quietStartup: true, terminal: { showImages: false }, compaction: { enabled: false, keepRecentTokens: 1000 } }));
 const result = join(root, "events.jsonl");
 const term = new xterm.Terminal({ cols, rows: 40, allowProposedApi: true });
 const child = Bun.spawn({ cmd: [binary, "--offline", "--session", session, "--approve", "--no-extensions", "--no-skills", "--no-context-files", "--no-themes", "--no-prompt-templates", "--tui-mode", "fullscreen", "--provider", "history-test", "--model", "offline", "--api-key", "offline", "--extension", join(packageRoot, "dist/index.ts"), "--extension", join(packageRoot, "test/integration/full-history-extension.mts")],
-  cwd: join(root, "work"), env: { ...process.env, HOME: join(root, "home"), XDG_CONFIG_HOME: join(root, "home/.config"), PI_CODING_AGENT_DIR: join(root, "home/agent"), PI_OFFLINE: "1", TERM: "xterm-256color", CC_FULL_HISTORY_RESULT: result, CC_FULL_HISTORY_SESSION: session },
+  cwd: join(root, "work"), env: { ...process.env, HOME: join(root, "home"), XDG_CONFIG_HOME: join(root, "home/.config"), PI_CODING_AGENT_DIR: join(root, "home/agent"), PI_OFFLINE: "1", TERM: "xterm-256color", CC_FULL_HISTORY_RESULT: result, CC_FULL_HISTORY_SESSION: session, CC_FULL_HISTORY_FIRST_TOKENS: String(firstCompactionTokens) },
   stdin: "ignore", stderr: "pipe", terminal: { cols, rows: 40, data(_pty, data) { term.write(data); } } });
 const stderr = new Response(child.stderr).text();
 const delay = ms => new Promise(done => setTimeout(done, ms));

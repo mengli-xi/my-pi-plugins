@@ -7,7 +7,7 @@ import type { LifecycleManager } from "../lifecycle.ts";
 import type { CcStyleObservability } from "../observability.ts";
 import { ModelCapacityClient } from "../model-capacity-client.ts";
 import installStatusLine from "../statusline/install.ts";
-import { MAIN_INITIAL_LINES } from "../statusline/initial-lines.ts";
+import { MAIN_INITIAL_LINES, MAIN_INITIAL_CONTRIBUTION_LINE } from "../statusline/initial-lines.ts";
 import { installModelCapacityStatusConsumer } from "../statusline/model-capacity.ts";
 import { installProcessesStatusConsumer } from "../statusline/processes.ts";
 import type { StatuslineTranscriptCache } from "../statusline/transcript.ts";
@@ -43,7 +43,7 @@ export function installShellFeatures(
     install: () => installStatusLine(
       pi,
       (name, action) => observability.measure(name, action),
-      { initialLines: MAIN_INITIAL_LINES },
+      { initialLines: MAIN_INITIAL_LINES, initialContributionLine: MAIN_INITIAL_CONTRIBUTION_LINE },
       statuslineTranscriptCache,
     ),
     health: () => ({ status: "ok" as const }),

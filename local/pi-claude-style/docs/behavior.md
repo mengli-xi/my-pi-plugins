@@ -548,6 +548,10 @@ agent 目录（显式设 `terminal.showImages=false`）跑分组工具、thinkin
 `/session`、`/model`、运行中 Ctrl+T、跑完一轮后 `/internals` 无缺失几组场景，与 `test/integration/host-fixtures/`
 的快照比对。快照只截被测区域（从第一个用户框或置顶问题条往下，不含 pi 启动横幅和底部 cwd、状态栏）；
 路径、时钟、耗时和计数归一化，只有含这些值的行压缩横线和空白，其余行保持原宽度，框和面板变宽变窄会失败。
+归一化也覆盖 Pi 自己测出的数（压缩行的 `compacted from <n> tokens`）和 `/session` 面板里随临时路径长度换行的 session
+文件名；状态栏整块按形状从区域末尾剔除。为了让画面高度不受机器影响，fixture 在 `PATH` 前置 `fd`/`rg` 空壳
+（Pi 离线缺工具会往 transcript 打两行警告）；状态栏使用默认命令，没有贡献项时首帧和命令帧均为两行。
+faux provider 用固定较慢的 token 速率并逐 token 分块，让 done 行的 `t/s` 稳定出现。
 场景在系统临时目录下的短路径里跑，直接运行子脚本时，`CC_HOST_FIXTURE_ARTIFACTS` 指定的目录在结束时收到一份拷贝。
 分组、nested、图片和用户消息还会在新进程里恢复同一 session，比对 live 与 hydrate 的 transcript；
 运行中 Ctrl+T 断言 transcript 里的工具和 assistant 组件身份不变、工具进度照常到达。定向维护可直接运行 `PI_BIN=/path/to/pi bun test/integration/host-fixtures.mjs --only a,b`；子脚本的 `--update` 重写或新建快照，
@@ -566,12 +570,15 @@ Goal/Todo 或 model selector 控制面。Side 只接受 `side-chat` statusline c
 Subagent 每次绑定 TUI 时先同步挂载本视图的目录、model 和 effort 只读 CC 首帧，
 再等待 statusline command 更新；command 慢或失败时保留该帧，不借用 Main 的分段。
 Side factory 沿用原有首帧内容策略。
-Main 在 `session_start` 用公开 `setFooter` 同步挂载同一模板，预留三行以保留
-CP/MEM、cache 和第三行贡献项的布局；贡献项照常更新，不等 shell 成功。
+Main 在 `session_start` 用公开 `setFooter` 同步挂载两行模板，保留 CP/MEM 与 cache 的布局；
+有 Todo 或 row-3 贡献项（Goal、Processes、Model Capacity）时才显示第三行；命令自己只输出两行时由 host 补一行空的第三行，
+使兜底帧和命令帧在同样内容下行数一致。贡献项出现或撤回带来的一行布局跳动是接受的行为；贡献项照常更新，不等 shell 成功。
 Main 模板也保留 Fast 与 Todo slot；命令持续失败时，完成 Todo 的计数仍可点击展开完成列表。
 命令成功后替换为真实输出，失败、超时或空输出保留上次成功帧；尚未成功时保留兜底帧。
 Main 冷启动在 `session_start` 之前仍可能显示原生 footer；不增加私有启动接口。
 `PI_BIN=/path/to/pi bun test/integration/main-statusline.mjs` 使用隔离 profile 与零请求 fixture，
+命令统一使用 5s 测试预算，挂起脚本等待 30s 验证真正的超时和重试；stdin、mode 读取及调用记录使用 shell builtin，
+不以额外 `cat`/`wc` 子进程的启动速度判断 runner 是否调用。
 覆盖持续超时、成功后失败/空输出/超时、持续成功及 CP/MEM 更新；逐帧单独记录冷启动限制，
 并要求 `session_start` 后的原生 footer 为零帧。
 共享 managed host 正常初始化时在 native init、presentation/theme/draft 就绪后才提交渲染帧，
@@ -660,7 +667,7 @@ managed child factory 必须在 execution 装配时安装，不等首次 view。
 
 每个视图以 **2000 条记录或 10000 个渲染行，先到者为准**控制组件驻留，保留视口所在批次及上下各一个邻批次；超过预算按距视口最远优先、同距按最近使用顺序卸载完整批次。底部只固定最近一个完整批次（约 200 条）及活动内容，`firstKeptEntryId` 之后更早的保留尾部也可以卸载和双向重载。选区覆盖的批次不卸载；这些保护区和单个超长批次可以超过预算，因此该数值不是进程 RSS 上限。
 
-卸载处用空白高度锚点保留行位置和滚动条范围，滚近后分批重新构建；驻留组件保持身份，已卸载组件按保存的展开/折叠状态恢复。启动/资源提示及 chat 前缀内的选区保持原坐标；选区覆盖加载 header、跨越插入点或待重载空白区时，延后补载直至取消选区。通过现有 native append 边界绑定稳定记录 ID，使用公开 `setExpanded` 保存原生工具、摘要、skill/custom-message 展开状态；临时上下文分隔线不占真实消息的折叠键，Ctrl+O 的公开全局状态覆盖旧局部值；CC Thinking 按稳定 projection ID 保存折叠状态。第三方 renderer 自己的任意内部状态仍由其 owner 负责。锚点仅存最多 1024 字符的问题短摘要供吸顶行使用，不向搜索和复制提供已卸载正文。宽度变化时未重载锚点保持上次测量的高度和轻量记录位置；重载后按同一记录的新几何及局部偏移换算落点，吸顶跳转也携带记录身份。会话原始数据、图片与宿主分配器内存不随 UI 批次一起删除，RSS 也不保证立即归还操作系统。不要把组件驻留预算当作整个进程的内存上限；native/allocator 成本需另行测量。
+卸载处用空白高度锚点保留行位置和滚动条范围，滚近后分批重新构建；驻留组件保持身份，已卸载组件按保存的展开/折叠状态恢复。启动/资源提示及 chat 前缀内的选区保持原坐标；选区覆盖加载 header、跨越插入点或待重载空白区时，延后补载直至取消选区。通过现有 native append 边界绑定稳定记录 ID，使用公开 `setExpanded` 保存原生工具、摘要、skill/custom-message 展开状态（压缩摘要的正文只在点击面板里显示，保存的展开状态不改变它的紧凑行）；临时上下文分隔线不占真实消息的折叠键，Ctrl+O 的公开全局状态覆盖旧局部值；CC Thinking 按稳定 projection ID 保存折叠状态。第三方 renderer 自己的任意内部状态仍由其 owner 负责。锚点仅存最多 1024 字符的问题短摘要供吸顶行使用，不向搜索和复制提供已卸载正文。宽度变化时未重载锚点保持上次测量的高度和轻量记录位置；重载后按同一记录的新几何及局部偏移换算落点，吸顶跳转也携带记录身份。会话原始数据、图片与宿主分配器内存不随 UI 批次一起删除，RSS 也不保证立即归还操作系统。不要把组件驻留预算当作整个进程的内存上限；native/allocator 成本需另行测量。
 
 所有压缩摘要留在实际发生的位置，只在**最新一次**压缩的 `firstKeptEntryId` 前插入「以上 N 条消息已压缩进摘要」分隔线；N 计该位置之前的 message entry，不含配置、custom entry 或摘要条目。现场压缩只重建常驻批次，保留未加载锚点；分隔线和摘要所在批次重载后按原始位置恢复，保留尾部不重复显示。全屏搜索只覆盖当前驻留部分，以前加载过但已卸载的正文也暂不参与搜索。上箭头输入历史独立从整条分支选取最近至多 100 个可入历史的用户输入，交给原生 append/editor 保留修剪与相邻去重；等 `session_start` 安装 editor 完成后单独填入，正文初始渲染和补载均不重复填入，也不清理活动工具状态。regular 模式保留 Pi 原生的上下文历史显示，不启用整分支和批次缓存。
 

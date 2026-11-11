@@ -16,6 +16,9 @@
  second line stays
 
 
+ Warning: FIXTURE_NOTICE native warning
+
+
 ── ▸ fork-update ─────────────────────────────────────────────────────────────────────────────────────────────── 3 lines
 
   Merged

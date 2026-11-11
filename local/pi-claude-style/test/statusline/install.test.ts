@@ -9,7 +9,7 @@ import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { TuiMainScreen, type Component } from "@earendil-works/pi-tui";
 import { click as clickAt } from "../native-mouse.ts";
 import installStatusLine, { compactHome } from "../../src/statusline/install.ts";
-import { MAIN_INITIAL_LINES } from "../../src/statusline/initial-lines.ts";
+import { MAIN_INITIAL_LINES, MAIN_INITIAL_CONTRIBUTION_LINE } from "../../src/statusline/initial-lines.ts";
 import { renderTodoStatusLine, TodoSnapshot, TodoWidget, toggleTodoView } from "../../src/todo-state.ts";
 
 const UI_KEY = "pi-statusline";
@@ -260,11 +260,11 @@ test("a child mounts its own read-only first frame synchronously and keeps it on
 
 test("Main mounts a synchronous CC fallback and keeps live contributions when its command fails", async (t) => {
   const cwd = workspace(t, 999);
-  const pi = session(t, cwd, { initialLines: MAIN_INITIAL_LINES });
+  const pi = session(t, cwd, { initialLines: MAIN_INITIAL_LINES, initialContributionLine: MAIN_INITIAL_CONTRIBUTION_LINE });
   await pi.emit("session_start", { reason: "startup" });
   const first = pi.widget()!;
   assert.match(first[0]!, /test-model\(test\).*medium/);
-  assert.equal(first.length, 3, "keep contributor row targets before the command succeeds");
+  assert.equal(first.length, 2, "fallback has only the two normal rows before contributions");
   pi.emitEvent("statusline:row", { key: "compact", placement: "inline", row: 2, line: "CP:0", order: 10 });
   pi.emitEvent("statusline:row", { key: "memory", placement: "inline", row: 2, line: "MEM:3", order: 20 });
   assert.equal(pi.widget()![1], "CP:0 │ MEM:3");
@@ -274,13 +274,41 @@ test("Main mounts a synchronous CC fallback and keeps live contributions when it
   assert.equal(pi.widget()![1], "CP:1 │ MEM:3", "compaction contribution updates without a shell success");
 });
 
+test("a row-3 contribution keeps its own row in the fallback and in a two-row command frame", async (t) => {
+  const cwd = workspace(t, 0);
+  writeFileSync(join(cwd, "statusline.sh"), "#!/bin/sh\nwhile IFS= read -r line; do :; done\nsleep 30\n");
+  const pi = session(t, cwd, {
+    initialLines: MAIN_INITIAL_LINES, initialContributionLine: MAIN_INITIAL_CONTRIBUTION_LINE,
+  });
+  await pi.emit("session_start", { reason: "startup" });
+  // Goal/Processes/Model Capacity all target row 3. Without a Todo the frame
+  // would be two rows, and a row meant for the third line would be clamped
+  // onto row 2 or lost — moving content whenever the command appeared.
+  pi.emitEvent("statusline:row", { key: "goal", placement: "inline", row: 3, align: "right", line: "Goal active" });
+  assert.equal(pi.widget()!.length, 3, "the fallback grows to three rows for a row-3 contribution");
+  assert.match(pi.widget()![2]!, /Goal active/);
+  assert.doesNotMatch(pi.widget()![1]!, /Goal active/, "the Goal row is not clamped onto row 2");
+  // A command that prints two rows must keep the same three-row height.
+  writeFileSync(join(cwd, "statusline.sh"), "#!/bin/sh\nwhile IFS= read -r line; do :; done\nprintf 'one\\ntwo\\n'\n");
+  await pi.emit("turn_end", {});
+  const until = Date.now() + 5_000;
+  while (!pi.widget()?.[0]?.includes("one") && Date.now() < until) await delay(20);
+  assert.deepEqual(pi.widget()!.map((line) => line.trimEnd()).slice(0, 2), ["one", "two"]);
+  assert.equal(pi.widget()!.length, 3, "a two-row command keeps the third row while Goal needs it");
+  assert.match(pi.widget()![2]!, /Goal active/);
+  pi.emitEvent("statusline:row", { key: "goal" });
+  const settled = Date.now() + 5_000;
+  while (pi.widget()!.length !== 2 && Date.now() < settled) await delay(20);
+  assert.equal(pi.widget()!.length, 2, "withdrawing the last row-3 contribution leaves the two normal rows");
+});
+
 test("Main updates its fallback cache slot before a slow command returns", async (t) => {
   const cwd = workspace(t, 0);
   writeFileSync(join(cwd, "statusline.sh"), "#!/bin/sh\nwhile IFS= read -r line; do :; done\nsleep 30\n");
   const branch = [assistantUsageEntry("a", { input: 2_000, cacheRead: 8_000, cacheWrite: 0 }, 1_000)];
   const pi = harness(cwd, branch);
   t.after(async () => pi.emit("session_shutdown", { reason: "quit" }));
-  installStatusLine(pi.api as never, undefined, { initialLines: MAIN_INITIAL_LINES });
+  installStatusLine(pi.api as never, undefined, { initialLines: MAIN_INITIAL_LINES, initialContributionLine: MAIN_INITIAL_CONTRIBUTION_LINE });
   await pi.emit("session_start", {});
   const until = Date.now() + 5_000;
   while (!pi.widget()?.[1]?.includes("CH:80.0%") && Date.now() < until) await delay(20);
@@ -294,7 +322,7 @@ test("Main updates its fallback cache slot before a slow command returns", async
 
 test("Main fallback retains Todo updates, withdrawal and completed-list clicks while its command fails", async (t) => {
   const cwd = workspace(t, 999);
-  const pi = session(t, cwd, { initialLines: MAIN_INITIAL_LINES });
+  const pi = session(t, cwd, { initialLines: MAIN_INITIAL_LINES, initialContributionLine: MAIN_INITIAL_CONTRIBUTION_LINE });
   await pi.emit("session_start", {});
   const todos = new TodoSnapshot();
   const publish = () => pi.emitEvent("statusline:row", {
@@ -308,6 +336,7 @@ test("Main fallback retains Todo updates, withdrawal and completed-list clicks w
   ];
   todos.replace(tasks);
   publish();
+  assert.equal(pi.widget()!.length, 3, "Todo adds the third fallback row only while present");
   assert.match(pi.widget()![2]!, /todo 1\/2/);
   pi.emitEvent("statusline:row", { key: "goal", placement: "inline", row: 3, align: "right", line: "Goal active" });
   pi.emitEvent("statusline:row", { key: "fast", placement: "slot", line: "⚡fast" });
@@ -326,6 +355,10 @@ test("Main fallback retains Todo updates, withdrawal and completed-list clicks w
   assert.doesNotMatch(pi.widget()![2]!, /todo/);
   assert.match(pi.widget()![2]!, /Goal active/, "Todo withdrawal preserves inline peers");
   assert.equal(pi.click(2, 2), false, "withdrawn slot leaves no stale click span");
+  pi.emitEvent("statusline:row", { key: "goal" });
+  assert.equal(pi.widget()!.length, 2, "withdrawing the last third-row contribution shrinks the fallback");
+  pi.emitEvent("statusline:row", { key: "appended", line: "appended row", onClick: () => true });
+  assert.equal(pi.click(2, 2), true, "an appended row is clickable directly after the two fallback rows");
 });
 
 test("disposing a view waits for its in-flight command group to exit", async (t) => {
