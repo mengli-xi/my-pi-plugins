@@ -8,7 +8,6 @@
 [Extensions]
   dist, host-fixtures-extension.mts
 
-
 ─────────────────────────────────────────────────────────────────────────────── Tool transcript > Activity transcript ──
 
   → ▾ Thinking · <d>

@@ -38,6 +38,14 @@ const ROWS = 40;
 // Scenarios run under a short temporary root so Pi's footer never truncates
 // the cwd; a requested artifact directory receives a copy at the end.
 const runRoot = mkdtempSync(join(tmpdir(), "cchf-"));
+// Pi looks up `fd` and `rg` on PATH and, offline, prints a startup warning into
+// the transcript when one is missing. Whether this machine happens to have them
+// changed the chat height and therefore every snapshot below the startup block,
+// so the fixture pins both to no-op stubs. No scenario runs Pi's search tools.
+const toolBin = join(runRoot, "bin");
+mkdirSync(toolBin, { recursive: true });
+for (const tool of ["fd", "rg"]) writeFileSync(join(toolBin, tool), `#!/bin/sh\necho "${tool} fixture"\n`, { mode: 0o755 });
+const fixturePath = process.env.PATH ? `${toolBin}:${process.env.PATH}` : toolBin;
 const artifactRoot = process.env.CC_HOST_FIXTURE_ARTIFACTS ? resolve(process.env.CC_HOST_FIXTURE_ARTIFACTS) : runRoot;
 const delay = (ms) => new Promise((done) => setTimeout(done, ms));
 
@@ -80,6 +88,12 @@ class PiTerminal {
       PI_TELEMETRY: "0",
       TERM: "xterm-256color",
       CC_HOST_FIXTURE_ROOT: root,
+      // A fixed faux-provider pace keeps the run-average t/s above CC's
+      // 500 ms observation window; at the provider's default speed every
+      // scripted answer streamed faster and the done row lost its `t/s` column
+      // depending on machine load.
+      CC_HOST_FIXTURE_TPS: "6",
+      PATH: fixturePath,
       ...extraEnv,
     });
     let presentationPath = extensions[0];
@@ -206,8 +220,12 @@ export default createClaudeStyleChildExtension({ target: ${JSON.stringify(presen
  * exact width, so a box or panel that changes size still fails.
  */
 function normalize(screen, root) {
-  const roots = [root, root.replace(/^\/var\//u, "/private/var/"), root.replace(/^\/private\/var\//u, "/var/")];
-  const sorted = [...new Set(roots)].sort((a, b) => b.length - a.length);
+  // macOS resolves $TMPDIR to /private/var/... while mkdtemp keeps the /var
+  // spelling; Pi prints the resolved path, so both spellings have to match or
+  // the footer path row survives into the transcript region.
+  const variants = [root, root.startsWith("/private/") ? root.slice("/private".length) : `/private${root}`,
+    root.replace(/^\/var\//u, "/private/var/"), root.replace(/^\/private\/var\//u, "/var/")];
+  const sorted = [...new Set(variants)].sort((a, b) => b.length - a.length);
   return screen
     .split("\n")
     .map((line) => {
@@ -220,16 +238,27 @@ function normalize(screen, root) {
         .replace(/\b\d+(?:\.\d+)?(?:ms|s|m|h)\b/gu, "<d>")
         .replace(/\b\d+(?:\.\d+)?t\/s\b/gu, "<tps>")
         .replace(/([↑↓RW])\d+(?:\.\d+)?k?\b/gu, "$1<n>")
-        .replace(/\bCH\d+(?:\.\d+)?%/gu, "CH<n>%")
+        .replace(/\bCH:?\d+(?:\.\d+)?%/gu, "CH<n>%")
         .replace(/\b\d+(?:\.\d+)?%\/\d+(?:\.\d+)?k\b/gu, "<n>%/<n>k")
         .replace(/\$\d+\.\d+/gu, "$<cost>")
-        // A session file name wraps inside its uuid in the /session panel.
+        // The compaction row reports the context size Pi measured; it follows
+        // Pi's own system prompt and tokenizer, not CC's presentation.
+        .replace(/(compacted from )\d+( tokens)/gu, "$1<n>$2")
+        // The /session panel's file row carries the temp session path; a
+        // fragment may be left over when the row wrapped before its uuid.
         .replace(/(<ROOT>\/sessions\/<iso>)_[0-9a-f-]*/gu, "$1_<uuid>")
-        .replace(/^(\s*)[0-9a-f-]+\.jsonl\b/gu, "$1<uuid>.jsonl");
+        .replace(/^(\s*)[0-9a-f-]+\.jsonl\b/gu, "$1<uuid>.jsonl")
+        .replace(/^(\s*)\.jsonl\b/gu, "$1<uuid>.jsonl");
       if (volatile === line.trimEnd()) return volatile;
       return volatile.replace(/─{4,}/gu, "────").replace(/(\S) {3,}(?=\S)/gu, "$1   ");
     })
     .join("\n")
+    // Where that row wraps depends on the temp root length, so it is joined
+    // into one canonical line, and the panel's "1-12/22" range (which shrinks
+    // by one when the row does not wrap) keeps only its visible anchor.
+    .replace(/(<ROOT>\/sessions\/<iso>_<uuid>)[^\n]*\n\s*(?:<uuid>)?\.jsonl[^\n]*/gu,
+      "$1.jsonl")
+    .replace(/(── Session info ─+\s+\d+-\d+\/)\d+/gu, "$1<n>")
     .replace(/\n+$/u, "\n");
 }
 
@@ -252,8 +281,14 @@ function snapshotRegion(text, endAtEditor = false) {
     return `${lines.slice(start, editor + 2).join("\n")}\n`;
   }
   let end = lines.length;
-  while (end > start && (lines[end - 1].trim() === "" || lines[end - 1].startsWith("<ROOT>") ||
-    lines[end - 1].includes("(fixture) fixture-model"))) end--;
+  // The fixture pins a three-line statusline footer, so the screen ends with
+  // its rows. Pi's native footer and a clipped CC path row (`work │ …`) are
+  // still recognised, so a scenario that renders its own footer keeps working.
+  const footerRow = (line) =>
+    line.startsWith("fixture ") || line.startsWith("<ROOT>") || line.includes("(fixture) fixture-model") ||
+    /\bfixture-model\(fixture\)/u.test(line) || /\bCH[:<]/u.test(line) ||
+    /^\[[\d.]+k?\/(?:<n>|\d)/u.test(line);
+  while (end > start && (lines[end - 1].trim() === "" || footerRow(lines[end - 1]))) end--;
   return `${lines.slice(start, end).join("\n")}\n`;
 }
 
@@ -307,6 +342,13 @@ async function scenarioRoot(name, settings = {}) {
     fullscreenCopyOnSelect: false,
     // The profile, not CC presentation, owns the standard active tool set.
     defaultTools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
+    // A fixed three-row statusline keeps the footer height — and with it the
+    // transcript space above the editor — the same before and after the first
+    // command frame. CC's default command renders one row less than the
+    // reserved three-row first frame while no third-row contribution exists,
+    // which would otherwise move the capture by one row depending on timing.
+    statusLine: { type: "command", debounceMs: 10, timeoutMs: 5000,
+      command: "printf 'fixture statusline\\nfixture metrics\\nfixture todo\\n'" },
     ...(settings.pi ?? {}),
   }));
   // Exercise the one-time legacy Pinned import in an isolated profile.
@@ -573,7 +615,9 @@ function compactionRow(screen) {
 for (const presentation of ["main", "side-chat", "subagent"]) {
   await scenario(`compaction-${presentation}`, {
     prompt: "Prepare the first compaction fixture turn.", presentation, hydrate: "live", hydrateExtract: compactionRow,
-    env: { CC_HOST_FIXTURE_COMPACTION: "1" },
+    // The compaction summary is one long answer; keep the fast default pace so
+    // the /compact wait stays short. Its snapshot holds only the summary row.
+    env: { CC_HOST_FIXTURE_COMPACTION: "1", CC_HOST_FIXTURE_TPS: "4000" },
     settings: { pi: { compaction: { enabled: false, keepRecentTokens: 1, reserveTokens: 1024 } } },
   }, async ({ pi, capture }) => {
     await pi.waitEvents("first turn settled", events => events.some(event => event.event === "settled"));
@@ -629,7 +673,9 @@ await scenario("selection-scroll", {
     prompt: "FIXTURE_SCROLL write a long answer",
     // CC paints the selection with the theme's selectedBg, which Pi only
     // resolves once the terminal has reported its colours.
-    env: { COLORTERM: "truecolor" },
+    // This 80-line answer streams in one turn; the slow snapshot pace would
+    // stretch it past the settle timeout.
+    env: { COLORTERM: "truecolor", CC_HOST_FIXTURE_TPS: "4000" },
     answerColors: true,
     settings: { pinned: { enabled: true, floatAutocomplete: true, popupGap: 2, stickyUserMessage: true } },
   }, async ({ pi, root }) => {
@@ -678,7 +724,7 @@ await scenario("selection-scroll", {
 // through Pi's public API into the fixture clipboard, never the system one.
 await scenario("selection-sticky-boundary", {
   prompt: "FIXTURE_SCROLL cross the sticky row",
-  env: { COLORTERM: "truecolor", CC_HOST_FIXTURE_COPY_SELECTION: "1" },
+  env: { COLORTERM: "truecolor", CC_HOST_FIXTURE_COPY_SELECTION: "1", CC_HOST_FIXTURE_TPS: "4000" },
   answerColors: true,
   settings: { pi: { fullscreenWheelScrollLines: 1 } },
 }, async ({ pi, root }) => {
@@ -763,11 +809,20 @@ for (const [cols, rows] of [[80, 24], [120, 40], [80, 20]]) {
     const mouse = (code, col, row, release = false) => pi.send(`\x1b[<${code};${col + 1};${row + 1}${release ? "m" : "M"}`);
     mouse(0, 2, bodyRow); await delay(40);
     mouse(32, 20, bodyRow + 1); await delay(60);
-    mouse(0, 20, bodyRow + 1, true); await delay(150);
-    assert.ok(pi.highlighted(line => line.includes("panel body")).length > 0, "panel drag highlights body text");
+    mouse(0, 20, bodyRow + 1, true);
+    // Gestures are processed by Pi's own frame loop; wait for the effect
+    // instead of assuming a fixed render latency, which a loaded machine
+    // (or a smaller window) can exceed.
+    await pi.wait("panel drag highlight", () => pi.highlighted(line => line.includes("panel body")).length > 0);
+    await pi.settle();
     const text = pi.screen().split("\n")[bodyRow];
-    mouse(65, 20, bodyRow); await delay(180);
-    assert.notEqual(pi.screen().split("\n")[bodyRow], text, "wheel scrolls panel body");
+    // A notch can land while the panel is still finishing the drag; scroll
+    // until the body actually moves.
+    for (let notch = 0; notch < 3 && pi.screen().split("\n")[bodyRow] === text; notch++) {
+      mouse(65, 20, bodyRow);
+      await delay(300);
+    }
+    await pi.wait("wheel scrolls panel body", () => pi.screen().split("\n")[bodyRow] !== text);
     // The footer is outside the panel. Neither half of the gesture reaches it.
     mouse(0, 2, rows - 1); await delay(40); mouse(0, 2, rows - 1, true);
     await pi.waitEvents("outside close", events => events.some(event => event.event === "geometry-closed"));

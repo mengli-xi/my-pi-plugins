@@ -7,6 +7,8 @@
 ─ ✓ done at <time> · took <d> · ↓<n> · <tps> · first <d> · 1 turn ────
 
 
+
+
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 Only showing models from configured providers. Use /login to add providers.
