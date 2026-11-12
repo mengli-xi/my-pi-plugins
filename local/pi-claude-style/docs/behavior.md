@@ -156,7 +156,7 @@ Thinking 区块保持 native Markdown，可用 `Ctrl+T` 查看或折叠历史内
 
 不会显示 `(Ctrl+T to expand)` 后缀：它占用的宽度大于带来的价值，`Ctrl+T` 仍然有效，点击活动计时器或预览即可完整打开该次运行。`"label"` 仍可用于 Pi 的旧式静态隐藏 thinking 行。
 
-`assistantMessages.hideCodeFenceMarkers` 隐藏 render 后的代码围栏起止行，保留代码正文。范围只有 assistant 正文、CC 的 thinking 行和 Thinking/Activity 面板，都用包装组件实现；用户消息、压缩摘要详情、branch summary、skill invocation 和其他扩展的 Markdown 不隐藏围栏。
+`assistantMessages.hideCodeFenceMarkers` 隐藏 render 后的代码围栏起止行，保留代码正文。范围只有 assistant 正文、CC 的 thinking 行和 Thinking/Activity 面板；正文和 thinking 行使用包装组件，面板和 overlay 直接用 `withoutCodeFenceMarkers` 过滤渲染行。跨行围栏状态由 Pi Markdown 解析；用户消息、压缩摘要详情、branch summary、skill invocation 和其他扩展的 Markdown 不隐藏围栏。
 
 从 clipboard 粘贴图片时，Pi Editor 中显示的 `[Image #n]` 是原子占位符：左右移动会跨过整个 marker，Backspace 与 Delete 一次删除整个 marker，Undo 会连同 path 映射一起恢复。提交给模型和 session 的仍是原始图片路径。programmatic `setText()` 收到仍存在的 `pi-clipboard-*` path 时也会重建同样的 marker，供 Rewind 恢复历史输入；缺失文件保持原 path，让 caller 安全降级。CC Style 还通过 `pi.claude-style.editor-image-source.v2` 提供只读 source projection 和明确的恢复回执，供 Rewind 保存当前 draft 的可恢复 source，不暴露内部 Map。这个行为复用 Pi 0.85 的 `Editor.segment()` 编辑边界；custom editor 没有该 seam 时保留原路径，不生成不可安全编辑的占位符。
 

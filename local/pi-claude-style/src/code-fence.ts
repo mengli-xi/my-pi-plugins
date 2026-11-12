@@ -9,6 +9,7 @@ const ANSI_CSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const ANSI_OSC_PATTERN = /\x1b\][^\x07]*(?:\x07|\x1b\\)/g;
 
 export function isCodeFenceMarkerLine(line: string): boolean {
+  if (!line.includes("`")) return false;
   const plain = line.replace(ANSI_OSC_PATTERN, "").replace(ANSI_CSI_PATTERN, "");
   return /^\s*```[^`]*\s*$/u.test(plain);
 }
