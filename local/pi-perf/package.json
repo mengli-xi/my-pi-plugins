@@ -1,0 +1,28 @@
+{
+  "name": "pi-perf",
+  "version": "0.3.0",
+  "description": "Measure pi action-to-paint latency, frame stalls, event-loop health, and memory",
+  "type": "module",
+  "private": true,
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check:internals": "node ../../scripts/isolated-agent.mjs node scripts/check-internals.mjs",
+    "check:host": "node ../../scripts/check-host.mjs node scripts/check-internals.mjs --host :: bun scripts/check-first-observed-frame.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0"
+  },
+  "dependencies": {
+    "proper-lockfile": "4.1.2"
+  },
+  "devDependencies": {
+    "@types/proper-lockfile": "4.1.4"
+  }
+}

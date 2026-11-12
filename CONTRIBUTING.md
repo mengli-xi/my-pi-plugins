@@ -60,6 +60,7 @@ node scripts/pi-upgrade-check.mjs 1.6.0 --apply  # 全部通过才更新版本�
 | 包 | 进程内检查 | 真实宿主检查 | 耗时量级 |
 | --- | --- | --- | --- |
 | claude-style | 原型依赖目录 | 构建、宿主类身份、子视图重试、本地模拟 provider 错误、状态栏命令、PTY 快照、完整历史 | 数分钟；单次 RPC/画面等待通常最多半分钟 |
+| pi-perf | TUI 方法探针 | 同一探针装入真实 Pi、默认低频模式、PTY 启动绘制边界 | 秒级；单宿主进程上限半分钟 |
 | rewind | `SessionManager` 修改接口探针 | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
 | skills | `user-message.render` 探针 | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
 | terminal-focus | 光标渲染结构、终端生命周期、聚焦输入 | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |

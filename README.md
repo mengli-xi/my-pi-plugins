@@ -63,6 +63,7 @@ pi -e "$PWD/local/pi-todo"
 | [pi-model-prompts](local/pi-model-prompts/README.md) | 插件 | 模型规则、命名提示词与片段汇总 |
 | [pi-native-search](fork/pi-native-search/README.md) | Fork 插件 | 公共原生搜索、可选 backend、DuckDuckGo 与网页抓取 |
 | [pi-package-manager](local/pi-package-manager/README.md) | 插件 | 已配置包的启停、过滤和显式更新 |
+| [pi-perf](local/pi-perf/README.md) | 插件 | 常开分钟级性能采样、长期趋势与可选细粒度探针 |
 | [pi-processes](local/pi-processes/README.md) | 插件 | 监督后台命令、滚动日志、进程通知与 deadline |
 | [pi-rewind](local/pi-rewind/README.md) | 插件 | 会话裁剪、归档和校验恢复 |
 | [pi-runtime-contracts](local/pi-runtime-contracts/README.md) | 共享库 | 不依赖 Pi 的版本化协调协议 |
@@ -83,7 +84,7 @@ pi -e "$PWD/local/pi-todo"
 
 | 协议名 / 能力名 | 提供方 | 使用方 | 缺失时降级 |
 | --- | --- | --- | --- |
-| `rpiv:ask-user:prompt`、`rpiv:ask-user:blocked`（上游无版本兼容） | [Ask](fork/pi-ask-user-question/README.md) 发布当前问卷及等待状态 | 可选可信通知/观测方 | 无消费者仍正常提问，不读取其他插件存储 |
+| `rpiv:ask-user:prompt`、`rpiv:ask-user:blocked`（上游无版本兼容） | [Ask](fork/pi-ask-user-question/README.md) 发布当前问卷及等待状态 | 可选可信通知/观测方、Perf（仅 blocked） | 无消费者仍正常提问，不读取其他插件存储 |
 | `rpiv-ask-user-question:host-allocated-rows`（上游无版本 Symbol 兼容） | [Ask](fork/pi-ask-user-question/docs/hosts.md#宿主已分配行高) 读取 | 可信自定义 UI Host | 无标记按普通 inline/overlay 布局；仅影响行高，不授予执行权限 |
 | `rpiv:ask-user:answer`、`rpiv:ask-user:answer-result`（上游无版本兼容） | [Ask](fork/pi-ask-user-question/README.md) 校验并接收，返回 verdict | 可信同进程 Host 桥接 | 无桥接由用户在面板回答；未知/已结束 toolCallId 拒绝，不授予网络或任意 loader |
 | `prompt:fragments-v1` | [Model Prompts](local/pi-model-prompts/README.md) 发同步收集；Effort 贡献 | Model Prompts 汇总，Effort 接收请求 | 只有文件规则；缺汇总方时 Effort 只改真实档位 |
@@ -123,7 +124,7 @@ pi -e "$PWD/local/pi-todo"
 | `pi.session-runtime.terminal-owner.v1`、`pi.session-runtime.terminal-gate.v1` | [Session Runtime](local/pi-session-runtime/README.md) | managed child view | 无 lease 不交接，保留 Main，不影响 headless |
 | `pi.claude-style.internals.v1` | [CC Style 诊断 registry](local/pi-claude-style/docs/maintenance.md#调度观测与兼容) | Side Chat probe 贡献 | 无 CC 仅不汇总诊断；Side 自行验证，不授予执行或视图权限 |
 | `pi.theme-watch.file-version.v1` | [可选 host patch](host-patches/pi/v1.5.0/README.md) | Session Runtime | 双面缺失允许原版配色降级并首次提示；单面/未知拒绝视图 |
-| `pi.perf.ui-metrics.v3`、`pi.perf.telemetry.v1` | 外部 pi-perf；[消费约束](local/pi-claude-style/docs/spec.md) | CC Style、Session Naming（仅 telemetry） | 不采集，不另加全局 wrapper/timer |
+| `pi.perf.ui-metrics.v3`、`pi.perf.telemetry.v1` | [Perf](local/pi-perf/docs/protocols.md)；[消费约束](local/pi-claude-style/docs/spec.md) | CC Style、Session Naming（仅 telemetry） | 不采集，不另加全局 wrapper/timer |
 | `permissions:ui_prompt`、`permissions:decision`（外部旧事件） | 外部权限 UI；[消费约束](local/pi-claude-style/docs/spec.md) | CC Working | 不暂停额外 modal 动画，不影响权限判定 |
 
 ## 可选宿主补丁

@@ -229,6 +229,20 @@
         "@earendil-works/pi-tui": "^1.5.0",
       },
     },
+    "local/pi-perf": {
+      "name": "pi-perf",
+      "version": "0.3.0",
+      "dependencies": {
+        "proper-lockfile": "4.1.2",
+      },
+      "devDependencies": {
+        "@types/proper-lockfile": "4.1.4",
+      },
+      "peerDependencies": {
+        "@earendil-works/pi-coding-agent": "^1.5.0",
+        "@earendil-works/pi-tui": "^1.5.0",
+      },
+    },
     "local/pi-processes": {
       "name": "pi-processes",
       "version": "0.1.0",
@@ -909,6 +923,8 @@
     "pi-native-search": ["pi-native-search@workspace:fork/pi-native-search"],
 
     "pi-package-manager": ["pi-package-manager@workspace:local/pi-package-manager"],
+
+    "pi-perf": ["pi-perf@workspace:local/pi-perf"],
 
     "pi-processes": ["pi-processes@workspace:local/pi-processes"],
 
