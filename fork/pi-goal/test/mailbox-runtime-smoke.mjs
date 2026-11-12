@@ -1,3 +1,4 @@
+import { installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -36,7 +37,7 @@ await writeFile(
 );
 const env = isolatedEnvironment(root);
 const { binary, version: hostVersion } = stockHost(env);
-assert.equal(hostVersion, "1.5.0", "this migration smoke requires stock Pi 1.5.0");
+assert.equal(hostVersion, installedPiVersion(), "CLI must match the installed SDK");
 const child = spawn(
 	binary,
 	[

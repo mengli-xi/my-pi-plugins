@@ -229,7 +229,7 @@ function normalize(screen, root) {
   return screen
     .split("\n")
     .map((line) => {
-      let text = line.trimEnd();
+      let text = line.trimEnd().replace(`v${version}`, "v<VERSION>");
       for (const path of sorted) text = text.split(path).join("<ROOT>");
       const volatile = text
         .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu, "<uuid>")

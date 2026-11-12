@@ -1,6 +1,6 @@
 # 与 Pi 内建 MCP 的关系
 
-这里说明当前 Adapter 的选择与 ownership，不维持旧 host 的性能排行榜。Pi 内建功能以所用 Pi 版本的[官方 MCP 文档](https://pi.dev/docs/latest/mcp)为准，不能把上游 Pi 0.99/1.3 的表格当 Pi 1.5.0 实测。
+这里说明当前 Adapter 的选择与 ownership，不维持旧 host 的性能排行榜。Pi 内建功能以所用 Pi 版本的[官方 MCP 文档](https://pi.dev/docs/latest/mcp)为准，不能把上游 Pi 0.99/1.3 的表格当 stock Pi 1.5 实测。
 
 ## 配置与命令归属
 
@@ -31,7 +31,7 @@ Codemode 用 Pi 自己的实现，Adapter 不自动开启，需 defaultTools `+c
 
 - 不承诺“首次运行不联网”：metadata 缺失、eager/keep-alive、Executor catalog discovery 等会连接。
 - 不承诺 lazy 一定零成本：schema registration、first-use imports、server startup 都有成本，需要当前 profile fresh-process 实测。
-- 不把上游旧 server RSS、token cost、classifier sample 排名当本地 Pi 1.5.0 测量。
+- 不把上游旧 server RSS、token cost、classifier sample 排名当本地 stock Pi 1.5 测量。
 - 不因关闭 HTTP/socket client 就声称远端服务退出。
 - 不把 roots 当本地私有信息：默认向 server 发送 session cwd，需 roots false 才禁用。
 - 不由 upstream main 的三项 Unreleased 说明推断 7.0.1 已具备对应 security 修复。

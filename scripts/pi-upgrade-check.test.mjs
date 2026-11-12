@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { checkEnvironment, discoverChecks, installedPiVersion } from "./pi-checks.mjs";
-import { diagnostics, main, parseArgs, renderReport, runCommand, updatePiVersions } from "./pi-upgrade-check.mjs";
+import { checkEnvironment, discoverChecks, installedPiVersion, repositoryRoot, readJson } from "./pi-checks.mjs";
+import { diagnostics, main, parseArgs, renderReport, runCommand, updatePiVersions, peerCoverage, upgradeSuites, failureKinds, probePrerequisites, validateQuick, supportedPiVersion, updateSupportedVersion } from "./pi-upgrade-check.mjs";
+
+const realBun = execFileSync("bun", ["-e", "console.log(process.execPath)"], { encoding: "utf8" }).trim();
 
 const fixture = () => {
   const root = mkdtempSync(join(tmpdir(), "pi-upgrade-unit-"));
@@ -14,10 +16,29 @@ const fixture = () => {
 };
 const json = (path, value) => writeFileSync(path, JSON.stringify(value));
 
-test("参数只接受精确版本、keep 与 apply", () => {
-  assert.deepEqual(parseArgs(["1.6.0", "--keep", "--apply"]), { version: "1.6.0", keep: true, apply: true });
+test("参数接受精确版本、quick、keep 与 apply", () => {
+  assert.deepEqual(parseArgs(["1.6.0", "--keep", "--apply"]), { version: "1.6.0", keep: true, apply: true, quick: false });
   assert.equal(parseArgs(["--keep", "2.0.0-rc.1"]).version, "2.0.0-rc.1");
   for (const args of [[], ["latest"], ["^1.6.0"], ["01.6.0"], ["1.6.0", "2.0.0"], ["1.6.0", "--help"], ["1.6.0", "--keep", "--keep"]]) assert.throws(() => parseArgs(args));
+});
+
+test("快速档不能用于次版本、主版本、预发布或降级", () => {
+  assert.equal(parseArgs(["1.5.1", "--quick", "--apply"]).quick, true);
+  validateQuick("1.5.1", ["1.5.0", "1.5.1"]);
+  for (const [target, from] of [["1.6.0", ["1.5.0"]], ["2.0.0", ["1.5.0"]], ["1.5.2-rc.1", ["1.5.0"]], ["1.5.0", ["1.5.1"]]]) assert.throws(() => validateQuick(target, from), /完整验收/);
+});
+
+test("README 声明与根所有 Pi devDeps 一致，更新只触碰该声明", () => {
+  const readme = readFileSync(join(repositoryRoot, "README.md"), "utf8");
+  const version = supportedPiVersion(readme);
+  const deps = Object.entries(readJson(join(repositoryRoot, "package.json")).devDependencies).filter(([name]) => name.startsWith("@earendil-works/pi-"));
+  assert.ok(deps.length > 0);
+  for (const [name, pinned] of deps) assert.equal(pinned, version, name);
+  const changed = updateSupportedVersion(readme, "1.5.9");
+  assert.equal(supportedPiVersion(changed), "1.5.9");
+  assert.equal(changed.replace("stock Pi 1.5.9", `stock Pi ${version}`), readme, "固定补丁信息与其他文案不能改写");
+  assert.equal(updateSupportedVersion(changed, version), readme);
+  assert.throws(() => updateSupportedVersion("missing declaration", "1.5.9"));
 });
 
 test("按 workspace 与约定发现新包，不包含旧名字或补丁宿主", () => {
@@ -26,48 +47,56 @@ test("按 workspace 与约定发现新包，不包含旧名字或补丁宿主", 
     json(join(f.root, "package.json"), { workspaces: ["local/*", "fork/*"] });
     mkdirSync(join(f.root, "local/new-package"), { recursive: true });
     mkdirSync(join(f.root, "fork/another"), { recursive: true });
-    json(join(f.root, "local/new-package/package.json"), { name: "new", scripts: { "check:host": "anything", "check:internals": "anything", "test:patched-host": "excluded" } });
+    json(join(f.root, "local/new-package/package.json"), { name: "new", scripts: { "check:host": "anything", "check:smoke": "smoke", "check:internals": "anything", "test:patched-host": "excluded" } });
     json(join(f.root, "fork/another/package.json"), { name: "forked", scripts: { "check:host": "anything", "check-internals": "excluded" } });
     assert.deepEqual(discoverChecks(f.root), [
       { package: "forked", directory: "fork/another", check: "check:host" },
       { package: "new", directory: "local/new-package", check: "check:internals" },
       { package: "new", directory: "local/new-package", check: "check:host" },
     ]);
+    assert.deepEqual(discoverChecks(f.root, { quick: true }), [
+      { package: "new", directory: "local/new-package", check: "check:internals" },
+      { package: "new", directory: "local/new-package", check: "check:smoke" },
+    ]);
   } finally { f.cleanup(); }
 });
 
-test("仅改 Pi devDeps 或 peers，不触碰业务依赖；保留 peer 范围风格", () => {
-  const source = { devDependencies: { "@earendil-works/pi-ai": "1.5.0", typescript: "~5.9.3" }, dependencies: { other: "1" }, peerDependencies: { "@earendil-works/pi-tui": "^1.5.0", "@earendil-works/pi-ai": "~1.5.0", other: "*" } };
-  const { manifest: updated, manual } = updatePiVersions(source, "1.6.0");
-  assert.equal(updated.devDependencies["@earendil-works/pi-ai"], "1.6.0");
-  assert.equal(source.devDependencies["@earendil-works/pi-ai"], "1.5.0");
-  assert.deepEqual(updated.peerDependencies, source.peerDependencies);
-  assert.deepEqual(updated.dependencies, source.dependencies);
-  assert.deepEqual(manual, []);
-  const peers = updatePiVersions(source, "1.6.0", { peers: true });
-  assert.equal(peers.manifest.peerDependencies["@earendil-works/pi-tui"], "^1.6.0");
-  assert.equal(peers.manifest.peerDependencies["@earendil-works/pi-ai"], "~1.6.0");
-  assert.equal(peers.manifest.peerDependencies.other, "*");
+test("只更新根 devDeps 精确 pin，所有 peers 保持原样", () => {
+  const source = { devDependencies: { "@earendil-works/pi-ai": "~1.5.0", typescript: "~5.9.3" }, peerDependencies: { "@earendil-works/pi-ai": "^1.5.0" } };
+  const { manifest } = updatePiVersions(source, "1.6.0");
+  assert.equal(manifest.devDependencies["@earendil-works/pi-ai"], "1.6.0");
+  assert.deepEqual(manifest.peerDependencies, source.peerDependencies);
+  assert.equal(manifest.devDependencies.typescript, source.devDependencies.typescript);
+  assert.equal(source.devDependencies["@earendil-works/pi-ai"], "~1.5.0");
 });
 
-test("星号与并集范围的 peer 保持原样并报告人工处理", () => {
-  const source = { peerDependencies: {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-tui": "^0.84.1 || ^0.85.0 || ^1.0.0",
-    "@earendil-works/pi-coding-agent": ">=1.5.0 <2",
-    "@earendil-works/pi-agent-core": "^1.5.0",
-  } };
-  const { manifest, manual } = updatePiVersions(source, "1.6.0", { peers: true });
-  assert.equal(manifest.peerDependencies["@earendil-works/pi-ai"], "*");
-  assert.equal(manifest.peerDependencies["@earendil-works/pi-tui"], "^0.84.1 || ^0.85.0 || ^1.0.0");
-  assert.equal(manifest.peerDependencies["@earendil-works/pi-coding-agent"], ">=1.5.0 <2");
-  assert.equal(manifest.peerDependencies["@earendil-works/pi-agent-core"], "^1.6.0");
-  assert.deepEqual(manual.map(item => [item.name, item.range]), [
-    ["@earendil-works/pi-ai", "*"],
-    ["@earendil-works/pi-tui", "^0.84.1 || ^0.85.0 || ^1.0.0"],
-    ["@earendil-works/pi-coding-agent", ">=1.5.0 <2"],
-  ]);
-  assert.equal(source.peerDependencies["@earendil-works/pi-agent-core"], "^1.5.0");
+test("local/fork peers 自动核对覆盖目标，支持并集、比较符及预发布语义", () => {
+  const packages = [{ name: "fork", directory: "fork/x", peerDependencies: {
+    "@earendil-works/pi-ai": "^0.99.0 || ^1.0.0", "@earendil-works/pi-tui": ">=1.5.0 <2", "@earendil-works/pi-agent-core": "~1.4.0",
+  } }];
+  assert.deepEqual(peerCoverage(packages, "1.5.2").map(p => p.covered), [true, true, false]);
+  assert.deepEqual(peerCoverage(packages, "2.0.0-rc.1").map(p => p.covered), [false, false, false]);
+});
+
+test("额外套件由包声明，每个子套件都有独立时限，不发现 patched suite", () => {
+  const suites = upgradeSuites([{ name: "owner", directory: "local/owner", scripts: { "check:upgrade": "runner", "check:upgrade:real": "real", "check:upgrade:native": "native", "test:patched-host": "excluded" } }]);
+  assert.deepEqual(suites.map(s => s.item), ["check:upgrade:real", "check:upgrade:native"]);
+  assert.ok(suites.every(s => s.timeoutMs > 0));
+});
+
+test("失败证据区分超时、明确环境限制，未知 EPERM 不自动豁免", () => {
+  assert.deepEqual(failureKinds("regression"), ["failure"]);
+  assert.deepEqual(failureKinds("EPERM from plugin"), ["failure"]);
+  assert.deepEqual(failureKinds("spawnSync ps EPERM"), ["environment"]);
+  assert.deepEqual(failureKinds("spawnSync /bin/ps EPERM"), ["environment"]);
+  assert.deepEqual(failureKinds("EPERM: operation not permitted, posix_spawn 'ps'"), ["environment"]);
+  assert.deepEqual(failureKinds("timeout: waiting for idle"), ["timeout"]);
+  assert.deepEqual(failureKinds("AssertionError\nspawnSync ps EPERM"), ["environment", "failure"]);
+});
+
+test("缺 tmux/PTY 明确报告前提不满足", () => {
+  const env = { PATH: "/nonexistent" };
+  for (const requirement of ["tmux", "pty"]) assert.match(probePrerequisites([requirement], { cwd: process.cwd(), env }), /前提不满足/);
 });
 
 test("报告区分包、步骤和失败项，并列出原始日志与验证边界", () => {
@@ -91,6 +120,9 @@ test("隔离环境不继承用户 profile、provider 凭据或 Pi 目录覆盖",
   assert.equal(env.HOME, "/tmp/check/home");
   assert.equal(env.PI_CODING_AGENT_DIR, "/tmp/check/agent");
   assert.equal(env.PI_BIN, "/tmp/pi");
+  assert.equal(env.PI_CHECK_TMPDIR, env.TMPDIR);
+  const nested = checkEnvironment("/tmp/check", { TMPDIR: "/tmp/check/nested" });
+  assert.equal(nested.PI_CHECK_TMPDIR, nested.TMPDIR);
   for (const key of ["OPENAI_API_KEY", "PI_PACKAGE_DIR", "NODE_OPTIONS", "PI_PATCHED_SDK"]) assert.equal(env[key], undefined);
 });
 
@@ -117,7 +149,7 @@ test("包级 host runner 在失败后继续，并统一传入 binary 与隔离�
     const result = spawnSync(process.execPath, [fileURLToPath(new URL("./check-host.mjs", import.meta.url)),
       process.execPath, "-e", "process.exit(3)", "::", process.execPath, "-e",
       'console.log("CHECK_HOST_ENV=" + JSON.stringify(process.env))',
-    ], { env: { ...process.env, PI_BIN: binary, OPENAI_API_KEY: "must-not-leak", PI_PACKAGE_DIR: "/private/profile" }, encoding: "utf8" });
+    ], { env: { ...process.env, PI_BIN: binary, PI_CHECK_REPORT: join(f.root, "host.json"), OPENAI_API_KEY: "must-not-leak", PI_PACKAGE_DIR: "/private/profile" }, encoding: "utf8" });
     assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
     const lines = result.stdout.split("\n");
     assert.ok(lines.some(line => line.includes("[check:host]")), result.stdout);
@@ -128,6 +160,9 @@ test("包级 host runner 在失败后继续，并统一传入 binary 与隔离�
     assert.equal(env.PI_PACKAGE_DIR, undefined);
     assert.equal(env.OPENAI_API_KEY, undefined);
     assert.match(result.stderr, /失败：/);
+    const suites = JSON.parse(readFileSync(join(f.root, "host.json")));
+    assert.deepEqual(suites.map(s => s.status), ["failed", "passed"]);
+    assert.ok(suites.every(s => s.durationMs >= 0 && readFileSync(s.log, "utf8") !== undefined));
   } finally { f.cleanup(); }
 });
 
@@ -175,7 +210,7 @@ test("版本不存在时在安装前失败、写报告且不改源仓库", async
   }
 });
 
-for (const scenario of ["只报告", "失败后继续", "应用", "工作区变动", "包测试失败"]) {
+for (const scenario of ["只报告", "失败后继续", "应用", "工作区变动", "包测试失败", "构建失败", "peer未覆盖", "额外套件失败", "快速应用", "README声明缺失"]) {
   test(`离线流程：${scenario}`, async () => {
     const f = fixture();
     const previous = process.cwd(), path = process.env.PATH;
@@ -186,16 +221,20 @@ for (const scenario of ["只报告", "失败后继续", "应用", "工作区变�
       mkdirSync(join(f.root, "local/union-owner"), { recursive: true });
       mkdirSync(join(f.root, "fork/forks"), { recursive: true });
       json(join(f.root, "package.json"), { workspaces: ["local/*", "fork/*"], devDependencies: { "@earendil-works/pi-ai": "1.5.0" } });
-      json(join(f.root, "local/new-owner/package.json"), { name: "new-owner", scripts: { test: "unit", "check:internals": "probe", "check:host": "host", "test:patched-host": "excluded" }, peerDependencies: { "@earendil-works/pi-ai": "^1.5.0" } });
+      json(join(f.root, "local/new-owner/package.json"), { name: "new-owner", scripts: { build: "build", test: "unit", "check:internals": "probe", "check:host": "host", "check:smoke": "smoke", "check:upgrade": "runner", "check:upgrade:first": "first", "check:upgrade:second": "second", "test:patched-host": "excluded" }, peerDependencies: { "@earendil-works/pi-ai": "^1.5.0" } });
       json(join(f.root, "local/union-owner/package.json"), { name: "union-owner", scripts: { test: "unit", "check:internals": "probe" }, peerDependencies: { "@earendil-works/pi-ai": "*" } });
-      json(join(f.root, "fork/forks/package.json"), { name: "forked", scripts: { test: "unit" }, peerDependencies: { "@earendil-works/pi-ai": "^1.5.0" } });
+      json(join(f.root, "fork/forks/package.json"), { name: "forked", scripts: { test: "unit" }, peerDependencies: { "@earendil-works/pi-ai": scenario === "peer未覆盖" ? "<1.0.0" : "^1.5.0" } });
+      writeFileSync(join(f.root, "README.md"), scenario === "README声明缺失" ? "missing declaration\n" : "当前验证目标为 **stock Pi 1.5.0**，fixture。\n");
       writeFileSync(join(f.root, "bun.lock"), "original lock\n");
       writeFileSync(join(f.root, "guard.txt"), "original\n");
       if (scenario === "失败后继续") writeFileSync(join(f.root, "FAIL_TYPECHECK"), "");
+      if (scenario === "构建失败") writeFileSync(join(f.root, "FAIL_BUILD"), "");
+      if (scenario === "额外套件失败") writeFileSync(join(f.root, "FAIL_EXTRA"), "");
       if (scenario === "包测试失败") writeFileSync(join(f.root, "FAIL_TEST_new-owner"), "");
       execFileSync("git", ["-C", f.root, "add", "."]);
       execFileSync("git", ["-C", f.root, "-c", "user.name=测试", "-c", "user.email=test@example.invalid", "commit", "-qm", "离线流程夹具"]);
       const before = readFileSync(join(f.root, "package.json"), "utf8");
+      const beforeReadme = readFileSync(join(f.root, "README.md"), "utf8");
       mkdirSync(join(f.root, "bin"));
       writeFileSync(join(f.root, ".git/info/exclude"), "bin/\nFAIL_TYPECHECK\nFAIL_TEST_*\n");
       const concurrentEdit = scenario === "工作区变动" ? `if [ "$2" = typecheck ]; then echo changed >> "${join(f.root, "guard.txt")}"; fi\n` : "";
@@ -203,42 +242,55 @@ for (const scenario of ["只报告", "失败后继续", "应用", "工作区变�
 if [ "$1" = view ]; then echo registry-notice >&2; printf '"%s"\n' "\${2##*@}"; exit 0; fi
 printf "%s\\n" "$*"
 if [ "$1" = run ] && [ "$2" = typecheck ] && [ -f FAIL_TYPECHECK ]; then echo "local/new-owner/file.ts(1,1): error TS2322: fixture mismatch"; exit 1; fi
+if [ "$2" = build ] && [ -f FAIL_BUILD ]; then exit 2; fi
+if [ "$2" = check:upgrade:first ] && [ -f ../../FAIL_EXTRA ]; then exit 3; fi
 if [ "$1" = run ] && [ "$2" = test ] && [ -f "FAIL_TEST_$4" ]; then echo "✖ fixture failure in $4"; exit 1; fi
 ` + concurrentEdit, { mode: 0o755 });
-      writeFileSync(join(f.root, "bin/bun"), '#!/bin/sh\nprintf "target lock\\n" > bun.lock\n', { mode: 0o755 });
+      writeFileSync(join(f.root, "bin/bun"), '#!/bin/sh\nif [ "$1" = -e ]; then exec '+realBun+' "$@"; fi\nprintf "target lock\\n" > bun.lock\n', { mode: 0o755 });
       process.env.PATH = `${join(f.root, "bin")}:${path}`;
       process.chdir(f.root);
       const originalLog = console.log, lines = [];
       console.log = (...args) => lines.push(args.join(" "));
       let result;
-      try { result = await main(["1.6.0", ...(scenario === "只报告" ? [] : ["--apply"])]); }
+      const quick = scenario === "快速应用";
+      const target = quick ? "1.5.1" : "1.6.0";
+      try { result = await main([target, ...(quick ? ["--quick"] : []), ...(scenario === "只报告" ? [] : ["--apply"])]); }
       finally { console.log = originalLog; }
       reportDirectory = lines.join("\n").match(/报告：(.*)\/report.json/)[1];
       const report = JSON.parse(readFileSync(join(reportDirectory, "report.json")));
       const reportText = readFileSync(join(reportDirectory, "report.json"), "utf8");
       if (process.platform === "darwin") assert.match(report.directory, /^\/tmp\/pi-upgrade-/);
       assert.throws(() => readFileSync(join(reportDirectory, "repository/package.json")), { code: "ENOENT" });
-      assert.equal(result, ["失败后继续", "工作区变动", "包测试失败"].includes(scenario) ? 1 : 0);
+      assert.equal(result, ["失败后继续", "工作区变动", "包测试失败", "构建失败", "peer未覆盖", "额外套件失败", "README声明缺失"].includes(scenario) ? 1 : 0);
       // 逐包结果：根 npm test 不再进入门禁，每个包单独一条。
-      for (const item of ["typecheck", "test:integration", "check:internals", "check:host"]) assert.ok(report.steps.some(step => step.item === item), item);
+      for (const item of ["typecheck", "check:internals", ...(quick ? ["check:smoke"] : ["test:integration", "check:host"])]) assert.ok(report.steps.some(step => step.item === item), item);
       for (const pkg of ["new-owner", "union-owner", "forked"]) {
         assert.ok(report.steps.some(step => step.package === pkg && step.item === "test"), pkg);
       }
       assert.equal(report.steps.some(step => step.package === "仓库" && step.item === "test"), false);
       assert.equal(report.steps.some(step => step.item === "test:patched-host"), false);
-      assert.equal(report.steps.find(step => step.item === "check:host").status, "passed");
-      if (scenario === "应用") {
-        assert.equal(JSON.parse(readFileSync(join(f.root, "package.json"))).devDependencies["@earendil-works/pi-ai"], "1.6.0");
-        assert.equal(JSON.parse(readFileSync(join(f.root, "local/new-owner/package.json"))).peerDependencies["@earendil-works/pi-ai"], "^1.6.0");
+      assert.equal(report.steps.find(step => step.item === (quick ? "check:smoke" : "check:host")).status, scenario === "构建失败" ? "prerequisite" : "passed");
+      assert.equal(report.steps.filter(step => step.item === "build").length, 1);
+      if (quick) {
+        assert.equal(report.mode, "quick");
+        assert.equal(report.steps.some(step => step.item === "check:host" || step.item === "test:integration" || step.item.startsWith("check:upgrade:")), false);
+        assert.ok(report.notices.some(notice => notice.includes("不代表完整")));
+      } else assert.equal(report.steps.find(step => step.item === "check:upgrade:second").status, scenario === "构建失败" ? "prerequisite" : "passed");
+      if (scenario === "额外套件失败") assert.equal(report.steps.find(step => step.item === "check:upgrade:first").status, "failed");
+      if (scenario === "peer未覆盖") assert.ok(report.peers.some(peer => peer.package === "forked" && !peer.covered));
+      if (scenario === "应用" || quick) {
+        assert.equal(JSON.parse(readFileSync(join(f.root, "package.json"))).devDependencies["@earendil-works/pi-ai"], target);
+        assert.equal(JSON.parse(readFileSync(join(f.root, "local/new-owner/package.json"))).peerDependencies["@earendil-works/pi-ai"], "^1.5.0");
         assert.equal(JSON.parse(readFileSync(join(f.root, "local/union-owner/package.json"))).peerDependencies["@earendil-works/pi-ai"], "*");
         assert.equal(JSON.parse(readFileSync(join(f.root, "fork/forks/package.json"))).peerDependencies["@earendil-works/pi-ai"], "^1.5.0");
         assert.equal(readFileSync(join(f.root, "bun.lock"), "utf8"), "target lock\n");
-        assert.ok(report.manual.some(item => item.package === "union-owner" && item.reason.includes("人工处理")));
-        assert.ok(report.manual.some(item => item.package === "forked" && item.reason.includes("LOCAL_PATCHES")));
-        assert.match(reportText, /LOCAL_PATCHES\.md/);
+        assert.equal(supportedPiVersion(readFileSync(join(f.root, "README.md"), "utf8")), target);
+        assert.deepEqual(report.manual, []);
+        assert.ok(report.peers.every(peer => peer.covered));
       } else {
         assert.equal(readFileSync(join(f.root, "package.json"), "utf8"), before);
         assert.equal(readFileSync(join(f.root, "bun.lock"), "utf8"), "original lock\n");
+        assert.equal(readFileSync(join(f.root, "README.md"), "utf8"), beforeReadme);
       }
       if (scenario === "工作区变动") {
         assert.equal(report.steps.at(-1).status, "failed");

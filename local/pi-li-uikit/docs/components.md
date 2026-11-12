@@ -1,6 +1,6 @@
 # pi-li-uikit
 
-Pi 1.5.0 extension 共用的 TUI component。私有包，通过 workspace 依赖 使用。
+stock Pi 1.5 extension 共用的 TUI component。私有包，通过 workspace 依赖 使用。
 
 ## 应放在这里的内容
 

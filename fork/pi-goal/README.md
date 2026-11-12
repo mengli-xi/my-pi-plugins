@@ -14,7 +14,7 @@ Goal 为当前 Pi session 提供 `/goal`、`goal_complete` 和 `goal_blocked`。
 
 ## 📦 加载与构建
 
-本 Fork 面向 stock Pi **1.5.0**，使用根 workspace 和唯一根 `bun.lock`；bun 同时用于安装和构建。只安装信任的 extension，它与宿主具有同等进程权限。
+本 Fork 的 stock Pi 版本见[根支持说明](../../README.md#支持说明)，使用根 workspace 和唯一根 `bun.lock`；bun 同时用于安装和构建。只安装信任的 extension，它与宿主具有同等进程权限。
 
 按[根安装说明](../../README.md#安装与加载)在仓库根安装依赖，再构建并加载本包：
 
@@ -79,6 +79,8 @@ TUI 的 `/goal` → Settings 可修改前五项控制；后台巡检用 `idle-ch
 ## ✅ 验证
 
 从仓库根运行 `npm run typecheck`、`npm test` 和 `npm run test:integration`。包内只放 Goal 离线单元/合同测试及不加载协作插件的 faux e2e；跨插件用例见根 [integration](../../integration/README.md)。stock CLI smoke 与完整矩阵需要额外显式入口，不能把默认离线检查当作它们已通过；见 [维护说明](docs/maintenance.md)。不发真实 provider 请求，不发现日常 profile。
+
+额外 real/native 套件统一用 `npm run check:upgrade -w @narumitw/pi-goal`；构建与完整验收规则见[升级 Pi](../../CONTRIBUTING.md#升级-pi)。
 
 ## 🗂️ Package layout
 

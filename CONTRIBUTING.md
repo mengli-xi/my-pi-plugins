@@ -38,43 +38,46 @@
 
 ## 升级 Pi
 
-在干净且已提交的工作区运行（需要 Node、Bun、npm、Git；CC 宿主检查还需要 tmux 和 Bun PTY）：
+档位由维护者定，脚本只拦 `--quick` 的越界用法。
+
+- 主版本、次版本走完整验收。
+- 补丁版本先比对 dist 声明、loader/alias、session schema、探针涉及的私有接口和生命周期；涉及任何一项就走完整验收。
+- 完全不涉及才可选快速档，并记录依据。`--quick` 只接受同一稳定 major/minor 的补丁升级或当前版本自检，不接受预发布或降级。
+
+在干净且已提交的工作区运行，需要 macOS/Linux、Node、Bun、npm、Git；宿主检查按需使用 tmux/Bun PTY。
 
 ```sh
-node scripts/pi-upgrade-check.mjs 1.6.0          # 只检查，不改当前工作区
-node scripts/pi-upgrade-check.mjs 1.6.0 --keep   # 保留临时副本排查
-node scripts/pi-upgrade-check.mjs 1.6.0 --apply  # 全部通过才更新版本与 lock
+node scripts/pi-upgrade-check.mjs <版本>                 # 完整验收
+node scripts/pi-upgrade-check.mjs <补丁版本> --quick      # 快速验收
+# 两档都可加 --keep 保留副本，或加 --apply 在通过后写回
 ```
 
-脚本先向 registry 核对根 `@earendil-works/pi-*` devDeps 的精确目标版本，再 clone 当前提交到临时目录（不使用硬链接；macOS 使用短路径，避免套接字和终端路径截断问题），只在那里改根 devDeps 并安装目标依赖。依次运行全仓 `npm run typecheck`、每个 workspace 包各自的 `npm run test -w <包名>`（每个包单独一条结果，不用根 `npm test` 的串行入口）、`npm run test:integration`，然后按 workspace 的约定名字发现私有 seam 检查，不维护包名清单。根目录工具脚本自己的测试和文档链接检查不属于 Pi 兼容性检查，不进入这个门禁。一项失败后继续运行其他可执行项；依赖安装失败则明确列出未运行项。结束时终端汇总包、步骤、失败项和原始日志路径，并将结构化报告写入打印出的 `report.json`。默认删除临时副本，但保留报告和原始日志；`--keep` 额外保留副本。
+- 核对 registry 的精确版本，在无硬链接的临时 clone 中安装；不改日常 Pi。
+- 所需生产包各构建一次，再跑 typecheck、全部包单测和 `check:internals`。
+- 完整档再跑 `check:host`、`check:upgrade:*` 和[根 integration 场景](integration/scenarios.mjs)；定向入口只过滤场景，不重复执行。
+- 快速档只再跑包声明的 `check:smoke`：宿主类/模块身份、实例探针、child retry、退出命令、最小 PTY 绘制边界，以及 native 信箱投递、取消和 branch/followup。
+- **没有 `check:smoke` 的包在快速档完全不跑宿主检查**，例如 cc-memory、session-compact、scheduler，以及 mcp-adapter 的 dist 加载。
+- 快速档不测 PTY 快照和历史、Goal/Processes/Subagents 之间的协作、持久恢复，通过也不代表完整兼容。
+- 每套件单独计时、限时、清理；普通失败继续，收到中断信号则停止验收，清理后写报告。
+- 失败、缺前提、环境限制和超时都算没通过；不自动豁免 EPERM，也不允许写回。
+- 默认删除副本和配置，保留终端汇总、`report.json` 和原始日志；报告记录档位及未测范围。
+- `--apply` 再核对 HEAD/工作区，只写回根 devDeps 精确版本、`bun.lock` 和 README 支持声明，不在当前工作区安装。写回后才收到中断时，文件已经改好，报告标为未通过，但 `applied` 为 true。
 
-升级脚本和宿主检查只支持 macOS 与 Linux。`check:host` 入口没有总时限：只有开头的 `pi --version` 探测限 120 秒，其余等待上限在各子脚本里。
+包自行声明检查，脚本不维护包名名单：
 
-检查入口只用两个名字：
+- `check:internals` 用 `scripts/isolated-agent.mjs` 跑进程内 SDK 探针。
+- `check:host` 经 `scripts/check-host.mjs` 启动真实 Pi；`::` 分隔子套件，前置 `--require=tmux`/`--require=pty` 声明前提，输出实时分流记录。
+- `check:smoke` 跑快速档宿主冒烟，沿用 host 的隔离和版本检查。
+- `check:upgrade` 聚合本包 `check:upgrade:*` real/native 套件。独立运行前按包 README 构建。
 
-- `check:internals`：只使用已安装 Pi SDK 的进程内探针，不启动 `pi`。用 `scripts/isolated-agent.mjs` 隔离配置。
-- `check:host`：启动真实 `pi`，统一经 `scripts/check-host.mjs` 传递 `PI_BIN`；显式相对路径也以仓库根解析，缺省为仓库根 `node_modules/.bin/pi`，不用日常 PATH 上的 Pi。CLI 版本必须与已安装 SDK 一致。包可以串联多个子检查，失败后仍继续；该包需要的构建也放在入口中。公共 runner 在启动任何子命令前隔离 HOME、agent、session、XDG 和 npm 配置，不传日常 provider 凭据；子检查继续使用各自临时 profile 和本地 faux provider；macOS 使用短临时路径，避免 Unix 套接字长度限制。`PI_OFFLINE` 只禁止 Pi 的自动联网，不能冒充 provider 网络沙箱。
+- `PI_BIN` 相对仓库根解析，缺省为根 `node_modules/.bin/pi`；CLI 必须与已安装 SDK 同版。
+- 宿主检查隔离 HOME、agent、session、XDG、npm 配置，只用 faux provider；`PI_OFFLINE` 不是网络沙箱。
+- `npm test` 逐文件跑工具离线单测，限制嵌套进程并发，再检查文档并跑各包单测。
+- 真实 provider、人工终端/IME、无探针私有行为不在自动保证范围。
 
-可单独运行 `npm run check:internals -w <包名>` 或 `PI_BIN=/absolute/path/to/pi npm run check:host -w <包名>`。当前检查范围与预期耗时如下；时间是量级，不是时限承诺：
+peer 只检查是否覆盖目标版本，不验证最低 API。用到新 API 时，手动抬 peer 下限。fork 改范围还须更新 `LOCAL_PATCHES.md`。当前版本只在[根支持说明](README.md#支持说明)维护，自检将它传给同一命令。
 
-| 包 | 进程内检查 | 真实宿主检查 | 耗时量级 |
-| --- | --- | --- | --- |
-| claude-style | 原型依赖目录 | 构建、宿主类身份、子视图重试、本地模拟 provider 错误、状态栏命令、PTY 快照、完整历史 | 数分钟；单次 RPC/画面等待通常最多半分钟 |
-| pi-perf | TUI 方法探针 | 同一探针装入真实 Pi、默认低频模式、PTY 启动绘制边界 | 秒级；单宿主进程上限半分钟 |
-| rewind | `SessionManager` 修改接口探针 | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
-| skills | `user-message.render` 探针 | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
-| terminal-focus | 光标渲染结构、终端生命周期、聚焦输入 | 同一探针装入真实 Pi | 秒级；宿主进程上限半分钟 |
-| exit-command | 无 | 真实 Pi 中的 `/exit` 注册、临时会话错误提示 | 秒级；宿主进程上限两分钟 |
-| side-chat | 无 | 子视图实例探针 | 秒级；宿主进程上限半分钟 |
-| session-runtime | 无 | Main/child 公开模块对象身份 | 秒级；宿主进程上限两分钟 |
-| cc-memory | 无 | faux provider、冻结 system、compact 与 resume | 数十秒；单次等待上限约一分钟 |
-| session-compact | 无 | faux provider、压缩与恢复材料、有效上下文 | 数十秒；单次等待上限半分钟 |
-| scheduler | 无 | 构建、Node CLI 自动启动、faux 定时执行、mailbox source 与恢复矩阵；拦截服务管理器与桌面通知 | 数分钟；单场景等待通常最多十几秒 |
-| mcp-adapter | 无 | 构建、真实 CLI 启动及其 SDK 依赖图加载生产 dist | 数十秒；子进程上限半分钟 |
-
-这些检查不调用真实 provider、不读取或修改用户日常配置。没有 `check:host` 的包（Subagents、Goal、Processes、Session Inject 等）只在各包 real/native 套件和根 `integration/` 的 `test:integration:*` 里跑真实宿主测试，不属于这个门禁，升级后要另行运行。这些检查也都不证明真实 provider、人工终端与输入法、没有探针的私有行为兼容。`test:patched-host` 及补丁联测不纳入原版宿主门禁；**只要 Pi 版本改变，`host-patches/` 必须按[补丁 README](host-patches/pi/v1.5.0/README.md#回滚升级与边界)重新 pin 上游及 hashes、重新构建和验证**，不能把旧补丁直接套到新版。
-
-全部检查通过后，`--apply` 在临时副本里更新 `local/*` 的 Pi peers 和 `bun.lock`，再核对当前 HEAD 与工作区没有变化，仅复制根 devDeps、这些 peers 和 lock 到当前工作区；不安装到当前工作区，也不更新日常 Pi。只改写 `^X.Y.Z`、`~X.Y.Z`、`X.Y.Z` 这类简单范围；`*`、`>=`、`||` 并集保持原样并写入报告的人工处理项。`fork/*` 的 Pi peers 一律不改，只列进报告；如按目标版本修改，须同步记入该 fork 的 `LOCAL_PATCHES.md`。审查 diff 后自行提交，正常开发仍使用 `bun install --frozen-lockfile`。当前版本自检可运行 `node scripts/pi-upgrade-check.mjs 1.5.0`，它需要 registry/安装网络，不放入 `npm test`；升级工具在其中只运行离线单元测试。
+stock 和 patched 分开交付。普通升级不要求重新 pin/构建补丁，原版子视图沿用主题热更新降级逻辑。旧补丁只适用于固定版本；选择新版 patched 时才按[补丁说明](host-patches/pi/v1.5.0/README.md#回滚升级与边界)重新 pin、构建和双侧联验，不纳入 stock 验收。
 
 ## 文档
 

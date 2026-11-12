@@ -1,3 +1,4 @@
+import { installedPiVersion } from "../../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -9,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const pi = process.env.PI_PROCESSES_TEST_PI ?? fileURLToPath(new URL("../../../../node_modules/.bin/pi", import.meta.url));
 const version = execFileSync(pi, ["--version"], { encoding: "utf8" }).trim();
-assert.equal(version, "1.5.0");
+assert.equal(version, installedPiVersion());
 const root = mkdtempSync(join(process.env.PI_PROCESSES_TEST_OUTPUT ?? tmpdir(), "late-turn-"));
 for (const name of ["home", "agent", "cwd", "tmp", "config", "cache", "state", "data"]) mkdirSync(join(root, name));
 writeFileSync(join(root, "agent/settings.json"), JSON.stringify({ retry: { enabled: false }, compaction: { enabled: false } }));

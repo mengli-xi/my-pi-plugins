@@ -32,7 +32,13 @@
 		"test": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
 		"test:runtime": "node ./test/goal-runtime-smoke.mjs",
 		"test:ui": "bun ./test/goal-ui-e2e.mjs",
-		"typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json --allowImportingTsExtensions"
+		"typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json --allowImportingTsExtensions",
+		"check:upgrade": "node ../../scripts/check-upgrade.mjs",
+		"check:upgrade:runtime": "npm run test:runtime",
+		"check:upgrade:mailbox": "node test/mailbox-runtime-smoke.mjs \"$TMPDIR/goal-mailbox\"",
+		"check:upgrade:matrix": "node test/mailbox-a1-matrix.mjs \"$TMPDIR/goal-matrix\"",
+		"check:upgrade:owed-fork": "node test/mailbox-owed-fork-smoke.mjs \"$TMPDIR/goal-owed-fork\"",
+		"check:upgrade:ui": "npm run test:ui"
 	},
 	"dependencies": {
 		"@narumitw/pi-tui-kit": "^0.40.0",

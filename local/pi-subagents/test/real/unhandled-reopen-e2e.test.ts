@@ -1,6 +1,6 @@
 import { prepareFreshProfile, piBinary } from "../fixtures/fresh-profile.js";
 // SUB-PENDING-STATE-003 regression: owner-level turn settlement (DELIVERY_PROTOCOL §7.9) under a real
-// stock Pi 1.5.0 RPC Main with the deterministic faux provider.
+// stock Pi RPC Main with the deterministic faux provider.
 //   abort line   - Main spawns one Subagent; the completion card and the producer continuation land and
 //                  the Outbox terminalizes as delivered, but the continuation-driven Main run is aborted
 //                  before the model answers. A second host must reopen the session with the Outbox turn

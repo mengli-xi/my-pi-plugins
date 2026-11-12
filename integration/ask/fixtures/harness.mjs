@@ -1,3 +1,4 @@
+import { installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { cpSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, parse } from "node:path";
@@ -12,7 +13,7 @@ import {
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { getCurrentTools } from "@earendil-works/pi-ai";
 
-assert.equal(VERSION, "1.5.0");
+assert.equal(VERSION, installedPiVersion());
 export const root = process.env.ASK_TEST_ROOT;
 assert.ok(root, "the parent must supply an isolated artifact directory");
 globalThis.fetch = async () => { throw new Error("Network is forbidden in Ask integration"); };

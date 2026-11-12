@@ -30,7 +30,8 @@
     "check": "npm run typecheck && npm run build && npm test",
     "prepare": "npm run build",
     "check:internals": "node ../../scripts/isolated-agent.mjs node --experimental-strip-types scripts/check-internals.ts",
-    "check:host": "node ../../scripts/check-host.mjs npm run build :: node scripts/check-internals-host.mjs :: node scripts/check-retry-child-host.mjs :: node scripts/check-provider-errors-host.mjs :: bun test/integration/host-fixtures.mjs :: bun test/integration/full-history.mjs :: bun test/integration/main-statusline.mjs"
+    "check:host": "node ../../scripts/check-host.mjs node ../../scripts/check-build.mjs :: node scripts/check-internals-host.mjs :: node scripts/check-retry-child-host.mjs :: --require=tmux node scripts/check-provider-errors-host.mjs :: bun test/integration/host-fixtures.mjs :: bun test/integration/full-history.mjs :: bun test/integration/main-statusline.mjs",
+    "check:smoke": "node ../../scripts/check-host.mjs node ../../scripts/check-build.mjs :: node scripts/check-internals-host.mjs :: node scripts/check-retry-child-host.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "^1.5.0",

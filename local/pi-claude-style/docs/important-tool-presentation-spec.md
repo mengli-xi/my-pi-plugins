@@ -1,6 +1,6 @@
 # 工具呈现 contract
 
-适用于 Pi 1.5.0；[runtime contract](./spec.md) 定义执行、配置和 lifecycle 边界，[README](../README.md) 列出命令与完整功能。呈现不得改变 model 可见的参数、result、结构化 details、错误或 session 历史，也不得为了恢复显示重新执行工具。
+适用于 stock Pi 1.5；[runtime contract](./spec.md) 定义执行、配置和 lifecycle 边界，[README](../README.md) 列出命令与完整功能。呈现不得改变 model 可见的参数、result、结构化 details、错误或 session 历史，也不得为了恢复显示重新执行工具。
 
 ## 策略
 

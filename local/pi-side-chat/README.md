@@ -4,7 +4,7 @@
 
 ## 加载
 
-需要原版 Pi 1.5.0，按[根安装说明](../../README.md#安装与加载)安装依赖后直接加载 TypeScript：
+原版 Pi 版本见[根支持说明](../../README.md#支持说明)，按[根安装说明](../../README.md#安装与加载)安装依赖后直接加载 TypeScript：
 
 ```sh
 pi -e "$PWD/local/pi-side-chat"
@@ -55,7 +55,7 @@ Side 共享 Main 的文件系统、网络与 credentials，没有 sandbox 或跨
 ```sh
 npm run typecheck -w pi-side-chat
 npm test -w pi-side-chat
-PI_BIN=/path/to/stock-pi-1.5.0 npm run check:host -w pi-side-chat
+PI_BIN=/path/to/stock-pi npm run check:host -w pi-side-chat
 PI_BIN=/path/to/pi npm run test:ui -w pi-side-chat
 npm run test:integration
 PI_BIN=/path/to/pi npm run test:integration:side-chat
@@ -70,6 +70,8 @@ PI_BIN=/path/to/pi npm run test:integration:side-chat
 - 不加载 CC 仍能进入原生 Side；加载 CC 后显示独立 presentation，但不新增执行权限。
 - Side 运行 Process 时先普通返回，再 destroy：前者继续保留 scope，后者先持久取消 pending 再删目录。取消失败应保留目录与可重试 ownership，不创建 replacement。
 - Side 压缩后继续对话；`/copy` 不复制继承的 Main 答案。BTW 宽窄布局、滚动、未读标记和 Escape 行为保持独立。
+
+快速升级的本包宿主冒烟入口为 `npm run check:smoke -w pi-side-chat`；范围与放弃的保障见[升级规则](../../CONTRIBUTING.md#升级-pi)。
 
 ## 合同文档
 

@@ -10,12 +10,16 @@ const binary = piBin();
 assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), installedPiVersion());
 const artifact = process.env.MAILBOX_FOLLOWUP_ARTIFACT_DIR ?? mkdtempSync(join(tmpdir(), "mailbox-followup-"));
 mkdirSync(artifact, { recursive: true });
+const goalOnly = process.env.MAILBOX_GOAL_ONLY === "1";
+const results = [];
+if (!goalOnly) {
 const sdkRoot = join(artifact, "sdk"); mkdirSync(sdkRoot, { recursive: true });
 const sdk = execFileSync(process.execPath, ["--import", join(root, "../../../../ts-resolve.mjs"), "--experimental-strip-types", join(root, "sdk-followup.ts")], {
   cwd: sdkRoot,
   env: { PATH: process.env.PATH, HOME: sdkRoot, PI_CODING_AGENT_DIR: join(sdkRoot, "agent"), TMPDIR: sdkRoot, PI_OFFLINE: "1", PI_TELEMETRY: "0", MAILBOX_FOLLOWUP_ROOT: sdkRoot }, timeout: 30000, encoding: "utf8", maxBuffer: 2 ** 20,
 });
-writeFileSync(join(sdkRoot, "result.json"), sdk); const results = JSON.parse(sdk.trim()).results;
+writeFileSync(join(sdkRoot, "result.json"), sdk); results.push(...JSON.parse(sdk.trim()).results);
+}
 const entry = join(artifact, "entry.ts");
 let imports = `import followup from ${JSON.stringify(join(root, "followup.ts"))};\n`;
 if (process.env.MAILBOX_GOAL_BUNDLE) {
@@ -29,7 +33,8 @@ writeFileSync(entry, imports);
 const bundle = join(artifact, "extension.js");
 execFileSync("bun", ["build", entry, "--target=node", "--format=esm", "--packages=external", `--outfile=${bundle}`], { stdio: "pipe" });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-for (const scenario of [...(process.env.MAILBOX_GOAL_BUNDLE ? ["goal"] : []), "reopen", "fork-return", "proof-conflict", "natural", "late-writer"]) {
+assert.ok(!goalOnly || process.env.MAILBOX_GOAL_BUNDLE, "Goal-only followup requires the real built Goal entry");
+for (const scenario of goalOnly ? ["goal"] : [...(process.env.MAILBOX_GOAL_BUNDLE ? ["goal"] : []), "reopen", "fork-return", "proof-conflict", "natural", "late-writer"]) {
   const directory = join(artifact, scenario); for (const name of ["home", "agent", "cwd", "tmp"]) mkdirSync(join(directory, name), { recursive: true });
   const log = join(directory, "events.jsonl"); writeFileSync(log, "");
   writeFileSync(join(directory, "agent", "settings.json"), JSON.stringify({ retry: { enabled: false }, compaction: { enabled: false } }));

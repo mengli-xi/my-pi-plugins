@@ -2,7 +2,7 @@
 
 ## 公开宿主接口
 
-本包以 stock Pi `1.5.0` 为基线，只使用公开 API，不新增 Pi private seam、probe 或宿主补丁。
+本包以 stock Pi 1.5 为基线，只使用公开 API，不新增 Pi private seam、probe 或宿主补丁。
 
 Processes notification transport 由 source-only `pi-session-inject/mailbox-v1` 拥有。Pi native queue、receipt、control、context recovery 与多 bundle/lifecycle fence 的宿主行为检查归该共享库；endpoint stub 不能替代真实 transport 验证。
 

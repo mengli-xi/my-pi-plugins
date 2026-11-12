@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readyHistory } from "./history-fixture.ts";
+import { PI_VERSION, readyHistory } from "./history-fixture.ts";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
@@ -11,7 +11,7 @@ import { addValue, emptyHistogram } from "../src/histogram.ts";
 import { ARCHIVE_BYTE_LIMIT, ARCHIVE_GROUP_LIMIT, readArchive, recoverCompaction } from "../src/daily-archive.ts";
 import { withStorageLock } from "../src/storage-lock.ts";
 
-const identity: Identity = { pid: process.pid, piVersion: "1.5.0", packages: ["plugin-a"], packagesHash: packageHash(["plugin-a"]), mode: "tui" };
+const identity: Identity = { pid: process.pid, piVersion: PI_VERSION, packages: ["plugin-a"], packagesHash: packageHash(["plugin-a"]), mode: "tui" };
 const dayOf = (at: number) => new Date(at).toISOString().slice(0, 10);
 function shard(day: string, id = identity, rss = 100): DailyShard {
   const histogram = emptyHistogram(); addValue(histogram, rss);

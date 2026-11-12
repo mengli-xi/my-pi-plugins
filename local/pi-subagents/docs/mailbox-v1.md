@@ -1,6 +1,6 @@
 # Subagents mailbox v1
 
-目标为 stock Pi 1.5.0；transport 由 `pi-session-inject/mailbox-v1` 唯一拥有，当前 build 为 `mailbox-v1.0.6`，compiled consumers 必须重建并使用新进程。
+目标为 stock Pi 1.5；transport 由 `pi-session-inject/mailbox-v1` 唯一拥有，当前 build 为 `mailbox-v1.0.6`，compiled consumers 必须重建并使用新进程。
 Main 和每个 SDK child 是同一 agent directory 下不同的 session slot。Subagents 不直接发送后台
 native message/control，也不保留超时重发循环；首个 Task prompt 和 compact-state 恢复投影仍由原 owner 处理。
 

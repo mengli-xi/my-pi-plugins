@@ -1,3 +1,4 @@
+import { VERSION } from "@earendil-works/pi-coding-agent";
 import { TaskDeadlines } from "../../src/host/task-deadlines.js";
 import { ProcessAdmissionOwner } from "../../src/host/process-admission.js";
 import { SdkRuntimeControllerV1 } from "../../src/runtime/sdk-controller.js";
@@ -49,7 +50,7 @@ test("nested spawn refuses execution proof and builtin provenance tampering befo
     const fx = await fixture(t), parent = fx.state().agents.find(item => item.agent.agent_id === A)!.agent.profile;
     parent.capabilities = { version: 1, fingerprint: sha("caps"), active_tools: ["codemode"], tool_definitions: [{ name: "codemode", owner_id: "builtin:codemode", definition_sha256: sha("codemode") }], entries: [
       { owner: "pi-native-search", main_entrypoint: "/search/extensions/index.ts", child_entrypoint: "/search/extensions/child.ts", tools: [], providers: [], hooks: [], sha256: sha("wrapper"), execution_factory: { version: 1, canonical_path: "/search/extensions/index.ts", sha256: sha("factory"), exports: ["createSearchChildFactory", "loadSearchConfig"] } },
-      { owner: "builtin:codemode", main_entrypoint: "builtin:codemode", child_entrypoint: "builtin:codemode", tools: ["codemode"], providers: [], hooks: [], sha256: sha("codemode"), builtin_proof: { version: 1, pi_version: "1.5.0" } },
+      { owner: "builtin:codemode", main_entrypoint: "builtin:codemode", child_entrypoint: "builtin:codemode", tools: ["codemode"], providers: [], hooks: [], sha256: sha("codemode"), builtin_proof: { version: 1, pi_version: VERSION } },
     ] };
     const nested = structuredClone(parent), factory = nested.capabilities.entries[0]!, builtin = nested.capabilities.entries[1]!;
     if (kind === "factory-path") factory.execution_factory!.canonical_path = "/elsewhere.ts";
@@ -68,7 +69,7 @@ test("nested spawn refuses execution proof and builtin provenance tampering befo
 
 test("nested builtin tools may narrow without replacing the frozen proof", async t => {
   const fx = await fixture(t), parent = fx.state().agents.find(item => item.agent.agent_id === A)!.agent.profile;
-  parent.capabilities = { version: 1, fingerprint: sha("caps"), active_tools: ["codemode", "tool_search"], tool_definitions: ["codemode", "tool_search"].map(name => ({ name, owner_id: name === "codemode" ? "builtin:codemode" : "builtin:tool-search", definition_sha256: sha(name) })), entries: [["builtin:codemode", "codemode"], ["builtin:tool-search", "tool_search"]].map(([owner, name]) => ({ owner: owner!, main_entrypoint: owner!, child_entrypoint: owner!, tools: [name!], providers: [], hooks: [], sha256: sha(name!), builtin_proof: { version: 1, pi_version: "1.5.0" } })) };
+  parent.capabilities = { version: 1, fingerprint: sha("caps"), active_tools: ["codemode", "tool_search"], tool_definitions: ["codemode", "tool_search"].map(name => ({ name, owner_id: name === "codemode" ? "builtin:codemode" : "builtin:tool-search", definition_sha256: sha(name) })), entries: [["builtin:codemode", "codemode"], ["builtin:tool-search", "tool_search"]].map(([owner, name]) => ({ owner: owner!, main_entrypoint: owner!, child_entrypoint: owner!, tools: [name!], providers: [], hooks: [], sha256: sha(name!), builtin_proof: { version: 1, pi_version: VERSION } })) };
   const nested = structuredClone(parent); nested.capabilities.active_tools = ["codemode"]; nested.capabilities.tool_definitions = nested.capabilities.tool_definitions.filter(tool => tool.name === "codemode"); nested.capabilities.entries = nested.capabilities.entries.filter(entry => entry.owner === "builtin:codemode");
   const caller = { kind: "agent-model" as const, conversation: { kind: "agent" as const, session_id: "session-a", agent_id: A }, runtime_generation: 1, owner_request_id: uuid(792) };
   const result = await prepareNested(fx, caller, uuid(793), "narrowed", "work", nested);

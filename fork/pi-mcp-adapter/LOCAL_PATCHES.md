@@ -2,7 +2,7 @@
 
 - Upstream：`npm:pi-mcp-adapter@7.0.1`
 - Repository：<https://github.com/nicobailon/pi-mcp-adapter.git>
-- 当前 host 合同：stock Pi 1.5.0；无额外 Pi patch。
+- 当前 host 合同：stock Pi 1.5；无额外 Pi patch。
 
 本文只记录当前 patch 的 WHY 和兼容规则。功能用法与完整合同从[README](README.md#文档目录)进入；上游 `main` 的 Unreleased 项不是本包的默认组成，不能据此宣称其 security 修复覆盖 7.0.1。
 

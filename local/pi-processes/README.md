@@ -4,7 +4,7 @@
 
 ## 加载与构建
 
-需要 stock Pi 1.5.0。按[根安装说明](../../README.md#安装与加载)安装依赖，再构建本包：
+stock Pi 版本见[根支持说明](../../README.md#支持说明)。按[根安装说明](../../README.md#安装与加载)安装依赖，再构建本包：
 
 ```sh
 npm run build -w pi-processes
@@ -106,6 +106,8 @@ npm run test:integration
 - 有 Compact 时，让 Main/Side 保持命令运行并连续压缩两次：每次只恢复一份 live 状态，下一轮不重复启动命令；没有 Compact 时原生压缩仍可继续。child 不按 Main/Side helper 的覆盖范围验收。
 
 真实 provider、人工鼠标/IME、完整 profile 与外部 launcher 的隔离接线须分别验收，不能用上述自动化命令代替。
+
+额外 real/native 套件统一用 `npm run check:upgrade -w pi-processes`；构建与完整验收规则见[升级 Pi](../../CONTRIBUTING.md#升级-pi)。
 
 ## 合同文档
 

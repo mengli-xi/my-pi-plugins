@@ -8,7 +8,7 @@
 
 共享库，不加入 Pi packages；通过 workspace 依赖 import TypeScript subpath，无独立 build。
 
-目标 Pi 1.5.0；依赖在仓库根安装，见[根安装说明](../../README.md#安装与加载)。编译消费者改源码或共享库后须重建并启动新进程。
+Pi 版本见[根支持说明](../../README.md#支持说明)；依赖在仓库根安装，见[根安装说明](../../README.md#安装与加载)。编译消费者改源码或共享库后须重建并启动新进程。
 
 ## 配置与命令
 
@@ -18,7 +18,7 @@
 
 ## 可选协作与降级
 
-普通 factory 按 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md) 的已加载声明装载，模型/工具仍由调用方投影；外部 SDK provider 保持独立 grant，ambient 发现关闭。presentation 可选。原版 Pi 1.5.0 可交接命名主题视图但不保证主题热更新，首次提示；补丁双面能力匹配才启用热更新，单面/未知拒绝，详见主题合同。
+普通 factory 按 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md) 的已加载声明装载，模型/工具仍由调用方投影；外部 SDK provider 保持独立 grant，ambient 发现关闭。presentation 可选。stock Pi 1.5 可交接命名主题视图但不保证主题热更新，首次提示；补丁双面能力匹配才启用热更新，单面/未知拒绝，详见主题合同。
 
 ## 验证
 
@@ -36,6 +36,8 @@ PI_BIN=/path/to/pi npm run check:host -w pi-session-runtime
 补丁专用测试：`npm run test:patched-host -w pi-session-runtime`。需要匹配的补丁 SDK，不能用 marker fixture 替代。
 
 自动测试使用临时配置、fixture 或 faux provider，不证明真实 provider、人工终端或完整 profile。跨插件联测见 [integration](../../integration/README.md)。
+
+快速升级的本包宿主冒烟入口为 `npm run check:smoke -w pi-session-runtime`；范围与放弃的保障见[升级规则](../../CONTRIBUTING.md#升级-pi)。
 
 ## 文档
 

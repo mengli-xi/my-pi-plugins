@@ -13,7 +13,8 @@
     "test": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "check:internals": "node ../../scripts/isolated-agent.mjs node scripts/check-internals.mjs",
-    "check:host": "node ../../scripts/check-host.mjs node scripts/check-internals.mjs --host :: bun scripts/check-first-observed-frame.mjs"
+    "check:host": "node ../../scripts/check-host.mjs node scripts/check-internals.mjs --host :: --require=pty bun scripts/check-first-observed-frame.mjs",
+    "check:smoke": "npm run check:host"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^1.5.0",

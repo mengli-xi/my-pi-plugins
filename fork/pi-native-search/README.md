@@ -19,7 +19,7 @@
 
 ## 加载与构建
 
-当前基线是原版 Pi 1.5.0。把本包目录的绝对路径加入 Pi `settings.json` 的 `packages`，由 manifest 加载 `extensions/index.ts`。`extensions/child.ts` 只供 Host 显式组装 SDK child，不作为普通 extension 加载。
+当前基线是stock Pi 1.5。把本包目录的绝对路径加入 Pi `settings.json` 的 `packages`，由 manifest 加载 `extensions/index.ts`。`extensions/child.ts` 只供 Host 显式组装 SDK child，不作为普通 extension 加载。
 
 这是 source-only package，没有 `dist/`，不需要 build。依赖由工作区管理；修改后运行检查，再启动新的 Pi process，不用 `/reload` 代替验证。
 

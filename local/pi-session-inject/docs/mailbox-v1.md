@@ -255,7 +255,7 @@ Task final 由 D 在撤权前 await B.cancelPending 及 D 自有 cancel；Side �
 缺失文件但曾有非空历史证据时拒绝恢复，不能伪造 assistant/anchor。
 
 `npm run check` 运行类型、事务故障/SIGKILL、callback、scope/branch/compaction 与 API 回归。
-`npm run test:native` 分别 Bun bundle 两个 extension 后，在 stock Pi 1.5.0 新进程、隔离 HOME/agent/cwd/TMPDIR
+`npm run test:native` 分别 Bun bundle 两个 extension 后，在 stock Pi 1.5 新进程、隔离 HOME/agent/cwd/TMPDIR
 和 offline faux 下检查 boundary 覆盖、async settled 两种顺序、USER/control 双顺序、facade 交接/reload、
 以及 shared A/E fulfilled-final-ACK-lost 的零请求恢复。用 `PI_BIN` 指定测试 binary（缺省用仓库根 `node_modules/.bin/pi`），不读日常 PATH 或 home 里的安装。
 `npm run test:followup` 检查真实 SDK 的 seed/extension prompt、Main 卡片、closed→reopen、cold key 和无 A snapshot 的 legacy pending；

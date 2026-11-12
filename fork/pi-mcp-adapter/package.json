@@ -53,8 +53,8 @@
     "test:node": "node scripts/test-runner.mjs node --experimental-transform-types --test mcp-auth-readonly.test.ts mcp-auth-mailbox.test.ts mcp-auth-request-headers.test.ts secure-keyring.test.ts mailbox-task.test.ts test/path-cache-file.test.ts test/path-cache-profile.test.ts",
     "test:vitest": "node scripts/test-runner.mjs vitest run --config scripts/vitest.config.ts",
     "test:watch": "node scripts/test-runner.mjs vitest --config scripts/vitest.config.ts",
-    "test:public-exports": "npm run build && node scripts/test-runner.mjs node --test public-exports.test.mjs",
-    "check:host": "node ../../scripts/check-host.mjs npm run build :: node scripts/test-runner.mjs node --test dist-host.test.mjs"
+    "test:public-exports": "node ../../scripts/check-build.mjs && node scripts/test-runner.mjs node --test public-exports.test.mjs",
+    "check:host": "node ../../scripts/check-host.mjs node ../../scripts/check-build.mjs :: node scripts/test-runner.mjs node --test dist-host.test.mjs"
   },
   "repository": {
     "type": "git",

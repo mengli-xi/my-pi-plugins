@@ -139,7 +139,7 @@ Ctrl+C idle 返回、busy 中断；非空 Ctrl+D 原生删除，空 Ctrl+D 须�
 首次 SDK import 后、input drain/Main stop/前台转移前，分别检查 Main `ExtensionUIContext.themeWatchCapability` 与 canonical SDK `THEME_WATCH_CAPABILITY`：
 
 - 双面精确 `pi.theme-watch.file-version.v1`：按名恢复主题并装 cache-only repaint bridge，文件版本 reload 由 SDK 拥有。
-- 双面 undefined：原版 Pi 1.5.0 可交接，沿用命名配色，不装 bridge，不保证文件热更新；native init 后及返回时若同名则不重复 setTheme，避免原版 FSWatcher 同步关闭慢路径叠加。首次交接经 Main notify 提示一次，同进程跨 binding/consumer 去重，指向补丁说明。
+- 双面 undefined：stock Pi 1.5 可交接，沿用命名配色，不装 bridge，不保证文件热更新；native init 后及返回时若同名则不重复 setTheme，避免原版 FSWatcher 同步关闭慢路径叠加。首次交接经 Main notify 提示一次，同进程跨 binding/consumer 去重，指向补丁说明。
 - 单面声明、未知值（含 null）或 getter 抛错：保留 Main、拒绝交接，带安装/重建/重启指引与 cause；不得 shim 伪造 marker。
 
 headless/tool-only 不要求 marker。不读 private theme/controller，不改 prototype，不另写 loader。补丁安装见 [host patch](../../../host-patches/pi/v1.5.0/README.md)；CLI 与完整 canonical SDK peer graph 须同次构建。

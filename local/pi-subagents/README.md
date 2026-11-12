@@ -8,7 +8,7 @@
 
 按[根安装说明](../../README.md#安装与加载)加载本包。先在仓库根运行 `npm run build -w pi-subagents`。
 
-目标 Pi 1.5.0；编译消费者改源码或共享库后须重建并启动新进程。
+Pi 版本见[根支持说明](../../README.md#支持说明)；编译消费者改源码或共享库后须重建并启动新进程。
 
 ## 配置与命令
 
@@ -30,6 +30,8 @@ npm test -w pi-subagents
 ```
 
 自动测试使用临时配置、fixture 或 faux provider，不证明真实 provider、人工终端或完整 profile。跨插件联测见 [integration](../../integration/README.md)。
+
+额外 real/native 套件统一用 `npm run check:upgrade -w pi-subagents`；构建与完整验收规则见[升级 Pi](../../CONTRIBUTING.md#升级-pi)。
 
 ## 文档
 

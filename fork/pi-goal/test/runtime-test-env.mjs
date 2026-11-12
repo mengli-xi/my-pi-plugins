@@ -1,3 +1,4 @@
+import { installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, realpathSync, statSync } from "node:fs";
@@ -38,11 +39,11 @@ export function stockHost(env) {
 	const supplied = process.env.PI_GOAL_TEST_BINARY;
 	assert.ok(
 		supplied && isAbsolute(supplied),
-		"Set PI_GOAL_TEST_BINARY to an absolute stock Pi 1.5.0 binary path",
+		"Set PI_GOAL_TEST_BINARY to an absolute stock Pi binary path",
 	);
 	const binary = realpathSync(supplied);
 	assert.ok(statSync(binary).isFile(), "PI_GOAL_TEST_BINARY must resolve to an actual file");
 	const version = execFileSync(binary, ["--version"], { encoding: "utf8", env }).trim();
-	assert.equal(version, "1.5.0", "Goal runtime tests require stock Pi 1.5.0");
+	assert.equal(version, installedPiVersion(), "CLI must match the installed SDK");
 	return { binary, version };
 }

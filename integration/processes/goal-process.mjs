@@ -1,3 +1,4 @@
+import { installedPiVersion } from "../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -20,7 +21,7 @@ assert.ok(scenarios.every(value => ["active-pg", "active-gp", "paused-pg", "paus
 for (const scenario of scenarios) {
   const root = mkdtempSync(join(artifact, (withChild ? "triple-" : "") + scenario + "-"));
   for (const name of ["home", "agent", "cwd", "tmp"]) mkdirSync(join(root, name));
-  assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: join(root, "home"), PI_CODING_AGENT_DIR: join(root, "agent"), TMPDIR: join(root, "tmp"), NODE_OPTIONS: process.env.NODE_OPTIONS } }).trim(), "1.5.0");
+  assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: join(root, "home"), PI_CODING_AGENT_DIR: join(root, "agent"), TMPDIR: join(root, "tmp"), NODE_OPTIONS: process.env.NODE_OPTIONS } }).trim(), installedPiVersion());
   writeFileSync(join(root, "events.jsonl"), "");
   writeFileSync(join(root, "agent/settings.json"), JSON.stringify({ retry: { enabled: false }, compaction: { enabled: false } }));
   writeFileSync(join(root, "agent/pi-goal.json"), JSON.stringify({ rpc: { enabled: true }, backgroundWaitCheckInMs: null, continuationLimits: { automaticTurns: 10, noProgressTurns: 3 } }));

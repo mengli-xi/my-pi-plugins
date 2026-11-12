@@ -42,10 +42,10 @@
 
 ## 开发
 
-验证使用隔离 HOME/config/cache 与官方 Pi 1.5.0，不写日常 profile。无需 build 或 dist；Source/UI 单测不能替代真实终端与完整压缩链验收。
+验证使用隔离 HOME/config/cache 与stock Pi 1.5，不写日常 profile。无需 build 或 dist；Source/UI 单测不能替代真实终端与完整压缩链验收。
 
 
-要求 Pi 1.5.0。status schema 用 TypeBox `Type.Enum` 保留 plain JSON enum 和静态类型。
+要求 stock Pi 1.5。status schema 用 TypeBox `Type.Enum` 保留 plain JSON enum 和静态类型。
 
 ```
 bun install --frozen-lockfile # 在仓库根运行；以下验证命令在包目录运行

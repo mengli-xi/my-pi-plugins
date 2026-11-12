@@ -51,7 +51,12 @@
     "test:e2e:mailbox": "node test/e2e/mailbox-recovery.mjs",
     "test:perf": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/perf/*.test.ts",
     "check": "npm run typecheck && npm run build && npm run verify-dist && npm test && npm run test:integration",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "check:upgrade": "node ../../scripts/check-upgrade.mjs",
+    "check:upgrade:integration": "npm run test:integration",
+    "check:upgrade:rpc": "npm run test:e2e",
+    "check:upgrade:late-turn": "npm run test:e2e:late-turn",
+    "check:upgrade:mailbox": "npm run test:e2e:mailbox"
   },
   "engines": {
     "node": ">=22.19"

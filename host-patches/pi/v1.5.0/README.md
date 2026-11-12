@@ -1,6 +1,6 @@
 # Pi 1.5.0 主题监听补丁
 
-这是 **`pi-1.5.0+theme-watch-file-version-v1` patched build**，不是原版 Pi 1.5.0。SDK 的 upstream package version 仍为 `1.5.0`；构建根目录的 `host-patch-build.json` 另记 build ID、输入及输出 hashes、Node/npm 版本。这里只维护 source patch、构建/检查脚本和 focused tests；不提交 `node_modules` 或 `dist`，不安装到日常 Pi，不部署或 push。
+这是只适用于 **Pi 1.5.0** 的可选 `pi-1.5.0+theme-watch-file-version-v1` 构建，SDK upstream version 不变；`host-patch-build.json` 记录 build ID、hashes 和工具版本。普通 stock 升级不要求重新 pin 或构建；原版 child 主题热更新沿用降级逻辑。这里只保存源码补丁、构建脚本与 focused tests，不提交产物、不自动安装。
 
 ## 上游和唯一源码
 
@@ -73,6 +73,6 @@ GitHub source archive 没有 `pi-ai/src/providers/data`。脚本只从 SHA-256 �
 
 - 回滚由 Main 恢复先前记录的 **pristine artifact/完整 peer graph links**，再启动 fresh Pi process；不能只恢复一个 JS 或只回退 CLI。CLI 与 SDK 双面均无 marker 时 consumer 允许主题降级的 managed handoff，并给一次提示；只回滚一面仍因 marker 不一致而拒绝。
 - 不删除或改写任何 session、agent、auth、config 数据。保留旧 pristine artifact 及链接记录，直到新 build 全量 fresh 联验完成。本脚本不做部署或自动 rollback。
-- 升级必须重新 pin 官方 commit/archive/source hashes，审查原 theme lifecycle 与 public contract，再重新构建和验证；禁止把此 patch fuzz apply 到别的版本，或只补 marker 假装修复仍在。
+- 只有选择新版 patched 交付时才必须重新 pin 官方 commit/archive/source hashes，审查原 theme lifecycle 与 public contract，再重新构建和验证；禁止把此 patch fuzz apply 到别的版本，或只补 marker 假装修复仍在。
 - 200ms poll + 100ms debounce 是 nominal 设置，不是繁忙 event loop 的硬 deadline。metadata 无法识别所有字段都刻意保持不变的内容替换；本修复没有为此增加轮询 digest/第二 loader。
 - 定向测试不能代替完整上游 suite、其他 OS/网络文件系统、真实 provider 或人工终端验证。升级后用正式 SDK/CLI peer graph 重跑消费者与真实 UI runner。

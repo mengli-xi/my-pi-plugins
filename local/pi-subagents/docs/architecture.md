@@ -114,7 +114,7 @@ Main active binding 用 Pi sendMessage 同步 TUI/native history，detached 旧 
 
 全部 session_shutdown 先 ending fence/撤销 append/view，再 force-close 旧树；quit 不重启 Main TUI。prepare/lease/assembly 完成后检查 ending，rollback 自身 artifacts/lease。cold reopen 在 writer lock 下 replay 完整 journal，unfinished current/queued 结算 interrupted/host-lost、关闭 ownerless Agent、取消旧 input；pending Completion 和控制交付仍对账，返回旧 Main 不自动 schedule。
 
-Main append 已改用公开 mailbox/readonly session API，旧 appendCustomMessageEntry/getEntry/getEntries 三项 private probe 随直接追加路径退役；public SDK/ManagedInteractive 无新增 private seam。公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0，managed native thread UI 遵守 [界面合同 §5](ui.md#5-主题与终端释放) 的原版主题降级/补丁热更新合同；重建后用对应 host 的 fresh process 验证公开合同与适用 consumer probe；无法证明 binding/caller/native proof 则 fail closed，零静默降级。
+Main append 已改用公开 mailbox/readonly session API，旧 appendCustomMessageEntry/getEntry/getEntries 三项 private probe 随直接追加路径退役；public SDK/ManagedInteractive 无新增 private seam。公开 Pi API 与 stock Core 支持目标仍为 stock Pi 1.5，managed native thread UI 遵守 [界面合同 §5](ui.md#5-主题与终端释放) 的原版主题降级/补丁热更新合同；重建后用对应 host 的 fresh process 验证公开合同与适用 consumer probe；无法证明 binding/caller/native proof 则 fail closed，零静默降级。
 
 ### 8. Snapshot、查询与通知
 
@@ -128,7 +128,7 @@ delivery-failed 当前处于隔离，公开 retry endpoint 尚未实现（Delive
 
 ### 1. Authority 与显式 factory
 
-公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0、唯一 SDK。capabilities/{closure,registry,fingerprint}.ts 和 runtime/factory-catalog.ts 定义准入。pi-runtime-contracts 拥有 versioned registry；Main package 注册 owner/target descriptor，Subagents 冻结 target=pi-subagents 的 closure，Side 直接解析 target=pi-side-chat。普通 factory 的声明、校验和失败规则见 [child 合同](../../pi-runtime-contracts/docs/child-capabilities-v1.md)，不按插件名字或目录识别；SDK factory 自身不注册 capability、不做 OS attestation；这层 SDK factory/provider 准入仍无 marker/nonce/ready handshake 前置。managed native thread UI 另有 [界面合同 §5](ui.md#5-主题与终端释放) 的 UI host-capability 检查；它只约束 handoff，不改变 provider grant、tool/model scope 或上述 attestation 边界。
+公开 Pi API 与 stock Core 支持目标仍为 stock Pi 1.5、唯一 SDK。capabilities/{closure,registry,fingerprint}.ts 和 runtime/factory-catalog.ts 定义准入。pi-runtime-contracts 拥有 versioned registry；Main package 注册 owner/target descriptor，Subagents 冻结 target=pi-subagents 的 closure，Side 直接解析 target=pi-side-chat。普通 factory 的声明、校验和失败规则见 [child 合同](../../pi-runtime-contracts/docs/child-capabilities-v1.md)，不按插件名字或目录识别；SDK factory 自身不注册 capability、不做 OS attestation；这层 SDK factory/provider 准入仍无 marker/nonce/ready handshake 前置。managed native thread UI 另有 [界面合同 §5](ui.md#5-主题与终端释放) 的 UI host-capability 检查；它只约束 handoff，不改变 provider grant、tool/model scope 或上述 attestation 边界。
 
 registry conflict、target/package/export/hash 不匹配拒绝，不能扫描 Main extension paths 或复制未知 pure hooks。外部 provider 只通过已声明、独立批准的 `sdk_provider_factory` 装配，沿用实际 assembly 的 canonical 公开 Pi namespaces；loader 只 cache 模块/identity，不 cache instance/options。同路径代码或明确 delegates 变更要求 fresh process，不拿新磁盘 hash 给旧 Jiti cache 背书。
 
@@ -187,7 +187,7 @@ Main binding 在 `src/index.ts` 通过 `src/context/effective.ts` 租用共享 c
 
 ### 1. 同进程信任
 
-公开 Pi API 与 stock Core 支持目标仍为 Pi 1.5.0、唯一 SDK；managed native thread UI 的原版主题降级与补丁热更新遵守 [界面合同 §5](ui.md#5-主题与终端释放) 的显式 host patch/UI capability，不构成 tools/model/provider 授权或 OS 隔离。Main、Side、Subagents 和 approved factory 同 JSprocess，共享 filesystem/network/credentials。frozen tool/model/role/ctx policy 减少误用但不构成 sandbox，任何 trustedextension 都能使用 process 权限。没有 socket/fd/nonce/env 构造的安全隔离、Agent process group 或 Supervisor hard kill；任意不响应 JS 工具只能 abort/fence，仍执行就 closing，不能声称已回收。
+公开 Pi API 与 stock Core 支持目标仍为 stock Pi 1.5、唯一 SDK；managed native thread UI 的原版主题降级与补丁热更新遵守 [界面合同 §5](ui.md#5-主题与终端释放) 的显式 host patch/UI capability，不构成 tools/model/provider 授权或 OS 隔离。Main、Side、Subagents 和 approved factory 同 JSprocess，共享 filesystem/network/credentials。frozen tool/model/role/ctx policy 减少误用但不构成 sandbox，任何 trustedextension 都能使用 process 权限。没有 socket/fd/nonce/env 构造的安全隔离、Agent process group 或 Supervisor hard kill；任意不响应 JS 工具只能 abort/fence，仍执行就 closing，不能声称已回收。
 
 不自动 worktree/写锁，同 workspace 并发 read/edit/bash/Process 会 race；用户要协调文件所有权，package 不能隐式扩展外部 authority。Subagentprefix/taskpath 是领域身份，不是可执行路径。PI_SUBAGENTS_BACKEND 被彻底拒绝，不接受旧 marker 恢复权限。
 

@@ -1,3 +1,4 @@
+import { VERSION } from "@earendil-works/pi-coding-agent";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
@@ -98,7 +99,7 @@ test("execution factory proof is additive for old profiles and round-trips as fr
 
 test("builtin proof remains structured, optional legacy data and closed V1 schema", () => {
   const agent = fixture().agents[0]!.agent;
-  const entry = { owner: "builtin:codemode", main_entrypoint: "builtin:codemode", child_entrypoint: "builtin:codemode", tools: ["codemode"], providers: [], hooks: [], sha256: sha("codemode"), builtin_proof: { version: 1 as const, pi_version: "1.5.0" } };
+  const entry = { owner: "builtin:codemode", main_entrypoint: "builtin:codemode", child_entrypoint: "builtin:codemode", tools: ["codemode"], providers: [], hooks: [], sha256: sha("codemode"), builtin_proof: { version: 1 as const, pi_version: VERSION } };
   agent.profile.capabilities.entries.push(entry);
   assert.deepEqual(decodeAgentRecordV1(structuredClone(agent)).profile.capabilities.entries[0], entry);
   for (const proof of [{ ...entry.builtin_proof, version: 2 }, { ...entry.builtin_proof, pi_version: "" }, { ...entry.builtin_proof, pi_version: 7 }, { ...entry.builtin_proof, loader: "arbitrary" }]) {

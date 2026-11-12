@@ -14,7 +14,7 @@ for(const [name,config,backend,key] of [
   ["unknown",{schemaVersion:2,capacity:{unknownKey:1}},undefined,"capacity.unknownKey"],
   ["range",{schemaVersion:2,capacity:{activeTasksPerMain:33}},undefined,"capacity.activeTasksPerMain"],
   ["schema",{schemaVersion:1},undefined,"schemaVersion"],
-] as const) test(`stock 1.5.0 ${name} keeps Main usable and rejects new Subagents work`,{timeout:45000},async()=>{
+] as const) test(`stock Pi ${name} keeps Main usable and rejects new Subagents work`,{timeout:45000},async()=>{
   const root=await mkdtemp(join(tmpdir(),"pi-b-config-host-"));let child:ReturnType<typeof spawn>|undefined,exit:Promise<any>|undefined;
   try{
     const agentDir=await prepareFreshProfile(root),configPath=join(agentDir,"pi-subagents/config.json");await writeFile(configPath,JSON.stringify(config));

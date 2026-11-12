@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { readyHistory } from "./history-fixture.ts";
+import { PI_VERSION, readyHistory } from "./history-fixture.ts";
 import { JsonlWriter } from "../src/log-writer.ts";
 import { DAY_MS, packageHash } from "../src/history.ts";
 import { writePerfReport, type PerfReportData } from "../src/html-report.ts";
@@ -38,7 +38,7 @@ test("startup cleanup reclaims stale temporaries without unlinking live writers"
     await writeFile(join(root, "ui.jsonl"), "old", { mode: 0o644 });
     await mkdir(join(root, "reports"), { mode: 0o755 });
     await writeFile(join(root, "reports/old.html"), "old", { mode: 0o644 });
-    const history = readyHistory(root, { pid: process.pid, piVersion: "1.5.0", packagesHash: packageHash([]), packages: [], mode: "tui" });
+    const history = readyHistory(root, { pid: process.pid, piVersion: PI_VERSION, packagesHash: packageHash([]), packages: [], mode: "tui" });
     await history.cleanup(now); assert.equal(history.error, undefined);
     assert.equal((await stat(join(root, "ui.jsonl"))).mode & 0o777, 0o600);
     assert.equal((await stat(join(root, "reports/old.html"))).mode & 0o777, 0o600);

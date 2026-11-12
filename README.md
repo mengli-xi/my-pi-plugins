@@ -2,9 +2,13 @@
 
 本仓库用 workspace 管理可单独加载的 Pi 插件、共享运行库和可选宿主补丁；依赖用 bun 安装。
 
+## 支持说明
+
+当前验证目标为 **stock Pi 1.5.0**，根 devDeps 与 lock 精确锁定开发依赖，`--apply` 同步本声明，离线测试检查一致性；包文档的「stock Pi 1.5」不代表其他补丁版本已验收。升级分级和统一入口见[贡献规范](CONTRIBUTING.md#升级-pi)。
+
 ## 安装与加载
 
-开发本仓库需要 Node.js 22.19+、Bun 1.3+ 和 Pi 1.5.0。Bun 是开发前提：依赖安装和 7 个包的构建都用它，多份 clone 共用 bun 全局缓存、不重复占盘；日常 `npm run` 脚本不变，用 Node 自带的 npm 即可。Node 直接运行 TypeScript 的测试建议使用 Node 24。**没有构建产物的插件不需要 Bun，也不需要安装本仓库依赖**（Pi 从本地路径直接加载，不读根 lock）；CC Style、Session Naming、Subagents、Processes、Goal、MCP Adapter、Scheduler 这 7 个包要先在仓库根用 bun 安装依赖并构建，使用它们需要 Bun。将下面的仓库地址占位符换成实际地址：
+开发本仓库需要 Node.js 22.19+、Bun 1.3+ 和[支持说明](#支持说明)中的 Pi。Bun 是开发前提：依赖安装和 7 个包的构建都用它，多份 clone 共用 bun 全局缓存、不重复占盘；日常 `npm run` 脚本不变，用 Node 自带的 npm 即可。Node 直接运行 TypeScript 的测试建议使用 Node 24。**没有构建产物的插件不需要 Bun，也不需要安装本仓库依赖**（Pi 从本地路径直接加载，不读根 lock）；CC Style、Session Naming、Subagents、Processes、Goal、MCP Adapter、Scheduler 这 7 个包要先在仓库根用 bun 安装依赖并构建，使用它们需要 Bun。将下面的仓库地址占位符换成实际地址：
 
 ```sh
 git clone <仓库地址> pi-packages
@@ -36,7 +40,7 @@ pi -e "$PWD/local/pi-todo"
 }
 ```
 
-以上方式来自 Pi 1.5.0 随包 `docs/packages.md`：`pi install <local-path>` 写个人配置，`--local` 写受信项目的 `.pi/settings.json`；`-e <package-path>` 仅本次加载。settings 中的相对本地路径以该 settings 文件所在目录为基准，不以启动 cwd 为基准。Pi 按包的 `pi.extensions`/`pi.skills` 声明加载资源，不自动加载全部 workspace。管理入口见 [pi-package-manager](local/pi-package-manager/README.md)。
+以上方式来自 Pi 随包 `docs/packages.md`：`pi install <local-path>` 写个人配置，`--local` 写受信项目的 `.pi/settings.json`；`-e <package-path>` 仅本次加载。settings 中的相对本地路径以该 settings 文件所在目录为基准，不以启动 cwd 为基准。Pi 按包的 `pi.extensions`/`pi.skills` 声明加载资源，不自动加载全部 workspace。管理入口见 [pi-package-manager](local/pi-package-manager/README.md)。
 
 **插件**注册 extension，可逐个启用；**共享库**只被 import，不加入 Pi packages。四个共享库由 workspace 依赖解析，不能把包目录单独拷走后假定相邻依赖仍可用。依赖只在仓库根按上面的安装命令装一次，不在各包重复安装或创建 lockfile。编译消费者更新后先重建并启动新 Pi 进程，不以 `/reload` 代替构建验证。
 
@@ -129,7 +133,7 @@ pi -e "$PWD/local/pi-todo"
 
 ## 可选宿主补丁
 
-Main 和普通插件不要求宿主补丁。原版 Pi 1.5.0 也能打开 Subagents 的原生 child 视图，缺 CC 时仍可使用。`host-patches/` 固定上游 Pi 1.5.0 的可复现源码补丁，**不自动安装**；补丁让 child 视图获得命名主题文件的热更新。CLI 与 canonical SDK 须用同次构建的完整 peer graph，两面能力声明分别校验。范围、构建和回退见 [补丁说明](host-patches/pi/v1.5.0/README.md)。
+Main 和普通插件不要求宿主补丁；原版 child 视图沿用命名配色，主题文件热更新降级并首次提示。可选[主题补丁](host-patches/pi/v1.5.0/README.md)只适用于其固定上游，不自动安装；普通 Pi 升级不要求重建补丁。选择补丁时，CLI 与 canonical SDK 必须是同次构建的完整 peer graph，两面能力分别校验。
 
 ## 验证入口
 
@@ -146,7 +150,7 @@ npm run test:integration:ask      # Ask 与 CC 的问答呈现及可选依赖降
 npm run test:integration:stock-host # Bun PTY；原版无 CC child 视图
 ```
 
-`npm test` 统一用主仓库 `git ls-files` 枚举已跟踪 Markdown（含 fork 文档），检查相对链接目标、GitHub 标题锚点以及从根 README 的可达性；排除 node_modules。脚本有断链、中文/重复锚点和孤儿回归；升级工具也有离线仓库和 tarball 合同测试。
+`npm test` 包含工具离线回归及文档链接检查：用 `git ls-files` 枚举 Markdown（含 fork、不含 node_modules），检查相对链接、标题锚点和根 README 可达性。
 
 补丁宿主入口须显式指定匹配产物：
 

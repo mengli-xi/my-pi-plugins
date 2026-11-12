@@ -1,6 +1,6 @@
 # pi-bash-timeout
 
-独立的 source-only Pi 1.5.0 extension，用同名 `bash` 覆盖内置工具。`timeout` 必填、单位秒、必须为正数；没有默认值，也不拦截或改写 tool call。参数说明提醒模型给网络/流式命令明确上限，长任务或需查看进度的命令改用 `process`。
+独立的 source-only stock Pi 1.5 extension，用同名 `bash` 覆盖内置工具。`timeout` 必填、单位秒、必须为正数；没有默认值，也不拦截或改写 tool call。参数说明提醒模型给网络/流式命令明确上限，长任务或需查看进度的命令改用 `process`。
 
 ## 加载
 
@@ -14,7 +14,7 @@ TypeScript 直接加载，无 `dist/` 或 build。工具定义设 `defaultActive
 
 ## 执行与显示
 
-只改变参数 schema 和 description 最后一句（从 optional 改为 required）。`command`、prompt snippet/guidelines、output schema、结果/报错、流式更新、abort、截断均沿用公开 `createBashToolDefinition`。每次执行从公开 `pi.getSettings()` 取得本会话的有效 settings，经 `SettingsManager.inMemory()` 的公开 getters 读取 `commandPrefix` 和规范化的 `shellPath`，与 stock Pi 1.5.0 `AgentSession._buildRuntime` 传入的选项一致。不读 settings 文件、不读取 private field；没有内置自定义 spawn hook/operations 选项，所以不传，保留 Pi 默认 session environment 和本地 shell 行为。Pi 自己继续拒绝无效 shell path、过大的 timeout 等。Pi 1.5 用 `pi-schema` 校验替换后的 JSON Schema，保留 stock 参数 coercion（例如 `"1"` 转成 `1`）；缺失、零和负值仍拒绝。工具不继承内置 `prepareArguments`，不会在校验前补出 timeout。
+只改变参数 schema 和 description 最后一句（从 optional 改为 required）。`command`、prompt snippet/guidelines、output schema、结果/报错、流式更新、abort、截断均沿用公开 `createBashToolDefinition`。每次执行从公开 `pi.getSettings()` 取得本会话的有效 settings，经 `SettingsManager.inMemory()` 的公开 getters 读取 `commandPrefix` 和规范化的 `shellPath`，与 stock Pi 1.5 `AgentSession._buildRuntime` 传入的选项一致。不读 settings 文件、不读取 private field；没有内置自定义 spawn hook/operations 选项，所以不传，保留 Pi 默认 session environment 和本地 shell 行为。Pi 自己继续拒绝无效 shell path、过大的 timeout 等。Pi 1.5 用 `pi-schema` 校验替换后的 JSON Schema，保留 stock 参数 coercion（例如 `"1"` 转成 `1`）；缺失、零和负值仍拒绝。工具不继承内置 `prepareArguments`，不会在校验前补出 timeout。
 
 本包不注册 `renderCall` / `renderResult`；Pi 沿用内置 bash renderer，CC Style 仍按工具名 `bash` 分组为 `Ran N shell commands`，不新增 UI ownership 或 presenter 耦合。
 

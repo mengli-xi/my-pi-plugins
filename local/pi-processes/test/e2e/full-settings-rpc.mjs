@@ -1,3 +1,4 @@
+import { installedPiVersion } from "../../../../scripts/pi-checks.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -19,7 +20,7 @@ accessSync(configuredPi, constants.X_OK);
 const piExecutable = realpathSync(configuredPi);
 const versionProbe = spawnSync(piExecutable, ["--version"], { encoding: "utf8", env });
 assert.equal(versionProbe.status, 0, `Pi version probe failed: ${versionProbe.stderr}`);
-assert.match(versionProbe.stdout.trim(), /^1\.5\.0(?:\b|$)/, `unexpected Pi host version: ${versionProbe.stdout}`);
+assert.equal(versionProbe.stdout.trim(), installedPiVersion(), "CLI must match the installed SDK");
 
 // 让真实 Pi 的 startup scavenging 只看到本次 smoke 自己的 temp base。隔离只用标准 TMPDIR，
 // 且只传给子进程：父进程的 env 不动，os.tmpdir() 每次调用都读 TMPDIR，因此 Pi 里 root 的创建和

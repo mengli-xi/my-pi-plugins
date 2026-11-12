@@ -1,6 +1,6 @@
 # pi-session-naming
 
-为 Pi session 自动生成 Claude 风格的名称。未命名 session 到达 Pi 完全 settled 的 boundary 后，extension 会通过公开的 `ModelRegistry.complete` path 请求短标题，并用 `pi.setSessionName` 写入。只支持 Pi 1.5.0 的公开 completion API。Pi 拥有 terminal title 与 session selector；`pi-claude-style` 是 editor chrome 的唯一 presentation owner，它通过公开的 `pi.getSessionName()` 与 `session_info_changed` 展示同一名称。本包不读取 Git，也不安装 editor render/input wrapper。
+为 Pi session 自动生成 Claude 风格的名称。未命名 session 到达 Pi 完全 settled 的 boundary 后，extension 会通过公开的 `ModelRegistry.complete` path 请求短标题，并用 `pi.setSessionName` 写入。只支持 stock Pi 1.5 的公开 completion API。Pi 拥有 terminal title 与 session selector；`pi-claude-style` 是 editor chrome 的唯一 presentation owner，它通过公开的 `pi.getSessionName()` 与 `session_info_changed` 展示同一名称。本包不读取 Git，也不安装 editor render/input wrapper。
 
 configuration 由 `conf` 管理，位于 `<agent-dir>/extensions/pi-session-naming/config.json`：
 
@@ -33,4 +33,4 @@ npm run check
 
 日常使用时确认：未命名 session 在 settled 后只请求一次；已有名称不请求；请求中人工 `/name` 不被覆盖；指定模型不可用或配置损坏时不回退/不调用；切 session 和 shutdown 的迟到结果无副作用。真实 provider、实际费用、terminal title 与 IME 需单独人工验收，未执行不能记为通过。
 
-`<agent-dir>` 取 Pi 公开 getAgentDir()，遵守 PI_CODING_AGENT_DIR；要求 Pi 1.5.0。
+`<agent-dir>` 取 Pi 公开 getAgentDir()，遵守 PI_CODING_AGENT_DIR；要求 stock Pi 1.5。

@@ -4,7 +4,7 @@
 
 ## 加载与构建
 
-需要 Pi 1.5.0。按[根安装说明](../../README.md#安装与加载)安装依赖，将本包绝对路径加入实际 agent directory 的 `settings.json`，或用 `pi -e /absolute/path/to/local/pi-skills` 临时加载。TypeScript 直接加载，无 build、工具注册或本包配置文件；不自动启用其他插件。
+Pi 版本见[根支持说明](../../README.md#支持说明)。按[根安装说明](../../README.md#安装与加载)安装依赖，将本包绝对路径加入实际 agent directory 的 `settings.json`，或用 `pi -e /absolute/path/to/local/pi-skills` 临时加载。TypeScript 直接加载，无 build、工具注册或本包配置文件；不自动启用其他插件。
 
 ## 使用
 
@@ -88,10 +88,12 @@ Loaded 行通过 `pi.claude-style.custom-entry-presentations.v1` 委托 CC Style
 npm run typecheck -w pi-skills
 npm test -w pi-skills
 npm run check:internals -w pi-skills
-PI_BIN=/absolute/path/to/pi-1.5.0 npm run check:host -w pi-skills
+PI_BIN=/absolute/path/to/pi npm run check:host -w pi-skills
 npm run test:integration
 ```
 
 host probe 使用独立 HOME、agent 和 session directory，只验证 user-message render seam，不代表完整 TUI 验收。跨插件联测与隔离要求见 [integration](../../integration/README.md)。
 
 日常可核对：同名技能从补全选中正确路径；同 prefix 发现新增/改名/删除；`$HOME` 不变；完整/分段/nested read 仅显示一次 Loaded 行；resume 和 rewind 保留准确来源；压缩两次仍保留完整规则且无重复恢复；无 CC/Compact 也能正常请求；窄屏、输入法、鼠标和取消不改提交原文。
+
+快速升级的本包宿主冒烟入口为 `npm run check:smoke -w pi-skills`；范围与放弃的保障见[升级规则](../../CONTRIBUTING.md#升级-pi)。

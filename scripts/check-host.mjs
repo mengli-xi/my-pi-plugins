@@ -1,50 +1,61 @@
-// 一个包可串联多个检查；失败不阻止其余检查。二进制与环境在任何子命令前确定。
-// 只支持 macOS 与 Linux；入口没有总时限，等待上限在各子脚本里。
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+// 包可串联多个检查；每个子套件有日志、时限和清理，失败仍继续。
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkEnvironment, installedPiVersion, piBin } from "./pi-checks.mjs";
+import { probePrerequisites, runCommand } from "./pi-upgrade-check.mjs";
 
-const usage = "用法：check-host.mjs <命令> [参数] [:: <命令> [参数]]";
 const commands = [[]];
 for (const arg of process.argv.slice(2)) {
   if (arg === "::") commands.push([]);
   else commands.at(-1).push(arg);
 }
-if (commands.some(command => !command.length)) {
-  console.error(usage);
-  process.exit(2);
-}
+const suitesToRun = commands.map(args => {
+  const requires = [];
+  while (args[0]?.startsWith("--require=")) {
+    const requirement = args.shift().slice("--require=".length);
+    if (!["tmux", "pty"].includes(requirement)) throw new Error(`未知前提：${requirement}`);
+    requires.push(requirement);
+  }
+  if (!args.length) throw new Error("用法：check-host.mjs [--require=tmux|pty] <命令> [参数] [:: ...]");
+  if (args[0] === "bun" && !requires.includes("pty")) requires.push("pty");
+  return { args, requires };
+});
 const binary = piBin();
-// macOS Unix socket 路径很短；不要把子检查的 tmux socket 嵌入长 TMPDIR。
-const root = mkdtempSync(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "pi-host-"));
-const env = checkEnvironment(root, { PI_BIN: binary });
+// 归上层 TMPDIR 所有，外层中断后也能回收；短前缀和直接复用根目录避免嵌套挤占 Unix socket 路径。
+const root = mkdtempSync(join(process.env.PI_CHECK_TMPDIR ?? (process.platform === "darwin" ? "/tmp" : tmpdir()), "ph-"));
+const env = checkEnvironment(root, { PI_BIN: binary, PI_CHECK_PREBUILT: process.env.PI_CHECK_PREBUILT ?? "[]", TMPDIR: root, TMP: root, TEMP: root });
+const suites = [];
 for (const name of ["home", "agent", "sessions", "config", "cache", "data", "state", "tmp"]) mkdirSync(join(root, name));
 try {
-  if (!existsSync(binary)) {
-    throw new Error(`找不到 Pi CLI：${binary}。先在仓库根运行 bun install，或用 PI_BIN 指定可执行文件。`);
-  }
-  // 冷启动或机器繁忙时 pi --version 可能要几十秒；宁可多等，避免长门禁里误判。
-  const version = execFileSync(binary, ["--version"], { env, encoding: "utf8", timeout: 120_000 }).trim();
+  if (!existsSync(binary)) throw new Error(`找不到 Pi CLI：${binary}。先在仓库根运行 bun install，或用 PI_BIN 指定可执行文件。`);
+  const versionProbe = await runCommand(binary, ["--version"], {
+    cwd: process.cwd(), env, timeoutMs: 120_000, cleanupPaths: [root],
+    log: process.env.PI_CHECK_REPORT ? `${process.env.PI_CHECK_REPORT}.version.log` : join(root, "version.log"),
+  });
+  if (versionProbe.status !== "passed") throw new Error(versionProbe.reason ?? versionProbe.output);
+  const version = versionProbe.stdout.trim();
   if (version !== installedPiVersion()) throw new Error(`Pi CLI ${version} 与已安装 SDK ${installedPiVersion()} 不一致：${binary}`);
-  for (const [command, ...args] of commands) {
-    console.log(`\n[check:host] ${[command, ...args].join(" ")}`);
-    const result = spawnSync(command, args, { env, stdio: "inherit" });
-    if (result.error?.code === "ENOENT") {
-      console.error(`找不到命令：${command}`);
+  for (const { args: [command, ...args], requires } of suitesToRun) {
+    const item = [command, ...args].join(" ");
+    console.log(`\n[check:host] ${item}`);
+    const reason = probePrerequisites(requires, { cwd: process.cwd(), env });
+    const log = process.env.PI_CHECK_REPORT ? `${process.env.PI_CHECK_REPORT}.suite-${suites.length + 1}.log` : join(root, `suite-${suites.length + 1}.log`);
+    const result = reason ? { status: "prerequisite", reason, durationMs: 0 } : await runCommand(command, args, {
+      cwd: process.cwd(), env, log, timeoutMs: 600_000, cleanupPaths: [root], tee: true,
+    });
+    const { output, stdout, ...entry } = result;
+    suites.push({ item, ...entry, ...(reason ? {} : { log }) });
+    if (result.status !== "passed") {
+      console.error(`失败：${item}（${result.status}，退出码 ${result.code}，信号 ${result.signal}）${reason ?? ""}`);
       process.exitCode = 1;
-      continue;
     }
-    if (result.error) console.error(result.error.message);
-    if (result.status !== 0) {
-      console.error(`失败：${[command, ...args].join(" ")}（退出码 ${result.status}，信号 ${result.signal}）`);
-      process.exitCode = 1;
-    }
+    if (result.interrupted) break;
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 } finally {
+  if (process.env.PI_CHECK_REPORT) writeFileSync(process.env.PI_CHECK_REPORT, JSON.stringify(suites));
   rmSync(root, { recursive: true, force: true });
 }

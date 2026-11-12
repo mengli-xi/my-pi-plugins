@@ -35,7 +35,7 @@
 
 ```sh
 npm run check
-PI_BIN=/path/to/pi-1.5.0 npm run check:host
+PI_BIN=/path/to/pi npm run check:host
 ```
 
 支持 Pi 1.5，TypeScript 直接加载，无 build/dist。共享依赖统一由根 workspace 安装。验证使用独立 HOME、agent/config/cache 与 session directory，不读取或改动日常 profile，不迁移真实 session、归档或图片。

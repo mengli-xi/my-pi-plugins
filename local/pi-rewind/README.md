@@ -8,7 +8,7 @@
 
 按[根安装说明](../../README.md#安装与加载)加载本包。TypeScript 直接加载，没有 build/dist。
 
-目标 Pi 1.5.0；编译消费者改源码或共享库后须重建并启动新进程。
+Pi 版本见[根支持说明](../../README.md#支持说明)；编译消费者改源码或共享库后须重建并启动新进程。
 
 ## 配置与命令
 
@@ -32,6 +32,8 @@ npm run check:host -w pi-rewind
 ```
 
 自动测试使用临时配置、fixture 或 faux provider，不证明真实 provider、人工终端或完整 profile。跨插件联测见 [integration](../../integration/README.md)。
+
+快速升级的本包宿主冒烟入口为 `npm run check:smoke -w pi-rewind`；范围与放弃的保障见[升级规则](../../CONTRIBUTING.md#升级-pi)。
 
 ## 文档
 

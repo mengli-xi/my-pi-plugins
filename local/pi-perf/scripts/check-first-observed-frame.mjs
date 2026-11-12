@@ -2,12 +2,13 @@
 // InteractiveMode starts; production remains limited to the public widget API.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { checkEnvironment } from "../../../scripts/pi-checks.mjs";
+import { checkEnvironment, installedPiVersion } from "../../../scripts/pi-checks.mjs";
 
 if (!process.env.PI_BIN) throw new Error("use check:host via the root runner");
-const root = mkdtempSync("/tmp/perf-pty-");
+const root = mkdtempSync(join(tmpdir(), "perf-pty-"));
 for (const name of ["home", "agent", "sessions", "config", "cache", "data", "state", "tmp"]) mkdirSync(join(root, name));
 writeFileSync(join(root, "package.json"), JSON.stringify({ name: "pi-perf-pty-probe", type: "module", pi: { extensions: ["./probe.ts"] } }));
 const evidence = join(root, "frames.json");
@@ -55,8 +56,9 @@ try {
     await delay(25);
   }
   assert.ok(startup, "first observed startup paint must be persisted");
+  assert.equal(startup.piVersion, installedPiVersion());
   assert.equal(state.reason, "startup"); assert.equal(state.mode, "tui"); assert.equal(startup.mode, "tui");
-  assert.ok(state.framesAtReady > 0, "Pi 1.5 starts painting before session_start");
+  assert.ok(state.framesAtReady > 0, `stock Pi ${installedPiVersion()} must paint before session_start; recheck the observed-frame boundary if this changes`);
   assert.ok(startup.values.firstObservedFrameMs >= state.firstAfterReadyAt);
   assert.ok(startup.values.firstObservedFrameMs > state.firstFrameAt);
   console.log("METRIC package-resolution-ms (TUI)", startup.packageResolveMs);
@@ -65,7 +67,7 @@ try {
   try { await Promise.race([child.exited, new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error("PTY shutdown timeout")), 30_000); })]); }
   finally { clearTimeout(timeout); }
   assert.equal(child.exitCode, 0, await stderr);
-  console.log("OK perf.PTY-first-observed-frame: firstObservedFrameMs is the first observable session-ready frame, NOT the process's first frame (Pi 1.5 public API limit)");
+  console.log(`OK perf.PTY-first-observed-frame: firstObservedFrameMs is the first observable session-ready frame, NOT the process's first frame (stock Pi ${installedPiVersion()} observed lifecycle)`);
 } finally {
   if (child && child.exitCode === null) child.kill("SIGKILL");
   if (child) await child.exited;

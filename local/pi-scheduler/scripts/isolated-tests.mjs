@@ -15,6 +15,8 @@ for (const name of ["launchctl", "systemctl", "osascript", "notify-send"]) {
 try {
   const result = spawnSync(command, args, { stdio: "inherit", env: checkEnvironment(root, {
     PATH: `${join(root, "bin")}:${process.env.PATH}`,
+    PI_CHECK_PREBUILT: process.env.PI_CHECK_PREBUILT ?? "[]",
+    ...(process.env.PI_CHECK_REPORT ? { PI_CHECK_REPORT: process.env.PI_CHECK_REPORT } : {}),
     ...(process.env.PI_BIN ? { PI_BIN: process.env.PI_BIN } : {}),
   }) });
   if (result.error) throw result.error;

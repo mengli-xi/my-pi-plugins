@@ -1,6 +1,6 @@
 # pi-claude-style
 
-目标运行时为 stock Pi 1.5.0。Main 不要求 Pi 源码 patch；native child 的主题能力检查另由 `pi-session-runtime` 负责，不能据此跳过其 capability gate。
+目标运行时为 stock Pi 1.5。Main 不要求 Pi 源码 patch；native child 的主题能力检查另由 `pi-session-runtime` 负责，不能据此跳过其 capability gate。
 
 现行设计与边界见 [runtime contract](./spec.md)、[工具呈现 contract](./important-tool-presentation-spec.md) 和 [statusline contract 与来源](./statusline-provenance.md)；[维护策略](maintenance.md) 说明必须保留的设计取舍。
 
@@ -507,12 +507,12 @@ Pi API、`typebox`、`conf` 和 `pi-runtime-contracts` 保持 external；UIKit �
 依据是 Pi 1.5 安装包的 `docs/extensions.md`（Available Imports / Writing an Extension），以及实际 loader 行为：
 `dist/core/extensions/loader.js` 在 bundled CLI 中传入 `virtualModules` 和 `tryNative: false`，但其 Jiti 2.7.0
 `eval_evalModule` 对 async ESM `.js` 仍走 native import。它因此可能解析到本包 devDependencies 中另一份 Pi，
-即使版本同为 1.5.0，也不能安全 patch CLI 正在使用的 component prototype。
+即使版本相同，也不能安全 patch CLI 正在使用的 component prototype。
 
 **入口、诊断入口、所有 shared/lazy chunks 和独立 child bundle 必须一起用 `.ts`。**
 只改最外层入口不够：Jiti 对后续每个 `.js` ESM hop 都可能再次选择 native import。Bun 的 splitting 和首次使用
 import 边界不变；`dist/config-storage.cjs` 不导入任何 Pi class，刻意保持 native CJS。
-这不是 host patch 或通用 loader 框架，只绑定 stock Pi 1.5.0；升级后必须重跑真实 host gate。
+这不是 host patch 或通用 loader 框架，只绑定 stock Pi 1.5；升级后必须重跑真实 host gate。
 
 消费者也属于这份契约：
 
@@ -523,7 +523,7 @@ import 边界不变；`dist/config-storage.cjs` 不导入任何 Pi class，刻�
 - 真实 CLI fixture 同样用 `.mts` / `.ts` 入口保持 host 绑定，例如 `host-fixtures-extension.mts`、`full-history-extension.mts` 和临时 child wrapper。
 
 `scripts/check-internals-host.mjs` 同时断言最终 CLI 的 component identity 与 compact patch 安装状态，不能仅凭 prototype probe 判断 realm 正确。
-`PI_BIN=/path/to/pi-1.5.0 node scripts/check-internals-host.mjs` 是可重复门禁；根 `integration/claude-style/child-ui.mjs` 另验证 Main/child 的真实
+`PI_BIN=/path/to/pi node scripts/check-internals-host.mjs` 是可重复门禁；根 `integration/claude-style/child-ui.mjs` 另验证 Main/child 的真实
 identity、单次 ownership 与 teardown。无效后缀导致的降级不能用 source probe 或只改 snapshot 冒充通过。
 
 ```sh
@@ -673,7 +673,7 @@ managed child factory 必须在 execution 装配时安装，不等首次 view。
 
 新增私有边界 `history.renderEntries` 行为校验 `renderSessionEntries` 及现有 compaction dispatch 两个分支的同步 clear/render，真实 dispatch 也检查同步次数；读取 mode 的 `session/sessionManager/renderer`。`session` 只用于通过公开 `AgentSession.extensionRunner` 和已注册 Markdown transformer 识别 `/reload` 重画早于 `session_start` 的归属。`history.selectionAnchors` 校验补载涉及的 `selectionAnchor/selectionFocus/selectionInitialRange/lastClick` 内容坐标。复用已登记的 `chatContainer/addMessageToChat`、`handleEvent` 和 fullscreen frame/scroll metadata；两项分别由 `scripts/check-internals-host.mjs` 与 `bun test/integration/full-history.mjs` 检查。安装后运行中失配同样完整回退：取消补载、撤掉窗口和加载行，在 idle 且原生 dispatch 完成后，先恢复选区方法，再按 `buildContextEntries()` 同步 GroupStore/Activity 两份 projection 并调用原生 renderer；`/internals` 记录失配，regular 不受影响。
 
-`PI_BIN=/path/to/pi-1.5.0 bun test/integration/full-history.mjs` 用合成会话和 faux provider 检查完整历史、补载选区/视口、两类现场压缩、reload、settings rebuild、tree、fork、new、resume、输入历史与运行中回退；另用 2800 余条记录检验卸载、双向重载、折叠状态、选区保护和多次压缩。
+`PI_BIN=/path/to/pi bun test/integration/full-history.mjs` 用合成会话和 faux provider 检查完整历史、补载选区/视口、两类现场压缩、reload、settings rebuild、tree、fork、new、resume、输入历史与运行中回退；另用 2800 余条记录检验卸载、双向重载、折叠状态、选区保护和多次压缩。
 
 `src/host/fullscreen/` 提供精确 editor geometry、面板外部点击关闭、每帧钩子、浮动补全、置顶问题与主题选区色。置顶问题直接合入帧，不建立 Pi overlay，所以滚动中的 transcript 选区仍跟随内容。深路径 layout import 失败时几何退回 UIKit 估算；选区 probe 失配退回原生反色。Main 与 child view 共用实现，detach 释放各自 owner。
 
@@ -685,7 +685,7 @@ Above-editor widget 非空时，CC 用一个受 probe 保护的 `renderWidgetCon
 
 置顶条在 Pi 原生选区着色后会恢复未被面板覆盖的那一行，所以正文选区滚到顶边时不会给问题条染色；选区与复制文本仍由 Pi 维护。浮动补全要等有效布局才隐藏 native 列表，帧接缝失配时退回原生补全。`/cc-style config set layout.enabled|stickyUserMessage|floatAutocomplete` 补全 true/false；`layout.popupGap` 为 0..100 整数，`layout.minViewportRows` 为 1..1000 整数，补全描述会提示范围。
 
-长工具参数流式呈现只使用 Pi 公开的 renderer `state`、`argsComplete` 与 `executionStarted`：折叠摘要复用同一组件及其 wrap cache；`write`/`write_file` 的 native 或 inline 内容预览在参数未完成时最多展示前 4096 个 UTF-16 code unit 加省略号，截点避开高代理字符，前缀相同就复用组件。以每行 state 为弱键分别保存原生 call/result child 和 CC 包装；交给原生 renderer 的 `lastComponent` 始终是它自己的 child。完成、执行开始、路径或展开状态变化会重新渲染；完整参数始终交给执行器和 transcript。真实 Pi 1.5.0 write renderer 与公开 `ToolExecutionComponent` 的回归覆盖完成、执行、结果及 invalidate，并逐行对比固定快照（规范化终端样式、链接 escape 和行尾空格）。没有额外配置、timer 或 Pi private seam。
+长工具参数流式呈现只使用 Pi 公开的 renderer `state`、`argsComplete` 与 `executionStarted`：折叠摘要复用同一组件及其 wrap cache；`write`/`write_file` 的 native 或 inline 内容预览在参数未完成时最多展示前 4096 个 UTF-16 code unit 加省略号，截点避开高代理字符，前缀相同就复用组件。以每行 state 为弱键分别保存原生 call/result child 和 CC 包装；交给原生 renderer 的 `lastComponent` 始终是它自己的 child。完成、执行开始、路径或展开状态变化会重新渲染；完整参数始终交给执行器和 transcript。真实 stock Pi 1.5 write renderer 与公开 `ToolExecutionComponent` 的回归覆盖完成、执行、结果及 invalidate，并逐行对比固定快照（规范化终端样式、链接 escape 和行尾空格）。没有额外配置、timer 或 Pi private seam。
 
 ## 交互回归清单
 

@@ -26,7 +26,7 @@ mcp({ search: "plan my week", searchMode: "semantic" })
 
 Regex 不可与 semantic 同用。Timeout 5 秒/rate-limit/service down 会回退 word search 并标记 fallback；missing credential/unknown model/disallowed server/invalid response 返回可修复错误，不展示 provider 原始 error text。无匹配时明确说明，details 标识 provider/model。至少 top score 四分之一的 tools 展示 parameter shape，其余一行描述，describe 看全文。没有 Pi classifier API 的 host 只报告不支持，词法 search 仍可用。
 
-不在 active 文档引用旧 catalog 样本的排名或延时作为 Pi 1.5.0 测量。
+不在 active 文档引用旧 catalog 样本的排名或延时作为 stock Pi 1.5 测量。
 
 ## Extraction：从结果取 typed values
 

@@ -1,3 +1,4 @@
+import { PI_VERSION } from "./history-fixture.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { existsSync } from "node:fs";
@@ -6,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IDENTITY_TIMEOUT_MS, packageHash, PerfHistory, type Identity } from "../src/history.ts";
 
-function identity(): Identity { return { pid: process.pid, piVersion: "1.5.0", mode: "unknown", packages: [], packagesHash: packageHash([]) }; }
+function identity(): Identity { return { pid: process.pid, piVersion: PI_VERSION, mode: "unknown", packages: [], packagesHash: packageHash([]) }; }
 async function raw(root: string) {
   const directory = join(root, "raw");
   return (await readFile(join(directory, (await readdir(directory))[0]), "utf8")).trim().split("\n").map(line => JSON.parse(line));

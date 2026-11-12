@@ -11,7 +11,7 @@
 
 ## 加载与构建
 
-需要 Pi 1.5.0、Node.js 22.19+ 或 Bun。必须先在[仓库根](../../README.md#安装与加载)安装依赖并构建；不提交 `dist/`：
+Pi 版本见[根支持说明](../../README.md#支持说明)；运行时需要 Node.js 22.19+ 或 Bun。必须先在[仓库根](../../README.md#安装与加载)安装依赖并构建；不提交 `dist/`：
 
 ```sh
 bun install --frozen-lockfile

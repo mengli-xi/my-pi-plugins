@@ -10,7 +10,7 @@ import { testPiExecutable } from "../../local/pi-side-chat/test/pi-executable.ts
 const pkg = fileURLToPath(new URL("../../local/pi-side-chat/", import.meta.url));
 const binary = process.argv[2] ?? testPiExecutable();
 const nativePresentation = process.env.PI_S2_NATIVE_PRESENTATION === "1";
-if (!binary) throw new Error("Usage: bun integration/side-chat/sdk-view-e2e.mjs /path/to/stock-pi-1.5.0");
+if (!binary) throw new Error("Usage: bun integration/side-chat/sdk-view-e2e.mjs /path/to/stock-pi");
 const root = process.env.PI_S2_VIEW_ARTIFACTS ?? mkdtempSync(join(tmpdir(), "pi-s2-view-"));
 mkdirSync(root, { recursive: true });
 const agent = join(root, "agent"); mkdirSync(agent, { recursive: true });

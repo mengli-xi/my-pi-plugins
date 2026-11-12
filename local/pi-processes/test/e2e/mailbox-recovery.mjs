@@ -1,3 +1,4 @@
+import { installedPiVersion } from "../../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -6,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const pkg = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const binary = process.env.PI_PROCESSES_TEST_PI ?? fileURLToPath(new URL("../../../../node_modules/.bin/pi", import.meta.url));
-assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), "1.5.0");
+assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), installedPiVersion());
 const artifact = process.env.PI_PROCESSES_TEST_OUTPUT ?? mkdtempSync(join(tmpdir(), "process-recovery-"));
 mkdirSync(artifact, { recursive: true });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));

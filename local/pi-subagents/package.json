@@ -58,7 +58,9 @@
     "test": "node --import ../../ts-resolve.mjs --experimental-strip-types --test test/unit/*.test.ts test/contract/*.test.ts",
     "check": "npm run typecheck && npm run build && npm run verify-dist && npm test",
     "prepare": "npm run build",
-    "test:real": "npm run build && node --import ../../ts-resolve.mjs --experimental-strip-types --test test/real/*.test.ts"
+    "test:real": "node ../../scripts/check-build.mjs && node --import ../../ts-resolve.mjs --experimental-strip-types --test test/real/*.test.ts",
+    "check:upgrade": "node ../../scripts/check-upgrade.mjs",
+    "check:upgrade:real": "node --import ../../ts-resolve.mjs --experimental-strip-types --test --test-timeout=300000 test/real/*.test.ts"
   },
   "engines": {
     "node": ">=20"

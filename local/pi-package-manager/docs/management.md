@@ -49,7 +49,7 @@ bun install --frozen-lockfile # 在仓库根运行；以下验证命令在包目
 npm run check
 ```
 
-使用官方 Pi 1.5.0，在隔离 HOME/config/cache 中验证，不动日常 settings。单测使用临时 settings 和假 package manager，不执行真实网络更新、安装脚本或模型请求。真实 npm/git 更新、终端/鼠标/IME 与完整 profile 需另行验收，RPC 仅验证非 TUI 入口会拒绝打开，不能冒充 TUI 验收。
+使用 stock Pi 1.5，在隔离 HOME/config/cache 中验证，不动日常 settings。单测使用临时 settings 和假 package manager，不执行真实网络更新、安装脚本或模型请求。真实 npm/git 更新、终端/鼠标/IME 与完整 profile 需另行验收，RPC 仅验证非 TUI 入口会拒绝打开，不能冒充 TUI 验收。
 
 ## 日常回归 case
 

@@ -20,7 +20,8 @@
     "test": "node --experimental-transform-types --test tests/*.test.ts",
     "check": "npm run typecheck && npm run check:internals && npm test",
     "check:internals": "node ../../scripts/isolated-agent.mjs node scripts/check-internals.mjs",
-    "check:host": "node ../../scripts/check-host.mjs node scripts/check-internals.mjs --host"
+    "check:host": "node ../../scripts/check-host.mjs node scripts/check-internals.mjs --host",
+    "check:smoke": "npm run check:host"
   },
   "dependencies": {
     "pi-li-uikit": "^0.1.0"

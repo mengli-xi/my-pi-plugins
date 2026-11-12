@@ -6,7 +6,7 @@
 
 ## 加载
 
-目标 Pi 1.5.0；按[根安装说明](../../README.md#安装与加载)安装依赖后直接加载 TypeScript，无 build/dist：
+Pi 版本见[根支持说明](../../README.md#支持说明)；按[根安装说明](../../README.md#安装与加载)安装依赖后直接加载 TypeScript，无 build/dist：
 
 ```sh
 pi -e "$PWD/local/pi-fast"
@@ -36,7 +36,7 @@ session override 优先于全局默认。override 以 `pi-fast:session-state-v1`
 `before_provider_request` 接收即将发送的 JSON body；主 agent loop 的 SSE、WebSocket 通过同一 payload seam 注入。
 
 - 影响主 agent loop 请求。
-- **Pi 1.5.0 原生 compaction 不受影响**：它直接调用 `agent.streamFunction`，未经过 Agent 的 `onPayload`，不会触发此 hook。
+- **stock Pi 1.5 原生 compaction 不受影响**：它直接调用 `agent.streamFunction`，未经过 Agent 的 `onPayload`，不会触发此 hook。
 - 本仓库 [pi-session-compact](../pi-session-compact/README.md) 的压缩生成也不受影响：main/small（含 chunk、synthesis）和该插件的 native fallback 经 `src/generate.ts` 直接调用 `ctx.modelRegistry.streamSimple`，不传 `onPayload`。继承主请求的消息前缀不等于继承请求 body 的 `service_tier`；本包不会为这些压缩请求增加 priority。
 - **Subagents 与 Side Chat 跟随创建时的父状态**：Main 通过 [child-capabilities-v1](../pi-runtime-contracts/docs/child-capabilities-v1.md) 注册 `child.ts` 的 `createFastChildFactory`，子 session 安装相同的请求 hook。创建时捕获实际生效的 fast 状态（session override 优先，否则全局默认），后续父状态变化不改已有 child；child 不注册 `/fast`，不写父 override 或全局文件。不加载本包时 child 请求照常。其他 SDK 消费者只有明确消费该声明才会跟随。Main binding 按 session ID 管理，shutdown 释放全部 binding 和 registration；binding 失败只给诊断，不影响 `/fast` 与主请求注入。
 - 直接调用 `modelRegistry` stream 的扩展绕过此 hook，不受影响。

@@ -2,7 +2,7 @@
 
 让 Pi 按需发现和调用 MCP tools，也支持 resources、prompts、elicitation、sampling、Apps 和异步 Tasks。默认通过 `mcp` gateway 搜索与调用，避免把全部 schema 常驻在模型上下文中；需要时也能注册 direct/deferred tools。
 
-本地包以 **npm `pi-mcp-adapter@7.0.1`、stock Pi 1.5.0** 为兼容基线。[本地维护意图](LOCAL_PATCHES.md)只解释当前 patch 为什么存在，不代表上游 `main` 的 Unreleased 改动已经包含在此包内。
+本地包以 **npm `pi-mcp-adapter@7.0.1`、stock Pi 1.5** 为兼容基线。[本地维护意图](LOCAL_PATCHES.md)只解释当前 patch 为什么存在，不代表上游 `main` 的 Unreleased 改动已经包含在此包内。
 
 ## 加载与构建
 
@@ -50,7 +50,7 @@ mcp({ tool: "chrome_devtools_take_screenshot", args: { format: "png" } })
 - **目录披露**：`roots` 默认 `true`，会向 MCP server 披露 Pi session cwd；不需要时对该 server 设置 `"roots": false`。
 - **凭据**：Adapter 自己已有的 URL-bound credentials 继续使用。它不读取、导入或删除 Pi 内建 MCP 的私有登录态；过去只依赖 native sign-in import 的用户需重新 `/mcp-auth <server>`。公开 Pi provider token 接口不受此限制。
 
-完整行为分别见下方本地文档。上游旧 host 的启动时间、内存或 token benchmark 不构成本包在 Pi 1.5.0 上的实测或承诺。
+完整行为分别见下方本地文档。上游旧 host 的启动时间、内存或 token benchmark 不构成本包在 stock Pi 1.5 上的实测或承诺。
 
 ## 配置与命令
 

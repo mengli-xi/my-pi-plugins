@@ -84,7 +84,7 @@ try {
   child.terminal.write("/quit\r");
   await wait("host quit", () => child.exitCode !== null);
   assert.equal(await child.exited, 0, await stderr);
-  console.log(`PASS: ${stock ? "stock" : "patched"} Pi 1.5.0, no CC, faux provider only; handoffs=${JSON.stringify(timings)}`);
+  console.log(`PASS: ${stock ? "stock" : "patched"} Pi, no CC, faux provider only; handoffs=${JSON.stringify(timings)}`);
 } finally {
   if (child.exitCode === null) child.kill("SIGKILL");
   await child.exited;

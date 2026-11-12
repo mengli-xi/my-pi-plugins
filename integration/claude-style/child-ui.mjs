@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import xterm from "@xterm/headless";
-import { installedPiVersion, piBin } from "../../../scripts/pi-checks.mjs";
+import { installedPiVersion, piBin } from "../../scripts/pi-checks.mjs";
 
 const binary = piBin();
 assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(), installedPiVersion());

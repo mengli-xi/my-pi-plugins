@@ -9,7 +9,7 @@
 
 Goal 使用 npm `@narumitw/pi-tui-kit`，当前锁定 **0.40.0**；本目录不包含该共享库的源码。
 
-stock Pi baseline 是 **1.5.0**；生产行为依赖公开 extension/session/context/custom-message API，无 Goal 私有 probe 或 host patch。外部 npm 包、vendor 中仅取 `extensions/pi-goal` 的原版和当前本地补丁包是不同测试对象，不能互相代替验证。
+公开基线是 stock Pi 1.5；生产行为依赖公开 extension/session/context/custom-message API，无 Goal 私有 probe 或 host patch。外部 npm 包、vendor 中仅取 `extensions/pi-goal` 的原版和当前本地补丁包是不同测试对象，不能互相代替验证。
 
 ## 构建与轻入口
 
@@ -28,12 +28,12 @@ Bun 将薄 `src/index.ts` 及实现编译为 `dist/index.js` 与 dynamic chunks�
 
 仓库根的标准入口是 `npm run typecheck`、`npm test`、`npm run test:integration`。Goal 包内 `check` 是包内 Biome、边界、typecheck 与测试，不等于整个仓库 gate，也不能充当 runtime/matrix evidence。各入口的覆盖范围和依赖以根 [integration](../../../integration/README.md) 为准。
 
-本包只测试自身，不加载 Processes/Subagents/CC/Compact；共享库合同及 Goal domain/lifecycle 的离线测试，与 stock binary faux smoke 分开。跨插件 mailbox/tree、双加载顺序、paused results、分离 cutoff、崩溃/恢复和 status/clock 联测放 `integration/goal/`。测试使用临时 profile/session 和 faux provider，不调用真实 provider，不发现用户日常安装。构建后的 stock smoke 需要显式 Pi binary，版本必须匹配 baseline。
+本包只测试自身，不加载 Processes/Subagents/CC/Compact；共享库合同及 Goal domain/lifecycle 的离线测试，与 stock binary faux smoke 分开。跨插件 mailbox/tree、双加载顺序、paused results、分离 cutoff、崩溃/恢复和 status/clock 联测放 `integration/goal/`。测试使用临时 profile/session 和 faux provider，不调用真实 provider，不发现用户日常安装。构建后的 stock smoke 需要显式 Pi binary，版本必须与已安装 SDK 一致。
 
 构建后，从根在隔离父环境运行本包 stock/faux smoke（证据目录不放仓库）：
 
 ```sh
-export PI_GOAL_TEST_BINARY=/absolute/path/to/stock-pi-1.5.0
+export PI_GOAL_TEST_BINARY=/absolute/path/to/stock-pi
 GOAL=fork/pi-goal
 OUT=/absolute/path/to/evidence
 node "$GOAL/test/goal-runtime-smoke.mjs"
@@ -45,7 +45,7 @@ npm run test:ui -w @narumitw/pi-goal
 
 `test:ui` 用虚拟 PTY 和本地 faux provider 驱动真实原生 TUI，检查菜单、草稿、默认 settings、取消/替换、暂停/恢复和完成；不操作物理终端。真实 CC 的版本由根 `test:integration:goal-ui` 入口另行验证，包内不加载 CC。
 
-binary 必须是实际文件的绝对路径，隔离环境的 `--version` 必须恰为 1.5.0，不 fallback 到个人 HOME/bin。runtime helper 以 PATH/NODE_OPTIONS allowlist 建立临时 HOME、agent、XDG 和 TMP 环境，保留调用方的 offline guard，不继承 credentials；SDK runner 的父环境也须由隔离 harness 提供。package native matrix 保留正常续跑、USER 顺序、budget、abort、crash/restart、source origin、fork 与 legacy cases；owed-fork 使用本地 faux producer，不因此变成真实 Processes 联测。真实 joint 的两种加载顺序见根 integration。
+binary 必须是实际文件的绝对路径，隔离环境的 `--version` 必须与已安装 SDK 一致，不 fallback 到个人 HOME/bin。runtime helper 以 PATH/NODE_OPTIONS allowlist 建立临时 HOME、agent、XDG 和 TMP 环境，保留调用方的 offline guard，不继承 credentials；SDK runner 的父环境也须由隔离 harness 提供。package native matrix 保留正常续跑、USER 顺序、budget、abort、crash/restart、source origin、fork 与 legacy cases；owed-fork 使用本地 faux producer，不因此变成真实 Processes 联测。真实 joint 的两种加载顺序见根 integration。
 
 单元通过不代表完整 profile、人工 TUI、真实 host 或离线回退通过。缺 binary/协作方/构建产物时应报告未验证或明确失败，不伪造成功、不用源码 mock 代替编译入口。package metadata/distribution 改动还需 npm pack dry run；运行时加载改动需 fresh-process load，保持与实际 `pi.extensions` 一致。
 

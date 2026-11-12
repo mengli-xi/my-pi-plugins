@@ -1,6 +1,6 @@
 # pi-session-inject
 
-source-only 的 Pi-aware 共享库，维护 safe append primitives 与统一 mailbox transport。只使用 Pi 1.5.0 public API，无 extension factory 或 build step，无需加入 Pi 的加载 packages。producer 通过 bindMailbox 接入，首次 session_start 为每个 runner 注册稳定 `/mailbox` facade；单独安装本库不会启动任务或自动发现 producer。
+source-only 的 Pi-aware 共享库，维护 safe append primitives 与统一 mailbox transport。只使用 stock Pi 1.5 的公开 API，无 extension factory 或 build step，无需加入 Pi 的加载 packages。producer 通过 bindMailbox 接入，首次 session_start 为每个 runner 注册稳定 `/mailbox` facade；单独安装本库不会启动任务或自动发现 producer。
 
 导出 API：
 

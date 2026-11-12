@@ -1,3 +1,4 @@
+import { PI_VERSION } from "./history-fixture.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -9,7 +10,7 @@ import { browserLaunchSpec, renderPerfReportHtml, renderTrendCharts, writePerfRe
 function fixture(): PerfReportData {
   const point = { at: 1000, rss: 200, heapUsed: 100, heapTotal: 120, external: 10, arrayBuffers: 5 };
   return {
-    trends: [{ day: "2026-11-12", piVersion: "1.5.0", packagesHash: "abcd", packages: ["plugin-a"], mode: "tui", sessions: 2, startups: 1,
+    trends: [{ day: "2026-11-12", piVersion: PI_VERSION, packagesHash: "abcd", packages: ["plugin-a"], mode: "tui", sessions: 2, startups: 1,
       metrics: { readyMs: { count: 1, p50: 300, p95: 300, max: 300, mean: 300 } } }],
     generatedAt: 1000,
     sessionId: "session</script><script>alert(1)</script>",

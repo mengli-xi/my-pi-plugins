@@ -3,6 +3,10 @@
 全部使用 Pi 1.5 faux provider、临时 HOME/profile/session，零真实 provider 请求。
 包内只保留本包单元/合同测试及不加载协作插件的 e2e。
 
+## 统一入口与场景
+
+完整 stock 验收使用[升级入口](../CONTRIBUTING.md#升级-pi)。根场景只在 [scenarios.mjs](scenarios.mjs) 定义；`test:integration` 选择 default，所有定向脚本仅按 tag 过滤同一清单，完整升级取并集。构建依赖随每个场景声明，定向入口只构建所选依赖的去重并集；`PI_GOAL_TEST_BINARY` 缺省跟随 `PI_BIN`。每个文件/模式单独报告、限时和清理，普通失败继续，收到中断信号立即停止后续场景。临时配置在结束时删除；日志保留在入口打印的 `/tmp/pi-integration-*` 目录（Linux 使用系统临时目录）。补丁专用 PTY 仍显式运行，不并入 stock。
+
 ## 降级门禁
 
 仓库根运行 `npm run test:integration`：
@@ -22,9 +26,9 @@
 
 根脚本 `test:integration`、`test:integration:mcp`、`test:integration:search`、`test:integration:ask`，以及 `test:integration:subagents` 的 Node runner 使用 `--test-timeout=300000`（5 分钟），作为缺省用例上限；用例自身显式 timeout 仍优先。根 `test` 的 `scripts/*.test.mjs` 阶段也设置该上限，但不传递到后续 workspace 测试、非 test-runner 命令、Bun/PTY 或独立宿主脚本；这些入口使用自己的期限。真实 Task deadline 用例至少等待生产的 60 秒，5 分钟为慢启动、正常期限和清理留出余量，不用无限超时掩盖失败后泄漏。Subagents RPC fixture（fresh-host 与独立 spawn）的正常退出预算统一为 60 秒，覆盖 Processes 的 33 秒 cleanup watchdog 和 Host 的 35 秒 cleanup 请求；已经发送 EOF 但未退出也必须 force-kill/reap，退出后才删私有目录。fresh-host 首次 `get_state` 也允许 60 秒冷启动，后续 RPC 保持 25 秒；相关 parked/compaction 用例预算为 120 秒，覆盖冷启动、操作与退出，而不改 Task/process deadline。退出计时由 test diagnostic 输出，超时不是退出成功。
 
-`npm run test:integration` 会先用 Bun 构建 CC、Subagents 和 Processes，再运行联测；单独运行依赖 CC `dist` 的联测（Skills/CC、Fast/CC）前，要先执行 `npm run build -w pi-claude-style`，不以源码 mock 代替 `dist/index.ts`。这些用例使用根依赖中的 stock Pi 1.5.0 公共 SDK，不加载 patched SDK 或真实 provider。
+`npm run test:integration` 会先构建场景声明的生产产物，再运行联测；单独运行依赖 CC `dist` 的联测（Skills/CC、Fast/CC）前，要先执行 `npm run build -w pi-claude-style`，不以源码 mock 代替 `dist/index.ts`。这些用例使用根依赖中的 stock Pi 1.5 公共 SDK，不加载 patched SDK 或真实 provider。
 
-无 pi-claude-style 的 Subagents child 视图可在按[根安装说明](../README.md#安装与加载)安装的原版 Pi 1.5.0 上验证：
+无 pi-claude-style 的 Subagents child 视图可在按[根安装说明](../README.md#安装与加载)安装的stock Pi 1.5 上验证：
 
 ```sh
 npm run test:integration:stock-host
@@ -62,46 +66,15 @@ PI_BIN=/path/to/pi npm run test:integration:side-chat
 
 [Goal](../fork/pi-goal/README.md) 已纳入根 workspace。包内只保留本包 domain/合同测试和独立 faux e2e；真实 Goal + Processes/Subagents 的 mailbox 矩阵在 [integration/goal](goal/mailbox-a1-matrix.mjs)，不借默认降级门禁声称完整矩阵通过。
 
-先在仓库根显式构建三个生产入口，再指定 stock Pi 1.5.0 binary 和仓库外的证据目录：
+`npm run test:integration:goal` 自动构建所需入口，运行 joint 正反加载顺序、Processes + Goal 和 Inject 的 Goal-only followup，不重跑 Inject 默认场景。joint 矩阵覆盖 paused results、独立 cutoff 与持久 mailbox ACK，测试侧只控制公开 gate，不换 transport；完整 stock 验收使用同一清单。高级定向排查可直接运行 `integration/goal/mailbox-a1-matrix.mjs <证据目录> [case]`，case 为 `joint-b`、`joint-bd`、`joint-grant`、`joint-paused` 或 `joint-paused-split`；须提供 `PI_GOAL_TEST_BINARY` 并先完成构建。
 
-```sh
-npm run build -w @narumitw/pi-goal
-npm run build -w pi-processes
-npm run build -w pi-subagents
-PI_GOAL_TEST_BINARY=/absolute/path/to/stock-pi-1.5.0 \
-node integration/goal/mailbox-a1-matrix.mjs /absolute/path/to/evidence
-# 同一矩阵反向加载顺序；用另一个证据目录
-GOAL_JOINT_REVERSE=1 PI_GOAL_TEST_BINARY=/absolute/path/to/stock-pi-1.5.0 \
-node integration/goal/mailbox-a1-matrix.mjs /absolute/path/to/reverse-evidence
-```
-
-矩阵可在证据目录后指定 case：`joint-b`、`joint-bd`、`joint-grant`、`joint-paused`、`joint-paused-split`。使用真实 mailbox engine/store 和生产编译入口，测试侧只控制公开 receive/release gate，不换 transport；断言 exact Main/child/request/carrier 数量、sealed member set、独立 cutoff 与 final pending 清空。暂停结果路径允许记录结果，不恢复 Goal、不调用 terminal tools。process 和 Task deadline 各自独立，Goal pause 不取消后台任务，巡检也不延长期限。fixture 使用临时 profile/session 与 faux provider；没有运行就不报告通过。
-
-Processes 自己保留更广的显式 Goal 矩阵，不随默认门禁运行：
-
-```sh
-PI_PROCESSES_TEST_GOAL_ENTRY="$PWD/fork/pi-goal/dist/index.js" \
-PI_PROCESSES_TEST_PI=/absolute/path/to/stock-pi-1.5.0 \
-node integration/processes/goal-process.mjs
-```
-
-入口拒绝缺失的显式路径；先完成所需构建，不自动发现日常 profile。Goal 本包 stock runtime/mailbox smoke 与这里的联合矩阵分别验收，边界见 [Goal 维护说明](../fork/pi-goal/docs/maintenance.md)。
-
-Goal 与真实 CC 的 TUI 协作使用独立入口，显式提供两个实际产物：
-
-```sh
-PI_GOAL_TEST_BINARY=/absolute/path/to/stock-pi-1.5.0 \
-PI_GOAL_TEST_CC_ENTRY="$PWD/local/pi-claude-style/dist/index.ts" \
-npm run test:integration:goal-ui
-```
-
-此入口共用原生 Goal 的真实 PTY 场景，并额外检查 CC 画面的 Goal 行和暂停后的时钟冻结；包内 `test:ui` 不加载 CC。虚拟 PTY 不是人工 IME/物理终端验收。
+`npm run test:integration:goal-ui` 在真实 Bun PTY 中加载 Goal + CC，检查 Goal 行和暂停后的时钟冻结；包内 `check:upgrade:ui` 不加载 CC。虚拟 PTY 不代替人工 IME/物理终端验收。所有入口使用隔离 profile 和 faux provider，不发现日常配置。
 
 ## 完整协作矩阵
 
 `npm run test:integration:subagents` 运行 `integration/subagents/real` 下的 Node 联测。
 包括直接加载其他插件的文件，以及通过 `fresh-host` 默认加载 Processes 的文件。
-设置 `PI_BIN`（相对路径以仓库根解析，不随测试 cwd 改变），先显式构建本仓的 Processes、Goal 及这些测试所需的其他协作方；native-search 等外部插件仍须提供。
+定向入口自动构建本仓协作方，`PI_BIN` 缺省用根依赖中的 CLI（相对路径以仓库根解析）。
 仓库不提供外部插件的仿制实现。缺协作方或宿主时应失败，不能把默认降级门禁通过当成完整协作矩阵通过。
 原有全 profile 环境变量仍只用于显式矩阵；日常默认门禁不发现用户 profile。
 
@@ -110,4 +83,4 @@ Subagents 的三套 Bun PTY runner 在 `subagents/real/sdk-{child-view,statuslin
 CC 的 child/provider renderer 联测与 Compact/statusline 联测在 `claude-style/`，
 入口为 `PI_BIN=/path/to/pi bun integration/claude-style/child-ui.mjs`、
 `PI_BIN=/path/to/pi bun integration/claude-style/context-compact.mjs`。这些矩阵保留原有断言及额外依赖，
-不属于 stock 降级门禁。原 statusline 文档中的旧命令位置以本页为准。
+纳入完整 stock 验收（补丁专用 runner 除外）。原 statusline 文档中的旧命令位置以本页为准。

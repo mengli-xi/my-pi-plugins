@@ -18,9 +18,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "node scripts/build.mjs",
-    "test": "npm run build && node scripts/isolated-tests.mjs node --import ../../ts-resolve.mjs --experimental-strip-types --test --test-concurrency=1 tests/*.test.ts",
+    "test": "node ../../scripts/check-build.mjs && node scripts/isolated-tests.mjs node --import ../../ts-resolve.mjs --experimental-strip-types --test --test-concurrency=1 tests/*.test.ts",
     "check": "npm run typecheck && npm test",
-    "check:host": "node scripts/isolated-tests.mjs node ../../scripts/check-host.mjs npm run build :: node --import ../../ts-resolve.mjs scripts/check-node-host.mjs :: node --import ../../ts-resolve.mjs scripts/check-mailbox-source-host.mjs :: node --import ../../ts-resolve.mjs scripts/mailbox-joint/run.mjs"
+    "check:host": "node scripts/isolated-tests.mjs node ../../scripts/check-host.mjs node ../../scripts/check-build.mjs :: node --import ../../ts-resolve.mjs scripts/check-node-host.mjs :: node --import ../../ts-resolve.mjs scripts/check-mailbox-source-host.mjs :: node --import ../../ts-resolve.mjs scripts/mailbox-joint/run.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^1.5.0",

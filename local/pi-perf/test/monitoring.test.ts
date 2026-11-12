@@ -1,3 +1,4 @@
+import { PI_VERSION } from "./history-fixture.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { writeFile } from "node:fs/promises";
@@ -139,7 +140,7 @@ test("/perf keeps good trend rows and reports skipped daily files", async t => {
   const daily = join(h.root, "perf/daily", readdirSync(join(h.root, "perf/daily"))[0]);
   await writeFile(join(daily, "invalid.json"), "{}");
   await h.run("7d");
-  assert.match(h.notifications.at(-1)!, /跳过 1 个/); assert.match(h.notifications.at(-1)!, /1.5.0/);
+  assert.match(h.notifications.at(-1)!, /跳过 1 个/); assert.ok(h.notifications.at(-1)!.includes(PI_VERSION));
   await h.emit("session_shutdown");
 });
 

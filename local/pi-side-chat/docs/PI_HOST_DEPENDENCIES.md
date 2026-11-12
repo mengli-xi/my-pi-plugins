@@ -1,6 +1,6 @@
 # Pi 宿主与视图合同
 
-本包直接从 TypeScript 加载，基线为原版 Pi 1.5.0。SDK装配、model completion、settings、session API、editor factory 与 UI callback 使用公开接口。Side 没有 OS child/PTY 后端；PTY只用于验证真实 Main 的终端交接。
+本包直接从 TypeScript 加载，基线为stock Pi 1.5。SDK装配、model completion、settings、session API、editor factory 与 UI callback 使用公开接口。Side 没有 OS child/PTY 后端；PTY只用于验证真实 Main 的终端交接。
 
 ## 私有 seam
 
@@ -12,7 +12,7 @@
 它们位于 `compat/pi-1.2-side-visibility.ts`，仅对 Side instance 隐藏 inherited IDs、boundary 与 inherited compaction/live summary，detach恢复原方法；不改 Main prototype，也不从执行上下文删除对应背景。compaction 行为检查在 `compat/pi-1.2-compaction-probe.ts`。probe失配必须在view初始化前拒绝，保留Main，不能猜测宿主结构后继续。
 
 ```sh
-PI_BIN=/path/to/stock-pi-1.5.0 npm run check:host -w pi-side-chat
+PI_BIN=/path/to/stock-pi npm run check:host -w pi-side-chat
 ```
 
 源码检查不能代替实际宿主检查。没有 runner-capture 或旧进程模式 probe，也不自动修改 Pi 源码。

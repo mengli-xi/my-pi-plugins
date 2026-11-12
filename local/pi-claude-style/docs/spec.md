@@ -1,6 +1,6 @@
 # Runtime、配置与所有权 contract
 
-本 contract 适用于 Pi 1.5.0。用户功能和验证命令见 [README](../README.md)，工具细则见 [工具呈现](./important-tool-presentation-spec.md)，shell 边界见 [statusline](./statusline-provenance.md)。
+本 contract 适用于 stock Pi 1.5。用户功能和验证命令见 [README](../README.md)，工具细则见 [工具呈现](./important-tool-presentation-spec.md)，shell 边界见 [statusline](./statusline-provenance.md)。
 
 ## 展示与执行分离
 

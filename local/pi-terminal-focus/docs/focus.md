@@ -26,7 +26,7 @@
 
 ```sh
 npm run check
-PI_BIN=/path/to/pi-1.5.0 npm run check:host
+PI_BIN=/path/to/pi npm run check:host
 ```
 
 支持 Pi 1.5，TypeScript 直接加载，无 build/dist。验证前先按[根安装说明](../../../README.md#安装与加载)安装依赖；以下验证命令在包目录运行。

@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import test from "node:test";
-import { readyHistory } from "./history-fixture.ts";
+import { PI_VERSION, readyHistory } from "./history-fixture.ts";
 import { addValue, emptyHistogram, histogramDistribution } from "../src/histogram.ts";
 import { DAY_MS, packageHash, type Identity } from "../src/history.ts";
 
-const identity: Identity = { pid: process.pid, piVersion: "1.5.0", packagesHash: packageHash(["b", "a"]), packages: ["a", "b"], mode: "tui" };
+const identity: Identity = { pid: process.pid, piVersion: PI_VERSION, packagesHash: packageHash(["b", "a"]), packages: ["a", "b"], mode: "tui" };
 async function temporary(run: (root: string) => Promise<void>) {
   const root = await mkdtemp(join(tmpdir(), "perf-history-"));
   try { await run(root); } finally { await rm(root, { recursive: true, force: true }); }
@@ -22,7 +22,7 @@ test("daily rotation, identity, merged quantile bounds and version/package compa
   a.write("startup", { readyMs: 100, extensionReachedMs: 40, extensionToReadyMs: 60 }, now);
   b.write("startup", { readyMs: 300, extensionReachedMs: 50, extensionToReadyMs: 250 }, now);
   a.write("sample", { rss: 40 }, now + DAY_MS);
-  const other = readyHistory(root, { ...identity, piVersion: "1.6.0", packagesHash: packageHash(["c"]) });
+  const other = readyHistory(root, { ...identity, piVersion: `${PI_VERSION}-comparison`, packagesHash: packageHash(["c"]) });
   other.write("sample", { rss: 50 }, now);
   await Promise.all([a.flush(), b.flush(), other.flush()]);
   assert.equal(a.error, undefined);
@@ -62,7 +62,7 @@ test("7 and 30 day windows are UTC calendar days, future days excluded", () => t
 }));
 test("multiple real processes append without losing or interleaving lines or daily contributions", () => temporary(async root => {
   const source = `import { PerfHistory } from ${JSON.stringify(new URL("../src/history.ts", import.meta.url).href)};
-const history = new PerfHistory(process.argv[1], { pid:process.pid, piVersion:'1.5.0', packagesHash:'test', packages:['a','b'], mode:'tui' });
+const history = new PerfHistory(process.argv[1], { pid:process.pid, piVersion:${JSON.stringify(PI_VERSION)}, packagesHash:'test', packages:['a','b'], mode:'tui' });
 history.setIdentityReady(Promise.resolve());
 for(let i=0;i<120;i++) history.write('sample',{rss:i},Date.UTC(2026,10,12));
 await history.flush(); if(history.error) throw new Error(history.error);`;

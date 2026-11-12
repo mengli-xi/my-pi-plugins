@@ -21,8 +21,8 @@ export function workspacePackages(root) {
   }).sort((a, b) => a.directory.localeCompare(b.directory));
 }
 
-export function discoverChecks(root) {
-  return workspacePackages(root).flatMap(pkg => ["check:internals", "check:host"]
+export function discoverChecks(root, { quick = false } = {}) {
+  return workspacePackages(root).flatMap(pkg => ["check:internals", quick ? "check:smoke" : "check:host"]
     .filter(check => Object.hasOwn(pkg.scripts ?? {}, check))
     .map(check => ({ package: pkg.name, directory: pkg.directory, check })));
 }
@@ -49,5 +49,7 @@ export function checkEnvironment(root, extra = {}) {
     npm_config_cache: join(root, "cache"), npm_config_update_notifier: "false",
     TERM: "xterm-256color",
     ...extra,
+    // 标记由验收入口拥有的 TMPDIR；不要把用户 shell 的长系统 TMPDIR 当作上层隔离目录。
+    PI_CHECK_TMPDIR: extra.TMPDIR ?? join(root, "tmp"),
   };
 }

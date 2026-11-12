@@ -1,3 +1,4 @@
+import { installedPiVersion } from "../../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
@@ -9,7 +10,7 @@ import {
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { getCurrentTools } from "@earendil-works/pi-ai";
 
-assert.equal(VERSION, "1.5.0");
+assert.equal(VERSION, installedPiVersion());
 globalThis.fetch = async () => { throw new Error("Network is forbidden in the questionnaire fixture"); };
 const root = process.env.FORK15_TEST_ROOT;
 assert.ok(root);
@@ -149,4 +150,4 @@ try {
 } finally {
   await runtime.dispose();
 }
-console.log("Pi 1.5.0 questionnaire: 6 answer/control interactions, 4 cancellation/replacement interactions, 4 validation cases and 1 noninteractive scenario passed");
+console.log("Pi questionnaire: 6 answer/control interactions, 4 cancellation/replacement interactions, 4 validation cases and 1 noninteractive scenario passed");

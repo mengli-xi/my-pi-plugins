@@ -21,7 +21,12 @@
     "test:native": "node test/native/run.mjs && node test/native/cancel-projection.mjs",
     "test:followup": "node test/native/followup.mjs",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "check:upgrade": "node ../../scripts/check-upgrade.mjs",
+    "check:upgrade:native": "node test/native/run.mjs",
+    "check:upgrade:cancel": "node test/native/cancel-projection.mjs",
+    "check:upgrade:followup": "npm run test:followup",
+    "check:smoke": "node ../../scripts/check-host.mjs node test/native/run.mjs :: node test/native/cancel-projection.mjs :: node test/native/followup.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^1.5.0"

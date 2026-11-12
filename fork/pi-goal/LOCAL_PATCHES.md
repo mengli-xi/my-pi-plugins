@@ -40,7 +40,7 @@ source session 与 exact origin checkpoint 限制 branch/fork authority，复制
 
 上游 source entry 改为 `dist/index.js`，减少 Pi 顺序加载的启动开销；Bun splitting 保留 `mailbox-v1/light` 到 engine/store 的首次使用 import，不能重新压成 eager transport。Pi/typebox external，shared transport/registry 的跨副本 process identity 仍由共享库保证。dist 不提交、无 prepare 保证，改 source/source-only dependency 后显式 build + fresh process。
 
-根 workspace/唯一根 bun.lock 统一 development baseline 和共享库解析。Biome 只保留现有 Fork 检查，不引入根 formatter/TS 升级。Goal 的 npm pi-tui-kit 当前锁定 0.40.0。stock Pi 1.5.0 的公开 API 足够，不新增 host patch/private seam；本包检查仅覆盖 Goal，不能当作整个上游仓库的回归。构建与验证边界见 [维护](docs/maintenance.md)。
+根 workspace/唯一根 bun.lock 统一 development baseline 和共享库解析。Biome 只保留现有 Fork 检查，不引入根 formatter/TS 升级。Goal 的 npm pi-tui-kit 当前锁定 0.40.0。stock Pi 1.5 的公开 API 足够，不新增 host patch/private seam；本包检查仅覆盖 Goal，不能当作整个上游仓库的回归。构建与验证边界见 [维护](docs/maintenance.md)。
 
 边界检查使用根 TypeScript 的稳定 Compiler API，不依赖上游 TypeScript 7 的 unstable API；通过实际解析到的 package metadata 区分外部共享库与扩展，不给特定包名开例外。测试和 typecheck 使用根 loader/toolchain，保留测试源码的类型检查，不留另一套 Fork loader。菜单测试直接驱动锁定版本的真实 custom component；不借用未安装版本的 testing export，也不以更新运行时依赖来修测试。
 

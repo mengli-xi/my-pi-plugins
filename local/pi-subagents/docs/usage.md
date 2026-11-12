@@ -45,7 +45,7 @@ profile.settings_snapshot 持久保存 allowlisted 公开 Pi settings，executio
 
 ## 模型工具合同
 
-目标 Pi 1.5.0，当前唯一 SDK。Schema/parser 以 local/pi-subagents/src/tools/{schemas,validate,register}.ts 为准，Host 不能信任模型提供 caller/generation。所有对象拒绝未知参数；string/collection 有界，target 是当前 Main 的 Agent ID 或 task path，不能指定 PID、路径或其它 Main。
+目标 stock Pi 1.5，当前唯一 SDK。Schema/parser 以 local/pi-subagents/src/tools/{schemas,validate,register}.ts 为准，Host 不能信任模型提供 caller/generation。所有对象拒绝未知参数；string/collection 有界，target 是当前 Main 的 Agent ID 或 task path，不能指定 PID、路径或其它 Main。
 
 ### 1. 工具集合与权限
 

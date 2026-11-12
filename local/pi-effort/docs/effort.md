@@ -80,7 +80,7 @@ pi install /path/to/my-pi/local/pi-effort
 
 ## 测试
 
-在隔离 HOME/config/cache 中安装官方 Pi 1.5.0 锁定依赖，不读取日常配置：
+在隔离 HOME/config/cache 中安装stock Pi 1.5 锁定依赖，不读取日常配置：
 
 ```bash
 bun install --frozen-lockfile # 在仓库根运行；以下验证命令在包目录运行

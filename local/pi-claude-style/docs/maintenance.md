@@ -38,7 +38,7 @@ Working、typewriter、goal、preload、expiry 共用 runtime scheduler，4ms �
 
 `pi-perf` 唯一拥有全局 TUI/input instrumentation、采样 timer 与日志，CC 是 fail-closed subscriber 和有界 telemetry producer，不加第二个 wrapper。日志不写用户文本、参数/result 或提示词。关闭 CC consumer 不等于关闭 provider；微基准只报告实际测量层次，不宣称端到端或内存门禁通过。
 
-Pi baseline 是 1.5.0，catalog 保留历史文件名 `src/compat/pi-1.3.ts`。25 个 private contracts（16 eager、9 live）与 probe 集合一一对应；公开 renderer API 由 typecheck/常规测试覆盖。health 先更新内存，再异步 atomic writer 合并落盘，shutdown flush；render/input 禁同步健康文件写入。prototype realm identity 必须与最终 host 一致，不添加 structural fallback 掩盖错误 class。
+Pi API 基线是 1.5，catalog 保留历史文件名 `src/compat/pi-1.3.ts`。25 个 private contracts（16 eager、9 live）与 probe 集合一一对应；公开 renderer API 由 typecheck/常规测试覆盖。health 先更新内存，再异步 atomic writer 合并落盘，shutdown flush；render/input 禁同步健康文件写入。prototype realm identity 必须与最终 host 一致，不添加 structural fallback 掩盖错误 class。
 
 `pi.claude-style.internals.v1` 是可选的进程内诊断贡献协议，不是执行或 UI ownership 授权。CC 发布 `globalThis[Symbol.for(key)]`：`probes` 为按稳定 id 索引的 Map，条目包含 `id/needs/breaks` 和可选 `check(): boolean`；可选 `health` 含 Pi `version` 与按 id 保存的 `state/detail`，state 为 ok/missing/broken/unexercised。Side Chat 经此登记、更新自己的两项 instance probe，不 import CC 源码或读健康文件。缺 CC 时贡献无人接收，Side 仍执行自己的本地检查；producer 不持有 registry 的文件路径或 writer。
 

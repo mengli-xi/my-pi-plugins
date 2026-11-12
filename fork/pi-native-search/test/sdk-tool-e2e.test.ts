@@ -1,3 +1,4 @@
+import { installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +15,7 @@ import { createSearchChildFactory } from "../extensions/child.ts";
 for (const provider of ["fixture-public", "fixture-optional", "fixture-optional-success"]) {
   for (const child of [false, true]) {
     test(`Pi 1.5 SDK ${child ? "named child factory" : "Main"} ${provider} search fallback, fetch and schema validation`, async () => {
-      assert.equal(VERSION, "1.5.0");
+      assert.equal(VERSION, installedPiVersion());
       initTheme("dark");
       const root = mkdtempSync(join(tmpdir(), "pi-search-e2e-"));
       const cwd = join(root, "cwd"), agentDir = join(root, "agent");

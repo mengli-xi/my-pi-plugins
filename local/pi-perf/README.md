@@ -11,9 +11,12 @@ npm run typecheck -w pi-perf
 npm test -w pi-perf
 npm run check:internals -w pi-perf
 npm run check:host -w pi-perf
+npm run check:smoke -w pi-perf
 ```
 
-宿主检查经根 runner 验证 CLI / SDK 版本、隔离 HOME、agent、session、XDG 与 npm 配置，只启动仓库宿主，不调用 provider；同时运行最小真实 PTY 绘制边界检查。性能回归测试使用独立 Node 进程，测量默认直方图、真实采样和文件写入的 CPU，并加速四天采样检查稳定期内存；不是人工 TTY、真实 provider 或长时间生产运行的替代。
+当前支持版本见[根支持说明](../../README.md#支持说明)。宿主检查经根 runner 验证 CLI / SDK 版本、隔离 HOME、agent、session、XDG 与 npm 配置，只启动仓库宿主，不调用 provider；同时运行最小真实 PTY 绘制边界检查。`check:smoke` 复用这两项最小宿主检查：快速档也验证 TUI 方法和真实绘制时序，不运行完整 PTY 快照、历史或长时间性能矩阵。PTY 套件显式要求 Bun PTY，不依赖 tmux。
+
+性能回归测试使用独立 Node 进程，测量默认直方图、真实采样和文件写入的 CPU，并加速四天采样检查稳定期内存；不是人工 TTY、真实 provider 或长时间生产运行的替代。
 
 ## 默认采样与命令
 
@@ -25,7 +28,7 @@ npm run check:host -w pi-perf
 
 仅 `session_start(reason="startup")` 且当时采样开启时记录冷启动；运行中的 `/reload` 新装本包、启动时关闭后再 `/perf on`、`/new` / resume / fork 都不补记冷启动。每行带 `mode`（tui/rpc/print/json），旧数据标为 unknown；所有趋势按模式分别统计，RPC child 不与 Main TUI 混合。
 
-readyMs 是进程 time origin 到 startup session_start 的观测边界，另拆到本扩展模块求值、模块求值到 ready 两段；这不是宿主精确扩展加载专用计时 API。firstObservedFrameMs 是 startup 后通过公开 widget 入口能观察到的首个成功 doRender。**Pi 1.5 的 ui.start() 早于 session_start：真实 PTY 检查确认挂载前已有绘制，因此 firstObservedFrameMs 不是整个进程的首个画面。** 它只代表首次可观测的会话就绪帧，不能用作 Enter→首画面基准；要测真正首帧需宿主提供更早的边界。本包不为此常驻第二个全局 wrapper。缺 launcher 时省略 launcher→该帧的时间；不显示零。首次绘制临时实例 hook 在完成或退役后恢复。
+readyMs 是进程 time origin 到 startup session_start 的观测边界，另拆到本扩展模块求值、模块求值到 ready 两段；这不是宿主精确扩展加载专用计时 API。firstObservedFrameMs 是 startup 后通过公开 widget 入口能观察到的首个成功 doRender。**当前 stock Pi 的 ui.start() 早于 session_start：真实 PTY 检查确认挂载前已有绘制，因此 firstObservedFrameMs 不是整个进程的首个画面。** 它只代表首次可观测的会话就绪帧，不能用作 Enter→首画面基准；要测真正首帧需宿主提供更早的边界。本包不为此常驻第二个全局 wrapper。缺 launcher 时省略 launcher→该帧的时间；不显示零。首次绘制临时实例 hook 在完成或退役后恢复。
 
 ```text
 /perf             最近 7 天趋势和当前状态
