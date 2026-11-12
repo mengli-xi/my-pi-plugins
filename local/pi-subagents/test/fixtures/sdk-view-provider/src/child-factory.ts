@@ -11,7 +11,8 @@ export function createFixtureChildFactory() {
     provider.setResponses(Array.from({ length: 200 }, () => async (context, options) => {
       const last = [...context.messages].reverse().find(message => message.role === "user");
       const text = JSON.stringify(last?.content ?? "");
-      log({ event: "request", role: ctx?.sessionManager.getSessionFile()?.includes("store-v2") ? "child" : "main", text });
+      log({ event: "request", role: ctx?.sessionManager.getSessionFile()?.includes("store-v2") ? "child" : "main",
+        session: ctx?.sessionManager.getSessionId(), lastRole: context.messages.at(-1)?.role, text, messages: context.messages });
       if(text.includes("D_NEST_UI") && context.messages.at(-1)?.role!=="toolResult") return fauxAssistantMessage(fauxToolCall("spawn_agent",{task_name:"unread_leaf",message:"LEAF_UI",fork_turns:"none"}),{stopReason:"toolUse"});
       if (text.includes("HOLD")) await new Promise(resolve => {
         const tick = setInterval(() => { if (options.signal.aborted || existsSync(join(root, "release"))) { clearInterval(tick); resolve(); } }, 20);

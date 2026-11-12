@@ -36,6 +36,9 @@ npm run test:integration:stock-host
 
 使用临时命名主题、原版 SDK/CLI 和 faux provider，连续打开/返回两次，核对一次降级提示、
 每次初始化与返回小于 2000ms、无 deadline fallback、配色及 Main editor identity 保留、零额外请求。
+测试侧先拦住 Completion 触发的 Main 续跑，确认 child 的工具请求和最终回复已完成，再释放续跑；
+等 Outbox 已 delivered、turn settlement 已 settled 且 Main idle 后才取请求计数基线。
+Task settled 或续跑尚未开始时的 Main idle 都不代表投递与异步请求结束。失败时输出包含会话、角色、末条输入文本及视图边界的请求时间线，不打印完整 messages。
 不加载 CC presentation，不发真实 provider 请求。主题文件热更新不在原版保证范围。
 
 同一用例保留显式补丁宿主入口：

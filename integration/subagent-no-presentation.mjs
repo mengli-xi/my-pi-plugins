@@ -48,12 +48,28 @@ async function control(op, extra = {}) {
 }
 try {
   await wait("Main ready", () => events().some(event => event.event === "main-ready"));
+  // Force the Completion's Main continuation to lag behind child settlement.
+  // A settled Task (or an idle Main before the wake starts) is not a drain barrier.
+  await control("hold-main-run");
   child.terminal.write("/subagents-test-spawn\r");
   await wait("faux child settled", async () => (await control("snapshot")).agents?.[0]?.tasks[0]?.phase === "settled");
+  await wait("Completion continuation held", () => events().some(event => event.event === "main-run-held"));
+  assert.deepEqual(events().filter(event => event.event === "request").map(event => [event.role, event.lastRole]),
+    [["child", "user"], ["child", "toolResult"]], "child tool/final requests precede the delayed Main continuation");
+  await control("release-main-run");
+  await wait("Completion processed and Main idle", async () => {
+    const delivery = await control("delivery");
+    return delivery.completions.length === 1 && delivery.outboxes.length === 1
+      && delivery.outboxes.every(outbox => outbox.state === "delivered" && outbox.turnSettlement === "settled")
+      && (await control("snapshot")).mainIdle;
+  });
   const before = await control("snapshot");
   assert.equal(before.presentationProviders, undefined, "no CC presentation registry is installed");
   const timings = [];
-  const requestCount = events().filter(event => event.event === "request").length;
+  const requests = events().filter(event => event.event === "request");
+  assert.deepEqual(requests.map(event => event.role), ["child", "child", "main"], "Completion continuation finishes before the view baseline");
+  assert.ok(requests[2].text.includes("Automated background mailbox delivery"), "Main request is the Completion wake");
+  const requestCount = requests.length;
   for (let attempt = 1; attempt <= 2; attempt++) {
     await control("observe-view", { token: String(attempt) });
     child.terminal.write("/subagents /root/view_child\r");
@@ -85,6 +101,10 @@ try {
   await wait("host quit", () => child.exitCode !== null);
   assert.equal(await child.exited, 0, await stderr);
   console.log(`PASS: ${stock ? "stock" : "patched"} Pi, no CC, faux provider only; handoffs=${JSON.stringify(timings)}`);
+} catch (error) {
+  const timeline = events().filter(event => event.event !== "control").map(({ messages, ...event }) => event);
+  console.error("REQUEST TIMELINE", JSON.stringify(timeline));
+  throw error;
 } finally {
   if (child.exitCode === null) child.kill("SIGKILL");
   await child.exited;

@@ -49,6 +49,12 @@ export default function fixture(pi) {
   const cursor = globalThis[Symbol.for("b3-view-controls")] ??= { processed: 0 };
   const originalSignals = process.listeners("SIGTERM");
   let ctx, editor, originalEditor, starts = 0, bindingLease, generation = 0, working = false;
+  let mainRunGate;
+  pi.on("before_agent_start", async () => {
+    if (!mainRunGate) return;
+    log({ event: "main-run-held" });
+    await mainRunGate.promise;
+  });
   const cell = getProcessServiceCellV1();
   pi.on("session_start", (_event, context) => {
     ctx = context; starts++;
@@ -88,6 +94,19 @@ export default function fixture(pi) {
       diagnostics: cell.service?.diagnostics() };
   };
   const execute = async command => {
+    if (command.op === "hold-main-run") {
+      if (mainRunGate) throw new Error("Main run is already held");
+      let release;
+      const promise = new Promise(resolve => { release = resolve; });
+      mainRunGate = { promise, release };
+      return;
+    }
+    if (command.op === "release-main-run") {
+      if (!mainRunGate) throw new Error("Main run is not held");
+      mainRunGate.release();
+      mainRunGate = undefined;
+      return;
+    }
     if (command.op === "snapshot") return snapshot();
     // History installs no provider factory, so its foreground state must not use the old execution context.
     if (command.op === "main-foreground") return cell.service.binding(ctx.sessionManager.getSessionId()).terminalOwner.isMainForeground;
@@ -192,7 +211,7 @@ export default function fixture(pi) {
     }
     if (command.op === "internals-report") return [...ctx.sessionManager.getEntries()].reverse().find(entry => entry.type === "custom_message" && entry.customType === "internals");
     if (command.op === "delivery") {
-      const binding = cell.service.binding("b3-main"), state = binding.host.snapshot();
+      const binding = cell.service.binding(ctx.sessionManager.getSessionId()), state = binding.host.snapshot();
       return { completions: state.agents.flatMap(item => item.completions.map(completion => completion.completion_id)),
         outboxes: [state.root, ...state.agents].flatMap(item => item.outbox.map(outbox => ({ id: outbox.outbox_id, state: outbox.state, turnSettlement: outbox.turn_settlement?.state, completions: outbox.completion_ids,
           wakeState: outbox.wake_state, recipientSession: outbox.recipient.session_id, handlingProof: outbox.handling_proof,
