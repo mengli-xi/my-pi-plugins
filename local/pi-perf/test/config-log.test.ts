@@ -45,3 +45,16 @@ test("thresholds retain zero and fractional values while timers still reject zer
   for (const raw of [undefined, "", " ", "-1", "NaN", "Infinity", "2147483648"]) assert.equal(sampleThreshold(raw, 50), 50);
   assert.equal(sampleInterval("0", 10000), 10000);
 });
+
+test("fine-grained log rotates once past its size cap and keeps a single previous file", async () => {
+  const root = mkdtempSync(join(tmpdir(), "perf-rotate-"));
+  try {
+    const path = join(root, "ui.jsonl"), writer = new JsonlWriter(path, 200);
+    writeFileSync(path, "x".repeat(180) + "\n");
+    writer.write({ n: 1, pad: "y".repeat(40) }); await writer.flush();
+    assert.equal(readFileSync(`${path}.1`, "utf8"), "x".repeat(180) + "\n");
+    assert.deepEqual(readFileSync(path, "utf8").trim().split("\n").map(line => JSON.parse(line).n), [1]);
+    writer.write({ n: 2 }); await writer.flush();
+    assert.deepEqual(readFileSync(path, "utf8").trim().split("\n").map(line => JSON.parse(line).n), [1, 2]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

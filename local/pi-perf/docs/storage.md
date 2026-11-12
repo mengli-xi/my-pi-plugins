@@ -54,4 +54,4 @@ raw 与 daily 是先追加、后原子更新的两次文件操作，不是数据
 
 长期数据只有数值、运行模式、版本、PID、随机 ID、包名和包名哈希，不写会话内容、提示词、工具参数/结果、用户名或路径。哈希不是对本地已知配置的匿名性保证。无上传、远端服务或 provider 请求。
 
-显式 `/perf on` 后，旧细粒度日志 `perf/ui.jsonl` 和最多 10000 项的内存 timeline 保留指标、owner、interaction ID 与有界标量标签；producer 必须只发布闭集枚举、计数或不透明 ID，禁止用户文本、路径、命令和工具 payload。协议只能限制类型和长度，不能辨别任意字符串的语义。细粒度日志不属于 90 天 raw 清理；需要时用户自行归档。`/perf reset` 只清内存聚合，不删除任何磁盘历史。HTML 在 `perf/reports/`，嵌入转义后的数据、CSS 和脚本，不用 CDN；显式 open 才启动浏览器。
+显式 `/perf on` 后，旧细粒度日志 `perf/ui.jsonl` 和最多 10000 项的内存 timeline 保留指标、owner、interaction ID 与有界标量标签；producer 必须只发布闭集枚举、计数或不透明 ID，禁止用户文本、路径、命令和工具 payload。协议只能限制类型和长度，不能辨别任意字符串的语义。细粒度日志不属于 90 天 raw 清理；超过 64MiB 时改名为 `ui.jsonl.1` 再新建，只保留这一份旧文件。`/perf reset` 只清内存聚合，不删除任何磁盘历史。HTML 在 `perf/reports/`，嵌入转义后的数据、CSS 和脚本，不用 CDN；显式 open 才启动浏览器。
