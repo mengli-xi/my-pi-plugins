@@ -595,3 +595,98 @@ test("a failed mount releases the overlay guard", async () => {
   assert.equal(attempts, 2);
   assert.match(notifications[0]!, /mount failed/);
 });
+
+
+test("tool overlay duplicate activation skips loading and stale sessions cannot mount it", async () => {
+  const runtime = new RuntimeScope();
+  const pending = deferred<typeof import("../src/overlay.ts")>();
+  let mounts = 0;
+  let subscriptions = 0;
+  const ctx = {
+    hasUI: true,
+    mode: "tui",
+    ui: {
+      custom() { mounts++; return Promise.resolve(); },
+      notify() {},
+      setStatus() {},
+    },
+  } as unknown as ExtensionContext;
+  runtime.bindSession(ctx);
+  const overlays = new TranscriptOverlayActions(runtime);
+  assert.deepEqual(runtime.moduleStates(), {}, "construction does not load cold UI");
+  const implementation = runtime.module<typeof import("../src/overlay.ts")>("transcript-overlay");
+  const firstImport = implementation.load(() => pending.promise, () => {});
+  const getModule = runtime.module.bind(runtime);
+  let loadRequests = 0;
+  runtime.module = <T>(name: string) => {
+    if (name === "transcript-overlay") loadRequests++;
+    return getModule<T>(name);
+  };
+  const group: ToolGroupSnapshot = {
+    id: "lazy", anchorToolCallId: "call", presentation: "grouped", status: "completed",
+    createdAt: 0, updatedAt: 1, failureCount: 0, runningCount: 0, activities: [],
+  };
+  const open = () => overlays.openGroup(ctx, group, 5_000, DEFAULT_OVERLAY, DEFAULT_DIFF, () => "tool",
+    () => { subscriptions++; return () => { subscriptions--; }; });
+  const stale = open();
+  assert.equal(loadRequests, 1, "the first activation enters the loading flow");
+  const duplicate = open();
+  assert.equal(loadRequests, 1, "claimOverlay rejects the duplicate before it can request a module");
+  await duplicate;
+  runtime.bindSession(ctx);
+  pending.resolve(await import("../src/overlay.ts"));
+  await Promise.all([firstImport, stale]);
+  assert.equal(implementation.state, "idle", "the stale in-flight cache must be retryable");
+  assert.equal(mounts, 0);
+  assert.equal(subscriptions, 0, "stale loads must not subscribe to the retired projection");
+
+  await open();
+  assert.equal(mounts, 1, "the new session can load and open after the discarded continuation");
+  assert.equal(implementation.state, "ready");
+  await open();
+  assert.equal(mounts, 2, "a closed overlay can reuse its ready implementation");
+  await runtime.dispose("reload");
+  overlays.dispose();
+  await open();
+  assert.equal(mounts, 2, "a disposed owner cannot reopen cached UI");
+});
+
+
+test("a failed tool overlay import can be opened successfully on the next attempt", async () => {
+  const runtime = new RuntimeScope();
+  const implementation = runtime.module<typeof import("../src/overlay.ts")>("transcript-overlay");
+  const load = implementation.load.bind(implementation);
+  let attempts = 0;
+  implementation.load = (loader, accept, generation) => load(() => {
+    attempts++;
+    return attempts === 1 ? Promise.reject(new Error("import unavailable")) : loader();
+  }, accept, generation);
+  let mounts = 0;
+  const warnings: string[] = [];
+  const ctx = {
+    hasUI: true, mode: "tui",
+    ui: {
+      custom() { mounts++; return Promise.resolve(); },
+      notify(message: string) { warnings.push(message); },
+      setStatus() {},
+    },
+  } as unknown as ExtensionContext;
+  runtime.bindSession(ctx);
+  const overlays = new TranscriptOverlayActions(runtime);
+  const group: ToolGroupSnapshot = {
+    id: "retry", anchorToolCallId: "call", presentation: "grouped", status: "completed",
+    createdAt: 0, updatedAt: 1, failureCount: 0, runningCount: 0, activities: [],
+  };
+  const open = () => overlays.openGroup(ctx, group, 5_000, DEFAULT_OVERLAY, DEFAULT_DIFF, () => "tool");
+  await open();
+  assert.equal(mounts, 0);
+  assert.match(warnings[0]!, /import unavailable/u);
+  assert.equal(implementation.state, "idle");
+  await open();
+  assert.equal(mounts, 1, "the same session retries the real implementation and mounts the panel");
+  assert.equal(attempts, 2);
+  assert.equal(implementation.state, "ready");
+  assert.equal(implementation.error, undefined);
+  assert.equal(warnings.length, 1);
+  await runtime.dispose("quit");
+});

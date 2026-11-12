@@ -496,7 +496,7 @@ Probe 状态变化以内存为先。持久化通过异步 atomic writer 合并�
 
 ## 开发
 
-主入口由 Bun `--splitting` 打包，UIKit 内联，命令/overlay 的动态 import 仍在首次使用时加载。
+主入口由 Bun `--splitting` 按 `src/` 顶层模块分区（为打包器提供拆分作用域的入口）打包，避免巨型作用域放大 Jiti 转译成本。UIKit 内联，Activity/tool overlay 实现与命令面板按首次使用加载；命令、快捷键、事件和首屏展示仍在启动时安装。
 Pi API、`typebox`、`conf` 和 `pi-runtime-contracts` 保持 external；UIKit 的跨包 geometry 通过已有 `globalThis`/`Symbol.for()` registry 协作，不依赖共享模块实例。
 产物入口为 `dist/index.ts`、独立的 `dist/child.ts` 和诊断入口 `dist/src/internals.ts`、`dist/src/probes.ts`；构建先运行 source typecheck，不提交 `dist/`。
 

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -20,10 +20,19 @@ execFileSync("bun", [
 // to devDependency copies. Child/diagnostic consumers must follow this contract;
 // do not add .js aliases. scripts/check-internals-host.mjs rejects wrong host identities or
 // a missing compact patch. The native conf writer has no Pi imports and stays CJS.
+// Give splitting module-sized boundaries instead of a few giant flattened
+// scopes: Jiti's TS/ESM transform repeatedly traverses those scopes. These are
+// build partitions: src/*.ts top-level files automatically become build entries,
+// not additional plugin entry points. Keep them at src depth
+// so import.meta.url and the native config writer retain their existing base.
+const partitions = readdirSync(new URL("../src/", import.meta.url))
+  .filter((name) => name.endsWith(".ts"))
+  .sort()
+  .map((name) => `src/${name}`);
 execFileSync("bun", [
-  "build", "src/bootstrap.ts", "src/internals.ts", "src/probes.ts",
+  "build", ...partitions,
   "--outdir", "dist/src", "--root", "src", "--target", "node", "--format", "esm", "--splitting",
-  "--entry-naming", "[dir]/[name].ts", "--chunk-naming", "[name]-[hash].ts",
+  "--entry-naming", "[dir]/[name].ts", "--chunk-naming", "chunk-[hash].ts",
   "--external", "@earendil-works/*", "--external", "typebox",
   "--external", "conf", "--external", "pi-runtime-contracts",
   "--define", 'CC_STYLE_CONFIG_STORAGE_MODULE="../config-storage.cjs"',

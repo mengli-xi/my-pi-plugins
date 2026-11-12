@@ -20,7 +20,7 @@
 Tier-0 的 pre-history renderer hooks 同步安装。命令、overlay 和长报告按首次使用加载：
 
 - `loading.mode=balanced` 默认只预热显式启用的类别；`eager` 在有效 context 和 idle delay 后预热；`minimal` 从不空闲预热。
-- 并发 import 共享 promise；失败缓存到新 runtime。完成后重新检查 owner、disposed、功能启用和 session generation，迟到结果不得安装进旧 UI。
+- 并发 import 共享 promise；失败后允许下次请求重新加载，错误保留供诊断。完成后重新检查 owner、disposed、功能启用和 session generation，迟到结果不得安装进旧 UI。
 - renderer/input/同步展示查询不启动首次 import；首次等待可显示加载状态并上报 import/wait/outcome。动态 import 只是推迟成本，不承诺卸载已加载的 ES module。
 
 ## 配置与持久化

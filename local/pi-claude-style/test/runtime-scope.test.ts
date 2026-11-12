@@ -80,7 +80,7 @@ test("a session generation change discards a stale module continuation", async (
   assert.equal(module.state, "idle");
 });
 
-test("installer failures remain observable and are cached as failed", async () => {
+test("installer failures remain observable but the next request can retry", async () => {
   const runtime = new RuntimeScope();
   const failure = new Error("install failed");
   const module = runtime.module<boolean>("broken");
@@ -89,13 +89,34 @@ test("installer failures remain observable and are cached as failed", async () =
     module.load(async () => { loads++; return true; }, () => { throw failure; }),
     failure,
   );
-  assert.equal(module.state, "failed");
+  assert.equal(module.state, "idle");
   assert.equal(module.error, failure);
-  await assert.rejects(
-    module.load(async () => { loads++; return true; }, () => {}),
-    failure,
-  );
-  assert.equal(loads, 1, "a failed module retries only in a replacement runtime");
+  assert.equal(await module.load(async () => { loads++; return true; }, () => {}), true);
+  assert.equal(loads, 2);
+  assert.equal(module.state, "ready");
+  assert.equal(module.error, undefined);
+});
+
+test("failed imports can retry while concurrent requests share each attempt", async () => {
+  const runtime = new RuntimeScope();
+  const module = runtime.module<string>("overlay");
+  const failure = new Error("import failed");
+  let loads = 0;
+  const loader = () => {
+    loads++;
+    if (loads === 1) throw failure;
+    return Promise.resolve("loaded");
+  };
+  const first = module.load(loader, () => {});
+  const concurrentFailure = module.load(loader, () => {});
+  assert.equal(first, concurrentFailure);
+  await assert.rejects(first, failure);
+  assert.equal(module.state, "idle");
+  const retry = module.load(loader, () => {});
+  const concurrentRetry = module.load(loader, () => {});
+  assert.equal(retry, concurrentRetry);
+  assert.equal(await retry, "loaded");
+  assert.equal(loads, 2, "one load per attempt, not one per caller");
 });
 
 test("first-use loading records import, wait, cache, and deduplicated requests", async () => {

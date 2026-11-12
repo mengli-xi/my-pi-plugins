@@ -110,6 +110,8 @@ interface RuntimeHarness {
   api: unknown;
   commands: Map<string, { handler(args: string, ctx: unknown): Promise<void> | void }>;
   sent: Array<{ content?: unknown }>;
+  shortcuts: Set<string>;
+  eventTypes: () => string[];
   emit(type: string, event: unknown): Promise<void>;
   invalidate(): void;
 }
@@ -164,6 +166,7 @@ function makeRuntimeHarness(
   const handlers = new Map<string, Array<(event: any, ctx: any) => unknown>>();
   const busHandlers = new Map<string, Set<(payload: unknown) => void>>();
   const commands = new Map<string, { handler(args: string, ctx: unknown): Promise<void> | void }>();
+  const shortcuts = new Set<string>();
   const sent: Array<{ content?: unknown }> = [];
   const widgets = new Map<string, unknown>();
   const inputDisposers = new Set<() => void>();
@@ -251,7 +254,7 @@ function makeRuntimeHarness(
       registerCommand(name: string, command: { handler(args: string, ctx: unknown): Promise<void> | void }) {
         commands.set(name, command);
       },
-      registerShortcut() {},
+      registerShortcut(key: string) { shortcuts.add(key); },
       registerMarkdownTransformer() {},
       registerEntryRenderer() {},
       registerMessageRenderer() {},
@@ -262,6 +265,8 @@ function makeRuntimeHarness(
     },
     commands,
     sent,
+    shortcuts,
+    eventTypes: () => [...handlers.keys()],
     async emit(type, event) {
       for (const handler of handlers.get(type) ?? []) await handler(event, ctx);
     },
@@ -319,6 +324,14 @@ test("session tree reprojects transcript state while a cancellable switch preser
   let entries: unknown[] = [assistant("read-branch", "read")];
   const runtime = makeRuntimeHarness(agentDir, tui, widgetAbove, counters, () => entries);
   await claudeStyleExtension(runtime.api as never);
+  assert.deepEqual([...runtime.commands.keys()].sort(), ["cc-style", "internals", "tool-transcript"]);
+  assert.deepEqual([...runtime.shortcuts].sort(), ["alt+o", "alt+t"]);
+  for (const event of ["session_start", "session_shutdown", "session_tree", "session_compact",
+    "resources_discover", "session_info_changed", "agent_start", "agent_end", "agent_settled",
+    "message_start", "message_update", "message_end", "turn_start", "turn_end",
+    "tool_execution_start", "tool_execution_update", "tool_execution_end"]) {
+    assert.ok(runtime.eventTypes().includes(event), `${event} is subscribed before the first context`);
+  }
   try {
     await runtime.emit("session_start", { type: "session_start", reason: "startup" });
     assert.equal(counters.subscriptionChannels.get(PROVIDER_ACTIVITY_CHANNEL), 1,

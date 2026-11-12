@@ -18,12 +18,13 @@ import {
 import type { OverlayConfig, ToolActivity, ToolGroupSnapshot } from "../../types.ts";
 import type { DiffColors } from "../../diff-colors.ts";
 import type { CcStyleObservability } from "../../observability.ts";
-import { createToolGroupOverlayClass } from "../../overlay.ts";
+import type { createToolGroupOverlayClass } from "../../overlay.ts";
 import {
   loadRuntimeModuleOnFirstUse,
   type RuntimeScope,
 } from "../../runtime-scope.ts";
 
+type ToolOverlayModule = typeof import("../../overlay.ts");
 type OverlayUiModule = typeof import("pi-li-uikit/text-panel");
 type ImagePanelUiModule = typeof import("pi-li-uikit/image-panel");
 type SelectableOverlayUiModule = typeof import("pi-li-uikit/selectable-collapsible-panel");
@@ -63,6 +64,16 @@ export class TranscriptOverlayActions {
     this.runtime = runtime;
     this.observability = observability;
     this.convertImage = convertImage;
+  }
+
+  private loadToolOverlay(): Promise<ToolOverlayModule | undefined> {
+    if (!this.runtime) return import("../../overlay.ts");
+    return loadRuntimeModuleOnFirstUse(
+      this.runtime,
+      "transcript-overlay",
+      () => import("../../overlay.ts"),
+      this.observability,
+    );
   }
 
   private loadOverlayUi(): Promise<OverlayUiModule | undefined> {
@@ -120,7 +131,7 @@ export class TranscriptOverlayActions {
 
   /** Warm both transcript-view implementations during an explicitly configured idle slot. */
   async preload(): Promise<void> {
-    await Promise.all([this.loadOverlayUi(), this.loadSelectableOverlayUi()]);
+    await Promise.all([this.loadOverlayUi(), this.loadSelectableOverlayUi(), this.loadToolOverlay()]);
   }
 
   private claimOverlay(ctx: ExtensionContext): (() => void) | undefined {
@@ -154,17 +165,19 @@ export class TranscriptOverlayActions {
     activity?: ActivityOverlaySource,
   ): Promise<void> {
     if (!ctx.hasUI) return;
+    const generation = this.runtime?.generation;
     const release = this.claimOverlay(ctx);
     if (!release) return;
     let unsubscribe = () => {};
     try {
-      const [module, selectableModule] = await this.withLoadingStatus(
+      const [module, selectableModule, toolModule] = await this.withLoadingStatus(
         ctx,
-        () => Promise.all([this.loadOverlayUi(), this.loadSelectableOverlayUi()]),
+        () => Promise.all([this.loadOverlayUi(), this.loadSelectableOverlayUi(), this.loadToolOverlay()]),
       );
-      if (!module || !selectableModule) return;
+      if (!module || !selectableModule || !toolModule ||
+        (generation !== undefined && !this.runtime!.accepts(generation))) return;
       const ToolGroupOverlay = this.toolOverlayClass ??=
-        createToolGroupOverlayClass(selectableModule.SelectableCollapsiblePanel);
+        toolModule.createToolGroupOverlayClass(selectableModule.SelectableCollapsiblePanel);
       await module.showTextPanelComponent(ctx, (host) => {
         const panel = new ToolGroupOverlay({
           ...host,

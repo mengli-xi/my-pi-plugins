@@ -30,7 +30,7 @@ Activity phase 只由可见非空 assistant 正文切分。Thinking 与工具共
 
 配置升级保留原始备份与回执，session naming 由独立插件拥有。旧 Pinned 配置导入规则见[界面行为合同](behavior.md#fullscreen-host-与-pinned-配置迁移)。layout mutation 按命令提示重启/重载，除性能开关外不假称 live。
 
-`balanced/eager/minimal` 控制冷模块时序，不创建第二套 installer engine；Tier-0 pre-history hook 同步存在。lazy import 并发去重、失败缓存、generation-safe，已加载 ES module 不承诺卸载。statusline capacity 详情是有意保留的静态 panel 依赖：真实 compiled continuation 的 loader 可用性优先于消除这一个启动依赖。
+`balanced/eager/minimal` 控制冷模块时序，不创建第二套 installer engine；Tier-0 pre-history hook 同步存在。lazy import 并发去重、失败后可重试、generation-safe，已加载 ES module 不承诺卸载。statusline capacity 详情是有意保留的静态 panel 依赖：真实 compiled continuation 的 loader 可用性优先于消除这一个启动依赖。
 
 ## 调度、观测与兼容
 
@@ -46,7 +46,13 @@ Pi API 基线是 1.5，catalog 保留历史文件名 `src/compat/pi-1.3.ts`。25
 
 ## Build 与 native child
 
-Bun splitting 保留首次使用 import，UIKit 内联，Pi API、`typebox`、主入口 `conf` 和 `pi-runtime-contracts` external。Main、child、诊断和 shared/lazy chunks 全部使用 `.ts` 后缀，内容仍是编译 JavaScript：Pi 1.5 Jiti async ESM `.js` 可能 native import 到另一份 SDK class，误 patch 错 realm。只改最外层入口不够，也不提供旧 `.js` shim。`config-storage.cjs` 不导入 Pi class，刻意保持 native CJS。
+Bun splitting 以 `src/` 顶层模块作为构建分区（供打包器拆分作用域的入口），避免把启动依赖压成少数巨型作用域，降低 Jiti 转译成本。`src/*.ts` 顶层文件自动成为构建入口，但额外产物不是插件入口。共享 chunk 使用 `chunk-<hash>.ts` 命名。
+
+Activity/tool overlay 实现随详情首次打开加载，复用 runtime 的并发去重、失败重试和过期检查。
+
+UIKit 内联。Pi API、`typebox`、主入口 `conf` 和 `pi-runtime-contracts` 保持 external。
+
+Main、child、诊断和 shared/lazy chunks 全部使用 `.ts` 后缀，内容仍是编译 JavaScript。Pi 1.5 Jiti async ESM `.js` 可能 native import 到另一份 SDK class，误 patch 错 realm。只改最外层入口不够，也不提供旧 `.js` shim。`config-storage.cjs` 不导入 Pi class，刻意保持 native CJS。
 
 修改 TypeScript 或 source-only compiled consumer dependency 后显式 `npm run build`，新开 Pi process，不用 `/reload` 代替。`tsconfig.json` noEmit；生成 dist 不提交。`scripts/check-internals-host.mjs` 同时验证 eager probes、最终 component identity 和实际 compact patch，不能拿 source-only probe 冒充 bundle gate。
 

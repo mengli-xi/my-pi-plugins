@@ -14,7 +14,7 @@ export type RuntimePhase =
   | "shutting-down"
   | "disposed";
 
-export type RuntimeModuleState = "idle" | "loading" | "ready" | "failed" | "disposed";
+export type RuntimeModuleState = "idle" | "loading" | "ready" | "disposed";
 export type RuntimeLoadingMode = "balanced" | "eager" | "minimal";
 
 /** The deliberately small observability surface used by cold-module loading. */
@@ -48,11 +48,10 @@ export class RuntimeModule<T> {
   ): Promise<T | undefined> {
     if (this.currentState === "ready") return Promise.resolve(this.currentValue);
     if (this.currentState === "disposed" || this.scope.isDisposed) return Promise.resolve(undefined);
-    if (this.currentState === "failed") return Promise.reject(this.currentError);
     if (this.pending) return this.pending;
     this.currentState = "loading";
     this.currentError = undefined;
-    this.pending = loader().then(async (value) => {
+    this.pending = Promise.resolve().then(loader).then(async (value) => {
       if (!this.scope.accepts(generation)) {
         if (!this.scope.isDisposed) this.currentState = "idle";
         return undefined;
@@ -68,7 +67,8 @@ export class RuntimeModule<T> {
     }).catch((error) => {
       if (this.currentState !== "disposed") {
         this.currentError = error;
-        this.currentState = "failed";
+        // Keep the last error observable, but let the next request retry.
+        this.currentState = "idle";
       }
       throw error;
     }).finally(() => {
