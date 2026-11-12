@@ -5,6 +5,7 @@
 ## 仓库里放什么
 
 - 只放插件逻辑、共享库和必要的测试。迁移记录、验收流水、运行产物、一次性 benchmark/measure 脚本不进仓库。
+  - 例外：`scripts/bench/` 是可复跑的隔离基准，用来给优化做前后对比，所以留在仓库里；测量产物仍然不进仓库。
 - `local/<pkg>/` 是一个包。包分两类：
   - **插件**：注册 Pi extension，用户可以单独启用或不启用。
   - **共享库**：不注册 extension，只被插件 import（如 `pi-runtime-contracts`、`pi-session-runtime`、`pi-session-inject`、`pi-li-uikit`）。

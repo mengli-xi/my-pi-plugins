@@ -7,6 +7,7 @@
     "fork/*"
   ],
   "scripts": {
+    "bench:perf": "PI_BIN=./node_modules/.bin/pi node scripts/check-host.mjs env PI_BENCH_NODE=\"$PI_BENCH_NODE\" bun scripts/bench/run.mjs",
     "typecheck": "npm run typecheck --workspaces && tsc -p integration/tsconfig.json",
     "test": "node --test --test-concurrency=1 --test-timeout=300000 scripts/*.test.mjs && node scripts/check-doc-links.mjs && node scripts/isolated-agent.mjs npm run test --workspaces",
     "test:integration": "node integration/run.mjs default",

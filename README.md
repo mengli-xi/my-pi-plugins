@@ -137,7 +137,7 @@ Main 和普通插件不要求宿主补丁；原版 child 视图沿用命名配�
 
 ## 验证入口
 
-Pi 新版本的隔离兼容检查与可选版本应用见[升级 Pi](CONTRIBUTING.md#升级-pi)。
+Pi 新版本的隔离兼容检查与可选版本应用见[升级 Pi](CONTRIBUTING.md#升级-pi)。可重复的隔离性能基准、测量边界与当前结论见[性能基线](docs/perf-baseline.md)。
 
 ```sh
 bun install --frozen-lockfile
