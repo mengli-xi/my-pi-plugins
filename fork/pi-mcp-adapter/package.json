@@ -54,7 +54,7 @@
     "test:vitest": "node scripts/test-runner.mjs vitest run --config scripts/vitest.config.ts",
     "test:watch": "node scripts/test-runner.mjs vitest --config scripts/vitest.config.ts",
     "test:public-exports": "node ../../scripts/check-build.mjs && node scripts/test-runner.mjs node --test public-exports.test.mjs",
-    "check:host": "node ../../scripts/check-host.mjs node ../../scripts/check-build.mjs :: node scripts/test-runner.mjs node --test dist-host.test.mjs"
+    "check:host": "node ../../scripts/check-host.mjs node ../../scripts/check-build.mjs :: --skip-binary=\"dist 探针必须从 npm 宿主目录 import SDK，并由 Node 执行 CLI\" node scripts/test-runner.mjs node --test dist-host.test.mjs"
   },
   "repository": {
     "type": "git",

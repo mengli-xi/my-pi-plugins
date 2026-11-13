@@ -27,6 +27,33 @@ export function discoverChecks(root, { quick = false } = {}) {
     .map(check => ({ package: pkg.name, directory: pkg.directory, check })));
 }
 
+// 前置声明只影响官方二进制；原因必须由包给出，不能按包名豁免。
+export function parseHostSuites(argv) {
+  const commands = [[]];
+  for (const arg of argv) {
+    if (arg === "::") commands.push([]);
+    else commands.at(-1).push(arg);
+  }
+  return commands.map(command => {
+    const args = [...command], requires = [];
+    let binarySkip;
+    while (args[0]?.startsWith("--require=") || args[0]?.startsWith("--skip-binary=")) {
+      const arg = args.shift();
+      if (arg.startsWith("--skip-binary=")) {
+        if (binarySkip !== undefined || !arg.slice(14).trim()) throw new Error("--skip-binary 必须有唯一的非空理由");
+        binarySkip = arg.slice(14);
+      } else {
+        const requirement = arg.slice("--require=".length);
+        if (!["tmux", "pty"].includes(requirement)) throw new Error(`未知前提：${requirement}`);
+        requires.push(requirement);
+      }
+    }
+    if (!args.length) throw new Error("check-host.mjs 需要子套件命令");
+    if (args[0] === "bun" && !requires.includes("pty")) requires.push("pty");
+    return { args, requires, binarySkip };
+  });
+}
+
 export function piBin() {
   return resolve(repositoryRoot, process.env.PI_BIN ?? "node_modules/.bin/pi");
 }
@@ -38,6 +65,8 @@ export function installedPiVersion() {
 export function checkEnvironment(root, extra = {}) {
   return {
     PATH: process.env.PATH,
+    // npm/Bun/curl 的联网步骤仍需继承现有代理；缺省时不造空变量。
+    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(https?_proxy|no_proxy)$/i.test(key))),
     HOME: join(root, "home"),
     XDG_CONFIG_HOME: join(root, "config"), XDG_CACHE_HOME: join(root, "cache"),
     XDG_DATA_HOME: join(root, "data"), XDG_STATE_HOME: join(root, "state"),

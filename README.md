@@ -61,7 +61,7 @@ pi -e "$PWD/local/pi-todo"
 | [pi-fast](local/pi-fast/README.md) | 插件 | OpenAI Codex priority 请求开关 |
 | [pi-goal](fork/pi-goal/README.md) | Fork 插件 | 持续推进目标、完成审计、预算与 durable 续跑 |
 | [pi-li-uikit](local/pi-li-uikit/README.md) | 共享库 | 面板、选择器、鼠标和剪贴板组件 |
-| [pi-li-uikit-gallery](local/pi-li-uikit-gallery/README.md) | 插件 | UIKit 交互式组件展示（开发用） |
+| [pi-li-uikit-gallery](local/pi-li-uikit-gallery/README.md) | 开发插件 | UIKit 交互式组件展示（开发用） |
 | [pi-mcp-adapter](fork/pi-mcp-adapter/README.md) | Fork 插件 | MCP 网关、按需连接、OAuth、Apps 与 durable 后台结果 |
 | [pi-model-capacity](local/pi-model-capacity/README.md) | 插件 | 容量、订阅窗口和余额观测 |
 | [pi-model-prompts](local/pi-model-prompts/README.md) | 插件 | 模型规则、命名提示词与片段汇总 |

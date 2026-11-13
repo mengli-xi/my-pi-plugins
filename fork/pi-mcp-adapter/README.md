@@ -94,6 +94,8 @@ npm run check:host
 
 包内 gate 包含现行四份 Vitest 合同（completion、cold-loading、mailbox、UI action）、新行为回归、public exports 与 stock-host faux-provider 检查。测试应隔离 HOME/agent/cwd/session，禁止真实 provider 请求与用户配置写入；host gate 使用新 process 和已构建 dist。它们不等于 npm 包缺失的上游 OAuth/conformance 全套。真实 CC/Inject/SDK 联测与“缺少可选插件”的降级测试放根 `integration/`，不在包内加载其他插件。本文列的是运行方法，不宣称这些命令已执行或通过。
 
+官方二进制验收跳过本包 dist SDK 探针：它必须从 npm 宿主目录 import SDK 并由 Node 执行 CLI；二进制的生产 dist 加载由根全插件冒烟覆盖。
+
 日常使用时顺手回归的步骤与预期见[使用回归](docs/usage-regression.md)。
 
 ## 限制

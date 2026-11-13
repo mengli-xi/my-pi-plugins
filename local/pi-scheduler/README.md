@@ -89,6 +89,8 @@ PI_BIN=/absolute/path/to/pi npm run check:host -w pi-scheduler
 
 `test` 从源码构建 daemon，使用根 loader，覆盖调度、存储、IPC、真实子进程/SIGKILL、mailbox source ACK 和 rollback CLI。`check:host` 统一经根 runner 隔离 HOME、agent、session、XDG 和 npm 配置，构建后运行 Node CLI 自动启动、source callback 以及完整 mailbox 宿主矩阵。矩阵只加载本包、共享库和测试 peer，不加载其他插件，因此属于包内宿主检查，不是跨插件联测。
 
+官方二进制验收跳过 Node CLI 自动启动探针（它要求 Node 执行 npm 脚本入口），其余宿主子套件仍运行；二进制宿主下自动拉起 daemon 时的 `PI_SCHEDULER_BINARY` 解析路径尚无验收覆盖，这是测试缺口，不是兼容豁免。
+
 所有入口使用临时目录、faux provider 或 stand-in，拦截服务管理器和桌面通知，不发真实 provider 请求、不安装系统服务、不改日常配置。实际服务注册、注销/重启存活、真实 provider 与人工终端不在自动验收范围。
 
 ## 文档

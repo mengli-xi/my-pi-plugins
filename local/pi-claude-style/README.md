@@ -35,6 +35,8 @@ npm run check:host -w pi-claude-style
 
 自动测试使用临时配置、fixture 或 faux provider，不证明真实 provider、人工终端或完整 profile。跨插件联测见 [integration](../../integration/README.md)。
 
+宿主探针分开验证组件身份与 npm 私有 `pi-tui/dist/layout.js` 文件兜底；官方编译二进制不提供该文件，只显式跳过后者，几何信息缺失时沿用 UIKit 估算，其他实例探针仍必须通过。
+
 快速升级的本包宿主冒烟入口为 `npm run check:smoke -w pi-claude-style`；范围与放弃的保障见[升级规则](../../CONTRIBUTING.md#升级-pi)。
 
 ## 文档

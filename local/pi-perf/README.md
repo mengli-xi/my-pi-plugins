@@ -16,6 +16,8 @@ npm run check:smoke -w pi-perf
 
 当前支持版本见[根支持说明](../../README.md#支持说明)。宿主检查经根 runner 验证 CLI / SDK 版本、隔离 HOME、agent、session、XDG 与 npm 配置，只启动仓库宿主，不调用 provider；同时运行最小真实 PTY 绘制边界检查。`check:smoke` 复用这两项最小宿主检查：快速档也验证 TUI 方法和真实绘制时序，不运行完整 PTY 快照、历史或长时间性能矩阵。PTY 套件显式要求 Bun PTY，不依赖 tmux。
 
+根二进制冒烟 `scripts/fixtures/binary-smoke.ts` 直接依赖本包 `src/history.ts` 路径，调整该路径时须同步更新冒烟。
+
 性能回归测试使用独立 Node 进程，测量默认直方图、真实采样和文件写入的 CPU，并加速四天采样检查稳定期内存；不是人工 TTY、真实 provider 或长时间生产运行的替代。
 
 ## 默认采样与命令

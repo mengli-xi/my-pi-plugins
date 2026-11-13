@@ -8,6 +8,8 @@ import test from "node:test";
 import { checkEnvironment, discoverChecks, installedPiVersion, repositoryRoot, readJson } from "./pi-checks.mjs";
 import { diagnostics, main, parseArgs, renderReport, runCommand, updatePiVersions, peerCoverage, upgradeSuites, failureKinds, probePrerequisites, validateQuick, supportedPiVersion, updateSupportedVersion } from "./pi-upgrade-check.mjs";
 
+import { fakeRelease } from "./fixtures/fake-release.mjs";
+
 const realBun = execFileSync("bun", ["-e", "console.log(process.execPath)"], { encoding: "utf8" }).trim();
 
 const fixture = () => {
@@ -126,6 +128,28 @@ test("隔离环境不继承用户 profile、provider 凭据或 Pi 目录覆盖",
   for (const key of ["OPENAI_API_KEY", "PI_PACKAGE_DIR", "NODE_OPTIONS", "PI_PATCHED_SDK"]) assert.equal(env[key], undefined);
 });
 
+test("联网步骤的隔离环境只透传父环境已有的大小写代理变量", () => {
+  const keys = ["HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy"];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  try {
+    for (const key of keys) delete process.env[key];
+    const absent = checkEnvironment("/tmp/network-check");
+    for (const key of keys) assert.equal(Object.hasOwn(absent, key), false, key);
+    for (const key of keys) {
+      process.env[key] = key.toLowerCase() === "no_proxy" ? "localhost,.example.invalid" : `http://${key.toLowerCase()}.example.invalid:8080`;
+    }
+    // npm view、临时副本的 Bun/npm 与下载步骤共用这个环境。
+    const env = checkEnvironment("/tmp/network-check");
+    for (const key of keys) assert.equal(env[key], process.env[key], key);
+    assert.equal(env.HOME, "/tmp/network-check/home");
+  } finally {
+    for (const key of keys) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  }
+});
+
 test("命令失败仍能执行下一项；日志包含原始 stdout 与 stderr，超时会失败", async () => {
   const f = fixture();
   try {
@@ -210,7 +234,7 @@ test("版本不存在时在安装前失败、写报告且不改源仓库", async
   }
 });
 
-for (const scenario of ["只报告", "失败后继续", "应用", "工作区变动", "包测试失败", "构建失败", "peer未覆盖", "额外套件失败", "快速应用", "README声明缺失"]) {
+for (const scenario of ["只报告", "失败后继续", "应用", "工作区变动", "包测试失败", "构建失败", "peer未覆盖", "额外套件失败", "快速应用", "README声明缺失", "二进制校验失败"]) {
   test(`离线流程：${scenario}`, async () => {
     const f = fixture();
     const previous = process.cwd(), path = process.env.PATH;
@@ -236,7 +260,7 @@ for (const scenario of ["只报告", "失败后继续", "应用", "工作区变�
       const before = readFileSync(join(f.root, "package.json"), "utf8");
       const beforeReadme = readFileSync(join(f.root, "README.md"), "utf8");
       mkdirSync(join(f.root, "bin"));
-      writeFileSync(join(f.root, ".git/info/exclude"), "bin/\nFAIL_TYPECHECK\nFAIL_TEST_*\n");
+      writeFileSync(join(f.root, ".git/info/exclude"), "bin/\nrelease/\nFAIL_TYPECHECK\nFAIL_TEST_*\n");
       const concurrentEdit = scenario === "工作区变动" ? `if [ "$2" = typecheck ]; then echo changed >> "${join(f.root, "guard.txt")}"; fi\n` : "";
       writeFileSync(join(f.root, "bin/npm"), `#!/bin/sh
 if [ "$1" = view ]; then echo registry-notice >&2; printf '"%s"\n' "\${2##*@}"; exit 0; fi
@@ -247,6 +271,7 @@ if [ "$2" = check:upgrade:first ] && [ -f ../../FAIL_EXTRA ]; then exit 3; fi
 if [ "$1" = run ] && [ "$2" = test ] && [ -f "FAIL_TEST_$4" ]; then echo "✖ fixture failure in $4"; exit 1; fi
 ` + concurrentEdit, { mode: 0o755 });
       writeFileSync(join(f.root, "bin/bun"), '#!/bin/sh\nif [ "$1" = -e ]; then exec '+realBun+' "$@"; fi\nprintf "target lock\\n" > bun.lock\n', { mode: 0o755 });
+      fakeRelease(f.root, scenario === "快速应用" ? "1.5.1" : "1.6.0", { badHash: scenario === "二进制校验失败" });
       process.env.PATH = `${join(f.root, "bin")}:${path}`;
       process.chdir(f.root);
       const originalLog = console.log, lines = [];
@@ -261,7 +286,17 @@ if [ "$1" = run ] && [ "$2" = test ] && [ -f "FAIL_TEST_$4" ]; then echo "✖ fi
       const reportText = readFileSync(join(reportDirectory, "report.json"), "utf8");
       if (process.platform === "darwin") assert.match(report.directory, /^\/tmp\/pi-upgrade-/);
       assert.throws(() => readFileSync(join(reportDirectory, "repository/package.json")), { code: "ENOENT" });
-      assert.equal(result, ["失败后继续", "工作区变动", "包测试失败", "构建失败", "peer未覆盖", "额外套件失败", "README声明缺失"].includes(scenario) ? 1 : 0);
+      assert.equal(result, ["失败后继续", "工作区变动", "包测试失败", "构建失败", "peer未覆盖", "额外套件失败", "README声明缺失", "二进制校验失败"].includes(scenario) ? 1 : 0);
+      const binarySteps = report.steps.filter(step => step.stage === "官方二进制");
+      assert.ok(binarySteps.some(step => step.item === "下载、SHA256、版本"));
+      if (scenario === "二进制校验失败") {
+        assert.equal(binarySteps[0].status, "failed");
+        assert.equal(report.applied, undefined);
+        assert.ok(binarySteps.some(step => step.item === "全生产插件冒烟" && step.status === "skipped"));
+      } else {
+        assert.match(report.binary.sha256, /^[a-f0-9]{64}$/);
+        assert.ok(binarySteps.some(step => step.item === "check:internals" && step.optional && step.reason.includes("SDK")));
+      }
       // 逐包结果：根 npm test 不再进入门禁，每个包单独一条。
       for (const item of ["typecheck", "check:internals", ...(quick ? ["check:smoke"] : ["test:integration", "check:host"])]) assert.ok(report.steps.some(step => step.item === item), item);
       for (const pkg of ["new-owner", "union-owner", "forked"]) {

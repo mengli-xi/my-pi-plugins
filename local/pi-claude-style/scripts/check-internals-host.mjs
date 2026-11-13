@@ -12,6 +12,7 @@ const extensionPath = join(packageRoot, "dist", "index.ts");
 const probesUrl = pathToFileURL(join(packageRoot, "dist", "src", "probes.ts")).href;
 const internalsUrl = pathToFileURL(join(packageRoot, "dist", "src", "internals.ts")).href;
 const binary = piBin();
+const layoutFileProbe = process.argv.includes("--layout-file");
 if (!existsSync(extensionPath)) {
   console.error(`production build not found: ${extensionPath}; run npm run build first`);
   process.exit(2);
@@ -49,7 +50,7 @@ export default function hostInternalsProbe(pi) {
     let legacyLayoutError;
     try { await import("@earendil-works/pi-tui/dist/layout.js"); } catch (error) { legacyLayoutError = String(error); }
     let layoutUrl, layoutError, layoutFallback = false;
-    try {
+    if (${layoutFileProbe}) try {
       const entry = createRequire(join(getPackageDir(), "package.json")).resolve("@earendil-works/pi-tui");
       layoutUrl = new URL("./layout.js", pathToFileURL(entry)).href;
       const layout = await import(layoutUrl);
@@ -178,10 +179,16 @@ try {
   const result = JSON.parse(await readFile(resultPath, "utf8"));
   assert.ok(result.eagerCount > 0, JSON.stringify(result));
   assert.equal(result.hostIdentity, true, "production bundle must patch the final host's own components");
-  assert.equal(result.layoutFallback, true, JSON.stringify(result));
-  assert.deepEqual(result.unhealthy, [], JSON.stringify(result));
+  if (layoutFileProbe) {
+    assert.equal(result.layoutFallback, true, JSON.stringify(result));
+    assert.deepEqual(result.unhealthy.filter(row => row.id === "fullscreen.editorGeometry"), [], JSON.stringify(result));
+  } else {
+    // The npm private-file fallback has its own suite. All host identities and
+    // other production probes remain mandatory in compiled hosts too.
+    assert.deepEqual(result.unhealthy.filter(row => row.id !== "fullscreen.editorGeometry"), [], JSON.stringify(result));
+  }
   console.log(
-    `pi ${result.version} bundled host · ${result.eagerCount} eager internals ok · public renderer resolver · layout fallback ok${result.legacyLayoutError?.includes("index.js/dist/layout.js") ? " (legacy alias reproduced)" : ""}`,
+    `pi ${result.version} bundled host · ${result.eagerCount} eager internals ok · public renderer resolver${layoutFileProbe ? " · npm layout fallback ok" : ""}${result.legacyLayoutError?.includes("index.js/dist/layout.js") ? " (legacy alias reproduced)" : ""}`,
   );
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) {

@@ -2,25 +2,10 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkEnvironment, installedPiVersion, piBin } from "./pi-checks.mjs";
+import { checkEnvironment, installedPiVersion, piBin, parseHostSuites } from "./pi-checks.mjs";
 import { probePrerequisites, runCommand } from "./pi-upgrade-check.mjs";
 
-const commands = [[]];
-for (const arg of process.argv.slice(2)) {
-  if (arg === "::") commands.push([]);
-  else commands.at(-1).push(arg);
-}
-const suitesToRun = commands.map(args => {
-  const requires = [];
-  while (args[0]?.startsWith("--require=")) {
-    const requirement = args.shift().slice("--require=".length);
-    if (!["tmux", "pty"].includes(requirement)) throw new Error(`未知前提：${requirement}`);
-    requires.push(requirement);
-  }
-  if (!args.length) throw new Error("用法：check-host.mjs [--require=tmux|pty] <命令> [参数] [:: ...]");
-  if (args[0] === "bun" && !requires.includes("pty")) requires.push("pty");
-  return { args, requires };
-});
+const suitesToRun = parseHostSuites(process.argv.slice(2));
 const binary = piBin();
 // 归上层 TMPDIR 所有，外层中断后也能回收；短前缀和直接复用根目录避免嵌套挤占 Unix socket 路径。
 const root = mkdtempSync(join(process.env.PI_CHECK_TMPDIR ?? (process.platform === "darwin" ? "/tmp" : tmpdir()), "ph-"));
@@ -36,9 +21,14 @@ try {
   if (versionProbe.status !== "passed") throw new Error(versionProbe.reason ?? versionProbe.output);
   const version = versionProbe.stdout.trim();
   if (version !== installedPiVersion()) throw new Error(`Pi CLI ${version} 与已安装 SDK ${installedPiVersion()} 不一致：${binary}`);
-  for (const { args: [command, ...args], requires } of suitesToRun) {
+  for (const { args: [command, ...args], requires, binarySkip } of suitesToRun) {
     const item = [command, ...args].join(" ");
     console.log(`\n[check:host] ${item}`);
+    if (process.env.PI_CHECK_BINARY === "1" && binarySkip) {
+      console.log(`跳过官方二进制：${binarySkip}`);
+      suites.push({ item, status: "skipped", reason: binarySkip, durationMs: 0 });
+      continue;
+    }
     const reason = probePrerequisites(requires, { cwd: process.cwd(), env });
     const log = process.env.PI_CHECK_REPORT ? `${process.env.PI_CHECK_REPORT}.suite-${suites.length + 1}.log` : join(root, `suite-${suites.length + 1}.log`);
     const result = reason ? { status: "prerequisite", reason, durationMs: 0 } : await runCommand(command, args, {

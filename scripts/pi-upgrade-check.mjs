@@ -4,8 +4,9 @@ import { createWriteStream } from "node:fs";
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkEnvironment, discoverChecks, isPiDependency, workspacePackages } from "./pi-checks.mjs";
+import { binarySource } from "./pi-binary.mjs";
 import { integrationScenarios } from "../integration/scenarios.mjs";
 
 export function parseArgs(args) {
@@ -102,10 +103,12 @@ export function renderReport(report) {
   const labels = { passed: "通过", failed: "失败", skipped: "未运行", prerequisite: "前提不满足" };
   const kinds = { failure: "真实失败", environment: "环境限制（仍阻断）", timeout: "超时（仍阻断）" };
   const lines = [`Pi 升级检查：${report.from.join("、")} → ${report.target}（${report.mode === "quick" ? "快速档" : "完整档"}）`, `临时目录：${report.directory}`];
+  if (report.binary) lines.push(`官方二进制：${report.binary.url}`, `SHA256：${report.binary.sha256 ?? "未校验"}`, `校验文件：${report.binary.sumsUrl}`);
   for (const step of report.steps) {
     lines.push(`${labels[step.status]} · ${step.package} · ${step.stage} · ${step.item}${step.durationMs === undefined ? "" : ` · ${(step.durationMs / 1000).toFixed(1)}s`}`);
     if (step.kinds?.length) lines.push(`  类别：${step.kinds.map(kind => kinds[kind]).join("、")}`);
     if (step.reason) lines.push(`  ${step.reason}`);
+    if (step.plugins?.length) lines.push(`  生产插件：${step.plugins.join("、")}`);
     for (const failure of step.failures ?? []) lines.push(`  ${failure.package}：${failure.item}`);
     for (const suite of step.suites ?? []) {
       lines.push(`  ${labels[suite.status]} · ${suite.item} · ${(suite.durationMs / 1000).toFixed(1)}s${suite.kinds?.length ? ` · ${suite.kinds.map(kind => kinds[kind]).join("、")}` : ""}`);
@@ -125,6 +128,8 @@ export function renderReport(report) {
   lines.push("", `报告：${join(report.directory, "report.json")}`);
   return lines.join("\n");
 }
+
+const accepted = entry => entry.status === "passed" || entry.status === "skipped" && entry.optional === true;
 
 const git = (root, ...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
 
@@ -262,13 +267,15 @@ async function upgradeCheck(args, interruption) {
   const dependencies = Object.keys(manifest.devDependencies ?? {}).filter(isPiDependency);
   if (!dependencies.length) throw new Error("根 devDependencies 没有 Pi 依赖");
   if (options.quick) validateQuick(options.version, dependencies.map(name => manifest.devDependencies[name]));
+  const releaseSource = binarySource(options.version);
   // 避免 macOS 长 TMPDIR 影响 Unix socket，以及终端测试中的路径截断。
   const directory = await mkdtemp(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "pi-upgrade-"));
-  const checkout = join(directory, "repository"), environment = join(directory, "environment");
+  const checkout = join(directory, "repository"), environment = join(directory, "environment"), binaryDirectory = join(directory, "binary");
   for (const name of ["home", "agent", "sessions", "config", "cache", "data", "state", "tmp"]) await mkdir(join(environment, name), { recursive: true });
   const env = checkEnvironment(environment);
   const report = {
     target: options.version, mode: options.quick ? "quick" : "full", from: [...new Set(dependencies.map(name => manifest.devDependencies[name]))],
+    binary: releaseSource,
     source, commit: head, directory, steps: [], peers: [], manual: [], notices: [
       "未覆盖：真实 provider、人工终端与输入法、没有探针的私有行为。",
       "补丁宿主检查不纳入原版升级门禁；test:patched-host 与补丁联测须用匹配的真实构建另跑。",
@@ -279,6 +286,8 @@ async function upgradeCheck(args, interruption) {
   const packages = workspacePackages(source);
   if (options.quick) report.notices.push("快速档：全部包单测、internals 与 check:smoke；未运行完整 host、check:upgrade:* 和根 integration 矩阵，不代表完整兼容验收。");
   const checks = discoverChecks(source, { quick: options.quick });
+  const binaryChecks = [...checks, ...(!options.quick ? packages.filter(pkg => pkg.scripts?.["check:smoke"] && !pkg.scripts?.["check:host"])
+    .map(pkg => ({ package: pkg.name, directory: pkg.directory, check: "check:smoke" })) : [])];
   const testPackages = packages.filter(pkg => Object.hasOwn(pkg.scripts ?? {}, "test"));
   const extras = options.quick ? [] : upgradeSuites(packages);
   const scenarios = !options.quick && manifest.scripts?.["test:integration"] ? integrationScenarios(source).filter(suite => suite.stock !== false) : [];
@@ -289,7 +298,7 @@ async function upgradeCheck(args, interruption) {
     const log = join(directory, `${String(report.steps.length + 1).padStart(2, "0")}-${stage.replace(/[^\w\u3400-\u9fff-]/g, "-")}.log`);
     console.log(`检查：${pkg} · ${stage} · ${item}`);
     const childEnv = { ...env, ...extraEnv };
-    const buildMissing = stage !== "构建" && stage !== "公开 API 签名" && (failedBuilds.has(pkg) || stage === "integration" && failedBuilds.size > 0);
+    const buildMissing = (stage === "官方二进制" && item === "全生产插件冒烟" && failedBuilds.size > 0) || stage !== "构建" && stage !== "公开 API 签名" && (failedBuilds.has(pkg) || stage === "integration" && failedBuilds.size > 0);
     const reason = buildMissing ? `所需构建失败：${[...failedBuilds].join("、")}` : probePrerequisites(requires, { cwd, env: childEnv });
     if (reason) {
       const entry = { stage, package: pkg, item, status: "prerequisite", reason, durationMs: 0, timeoutMs };
@@ -298,8 +307,10 @@ async function upgradeCheck(args, interruption) {
     }
     const detail = join(directory, `host-${report.steps.length + 1}.json`);
     if (item === "check:host" || item === "check:smoke") childEnv.PI_CHECK_REPORT = detail;
-    const { output, stdout, ...result } = await runCommand(command, commandArgs, { cwd, env: childEnv, log, timeoutMs, signal: interruption.signal, cleanupPaths: stage === "版本存在性" || stage === "临时副本" ? [] : [checkout, environment] });
+    const { output, stdout, ...result } = await runCommand(command, commandArgs, { cwd, env: childEnv, log, timeoutMs, signal: interruption.signal, cleanupPaths: stage === "版本存在性" || stage === "临时副本" ? [] : [checkout, environment, binaryDirectory] });
     const entry = { stage, package: pkg, item, ...result, log, failures: result.status === "failed" ? diagnostics(output, pkg) : [] };
+    const plugins = item === "全生产插件冒烟" && stdout.match(/^BINARY_PLUGINS (.+)$/m);
+    if (plugins) entry.plugins = JSON.parse(plugins[1]);
     if (result.status === "failed" && !entry.failures.length) entry.failures.push({ package: pkg, item: output.trim().slice(-4000) || result.reason || `退出码 ${result.code}，信号 ${result.signal}` });
     if (item === "check:host" || item === "check:smoke") {
       try { entry.suites = JSON.parse(await readFile(detail, "utf8")); }
@@ -313,7 +324,7 @@ async function upgradeCheck(args, interruption) {
     interruption.check();
     return { ...entry, output, stdout };
   };
-  const skipped = (stage, pkg, item, reason) => report.steps.push({ stage, package: pkg, item, status: "skipped", reason });
+  const skipped = (stage, pkg, item, reason, optional = false) => report.steps.push({ stage, package: pkg, item, status: "skipped", reason, optional });
   // 未运行项也逐条列出，便于一眼看出哪个包、哪一步没有结果。
   const skipApply = reason => { if (options.apply) skipped("应用", "仓库", "--apply", reason); };
   const skipGatesAndChecks = reason => {
@@ -323,6 +334,7 @@ async function upgradeCheck(args, interruption) {
     for (const suite of scenarios) skipped("integration", "仓库", suite.id, reason);
     for (const suite of extras) skipped("扩展验收", suite.package, suite.item, reason);
     for (const check of checks) skipped("私有 seam", check.package, check.check, reason);
+    skipped("官方二进制", "仓库", "下载、校验与宿主验收", reason);
     skipApply("有失败或未运行项，不修改当前工作区。");
   };
   try {
@@ -387,9 +399,30 @@ async function upgradeCheck(args, interruption) {
             const extraEnv = Object.fromEntries(Object.entries(suite.env ?? {}).map(([key, value]) => [key, value.replaceAll(source, checkout)]));
             await step("integration", "仓库", suite.id, command[0], command.slice(1), join(checkout, suite.cwd ?? ""), extraEnv, suite.timeoutMs, suite.requires ?? []);
           }
+          const proxies = Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(https?_proxy|all_proxy|no_proxy)$/i.test(key)));
+          const downloaded = await step("官方二进制", "仓库", "下载、SHA256、版本", process.execPath,
+            [fileURLToPath(new URL("./pi-binary.mjs", import.meta.url)), options.version, binaryDirectory], checkout, proxies, 600_000);
+          if (downloaded.status === "passed") Object.assign(report.binary, JSON.parse(await readFile(join(binaryDirectory, "metadata.json"), "utf8")));
+          if (options.quick) for (const pkg of packages.filter(pkg => pkg.scripts?.["check:host"] && !pkg.scripts?.["check:smoke"])) {
+            skipped("官方二进制", pkg.name, "check:host", "快速档未声明 check:smoke；完整档才运行本包 check:host。", true);
+          }
+          for (const check of binaryChecks) {
+            if (check.check === "check:internals") {
+              skipped("官方二进制", check.package, check.check, "进程内 npm SDK 探针，不启动真实 CLI。", true);
+            } else if (downloaded.status !== "passed") {
+              skipped("官方二进制", check.package, check.check, "官方二进制下载、校验或版本检查失败。");
+            } else {
+              await step("官方二进制", check.package, check.check, "npm", ["run", check.check], join(checkout, check.directory),
+                { PI_BIN: report.binary.binary, PI_CHECK_BINARY: "1" }, 1_800_000);
+            }
+          }
+          if (downloaded.status === "passed") {
+            await step("官方二进制", "仓库", "全生产插件冒烟", "npm", ["exec", "--", "node", "scripts/check-binary-smoke.mjs"], checkout,
+              { PI_BIN: report.binary.binary }, 300_000);
+          } else skipped("官方二进制", "仓库", "全生产插件冒烟", "没有校验通过的官方二进制。");
           interruption.check();
           if (options.apply) {
-            if (report.steps.every(entry => entry.status === "passed") && report.peers.every(peer => peer.covered)) {
+            if (report.steps.every(accepted) && report.peers.every(peer => peer.covered)) {
               const files = ["package.json", "bun.lock", "README.md"];
               const readme = join(checkout, "README.md");
               await writeFile(readme, updateSupportedVersion(await readFile(readme, "utf8"), options.version));
@@ -421,14 +454,14 @@ async function upgradeCheck(args, interruption) {
   } finally {
     if (!options.keep) {
       try {
-        await Promise.all([checkout, environment].map(path => rm(path, { recursive: true, force: true })));
+        await Promise.all([checkout, environment, binaryDirectory].map(path => rm(path, { recursive: true, force: true })));
       } catch (error) {
         report.steps.push({ stage: "清理", package: "仓库", item: "临时副本与隔离环境", status: "failed", reason: String(error) });
       }
     }
     report.durationMs = Date.now() - started;
     report.interrupted = interruption.signal.aborted ? interruption.signal.reason : null;
-    report.passed = !report.interrupted && report.peers.every(peer => peer.covered) && report.steps.length > 0 && report.steps.every(entry => entry.status === "passed");
+    report.passed = !report.interrupted && report.peers.every(peer => peer.covered) && report.steps.length > 0 && report.steps.every(accepted);
     await writeFile(join(directory, "report.json"), JSON.stringify(report, null, 2) + "\n");
     if (interruption.signal.aborted && !report.interrupted) {
       report.interrupted = interruption.signal.reason;

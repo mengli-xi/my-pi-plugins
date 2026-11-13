@@ -57,8 +57,10 @@ node scripts/pi-upgrade-check.mjs <补丁版本> --quick      # 快速验收
 - 所需生产包各构建一次，再跑 typecheck、全部包单测和 `check:internals`。
 - 完整档再跑 `check:host`、`check:upgrade:*` 和[根 integration 场景](integration/scenarios.mjs)；定向入口只过滤场景，不重复执行。
 - 快速档只再跑包声明的 `check:smoke`：宿主类/模块身份、实例探针、child retry、退出命令、最小 PTY 绘制边界，以及 native 信箱投递、取消和 branch/followup。
-- **没有 `check:smoke` 的包在快速档完全不跑宿主检查**，例如 cc-memory、session-compact、scheduler，以及 mcp-adapter 的 dist 加载。
+- **没有 `check:smoke` 的包在快速档完全不跑宿主检查**，例如 cc-memory、session-compact、scheduler，以及 mcp-adapter 的 dist 加载；二进制阶段将它们逐项标为跳过。
 - 快速档不测 PTY 快照和历史、Goal/Processes/Subagents 之间的协作、持久恢复，通过也不代表完整兼容。
+- 两档都从 `earendil-works/pi` 目标 Release 下载当前平台官方二进制，核对 SHA256 和版本；用它重跑本档 host/smoke，再隔离加载 README 全部生产插件跑 faux 会话与 Perf 连续两次存储事务。联网步骤沿用进程代理环境，失败阻断；来源、SHA256、执行/跳过及理由写入报告。
+- 二进制不跑进程内 npm SDK 探针；形态不适用的 host 子套件由包以前置 `--skip-binary="需要 npm SDK"` 声明，不能豁免兼容失败。下载物默认删除，`--keep` 保留。
 - 每套件单独计时、限时、清理；普通失败继续，收到中断信号则停止验收，清理后写报告。
 - 失败、缺前提、环境限制和超时都算没通过；不自动豁免 EPERM，也不允许写回。
 - 默认删除副本和配置，保留终端汇总、`report.json` 和原始日志；报告记录档位及未测范围。
