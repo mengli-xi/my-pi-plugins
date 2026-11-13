@@ -98,8 +98,13 @@ export async function main(): Promise<void> {
   process.on("SIGINT", shutdown);
 }
 
-// Only run when invoked directly, not when imported by tests.
-if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) {
+// A missing/deleted argv path is not a direct invocation (e.g. an SDK import).
+function isDirectEntry(): boolean {
+  try { return !!process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); }
+  catch { return false; }
+}
+
+if (isDirectEntry()) {
   void main().catch((error) => {
     // Keep DaemonAlreadyRunningError's intentional exit distinct from a real
     // startup failure, but never leave an unhandled entrypoint rejection.
