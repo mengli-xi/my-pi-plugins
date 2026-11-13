@@ -246,7 +246,8 @@ function normalize(screen, root) {
         .replace(/(compacted from )\d+( tokens)/gu, "$1<n>$2")
         // The /session panel's file row carries the temp session path; a
         // fragment may be left over when the row wrapped before its uuid.
-        .replace(/(<ROOT>\/sessions\/<iso>)_[0-9a-f-]*/gu, "$1_<uuid>")
+        // Consume a UUID already normalized above too, not an empty prefix.
+        .replace(/(<ROOT>\/sessions\/<iso>)_(?:<uuid>|[0-9a-f-]*)/gu, "$1_<uuid>")
         .replace(/^(\s*)[0-9a-f-]+\.jsonl\b/gu, "$1<uuid>.jsonl")
         .replace(/^(\s*)\.jsonl\b/gu, "$1<uuid>.jsonl");
       if (volatile === line.trimEnd()) return volatile;
@@ -260,6 +261,7 @@ function normalize(screen, root) {
     // this one row is not part of the width or wrapping assertions.
     .replace(/(<ROOT>\/sessions\/<iso>_<uuid>)([^\n]*)\n\s*(?:<uuid>)?\.jsonl([^\n]*)/gu,
       (_match, path, before, after) => `${path}.jsonl${before.includes("█") || after.includes("█") ? " █" : ""}`)
+    .replace(/(<ROOT>\/sessions\/<iso>_<uuid>\.jsonl) +█/gu, "$1 █")
     .replace(/(── Session info ─+\s+\d+-\d+\/)\d+/gu, "$1<n>")
     .replace(/\n+$/u, "\n");
 }
@@ -336,7 +338,12 @@ function transcriptRegion(screen) {
 }
 
 async function scenarioRoot(name, settings = {}) {
-  const root = join(runRoot, name);
+  const base = join(runRoot, name);
+  // /session includes its file path in the measured report. Keep the UUID on
+  // a continuation line even with check-host's short TMPDIR, so that path
+  // length does not change the viewport or scrollbar being snapshotted.
+  const root = name === "session" && base.length < 64
+    ? join(base, "p".repeat(63 - base.length)) : base;
   rmSync(root, { recursive: true, force: true });
   for (const dir of ["agent", "home/.config", "work", "sessions"]) mkdirSync(join(root, dir), { recursive: true });
   const cwd = join(root, "work");
