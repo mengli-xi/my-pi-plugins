@@ -838,7 +838,8 @@ for (const [cols, rows] of [[80, 24], [120, 40], [80, 20]]) {
     mouse(0, 2, rows - 1); await delay(40); mouse(0, 2, rows - 1, true);
     await pi.waitEvents("outside close", events => events.some(event => event.event === "geometry-closed"));
     assert.equal(pi.events().find(event => event.event === "geometry-closed").draft, "DRAFT_STAYS");
-    assert.ok(!pi.screen().includes("GEOMETRY_PANEL"), "outside click closes exactly one panel");
+    // The close event can fire before Pi repaints; wait for the frame to drop the panel.
+    await pi.wait("outside click closes exactly one panel", () => !pi.screen().includes("GEOMETRY_PANEL"));
     pi.send("\x05\x15");
   });
 }
@@ -968,7 +969,7 @@ await scenario("live-toggle", { prompt: "FIXTURE_LIVE wait for the slow tool" },
   assert.ok(before.tools.length > 0, "the running tool component is mounted");
   assert.ok(before.assistants.length > 0, "the assistant component is mounted");
   // The live frame carries a rotating spinner verb; assert it instead of snapshotting.
-  assert.ok(pi.screen().includes("Run fixture_wait"), pi.screen());
+  await pi.wait("running tool row", () => pi.screen().includes("Run fixture_wait"));
   pi.send("\x14");
   await pi.wait("toggle while running", () => pi.screen().includes("Thinking blocks: hidden"));
   const toggledAt = ticks().length;
