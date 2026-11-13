@@ -5,7 +5,6 @@ import { formatTokenCount } from "./accounting.js";
 
 export const GOAL_APPEND_FILE = "goal-append.md";
 
-let appendCache: { path: string; version: string; rules: string } | undefined;
 type AppendDiagnostic = (message: string | undefined) => void;
 
 export function goalAppendRules(
@@ -21,33 +20,28 @@ export function goalAppendRules(
 			issue = "not a regular file";
 		} else {
 			const version = appendVersion(stat);
-			if (appendCache?.path === appendPath && appendCache.version === version) {
-				rules = appendCache.rules;
-			} else {
-				operation = "open";
-				// O_NONBLOCK prevents a regular-file-to-FIFO replacement from blocking open.
-				const fd = openSync(appendPath, constants.O_RDONLY | constants.O_NONBLOCK);
-				try {
-					operation = "stat opened file";
-					const opened = fstatSync(fd, { bigint: true });
-					if (!opened.isFile()) {
-						issue = "not a regular file";
-					} else if (appendVersion(opened) !== version) {
-						issue = "file changed while opening";
+			operation = "open";
+			// O_NONBLOCK prevents a regular-file-to-FIFO replacement from blocking open.
+			const fd = openSync(appendPath, constants.O_RDONLY | constants.O_NONBLOCK);
+			try {
+				operation = "stat opened file";
+				const opened = fstatSync(fd, { bigint: true });
+				if (!opened.isFile()) {
+					issue = "not a regular file";
+				} else if (appendVersion(opened) !== version) {
+					issue = "file changed while opening";
+				} else {
+					operation = "read";
+					const block = readFileSync(fd, "utf8").trim();
+					operation = "stat read file";
+					if (appendVersion(fstatSync(fd, { bigint: true })) !== version) {
+						issue = "file changed while reading";
 					} else {
-						operation = "read";
-						const block = readFileSync(fd, "utf8").trim();
-						operation = "stat read file";
-						if (appendVersion(fstatSync(fd, { bigint: true })) !== version) {
-							issue = "file changed while reading";
-						} else {
-							rules = block.length > 0 ? `\n${block}` : "";
-							appendCache = { path: appendPath, version, rules };
-						}
+						rules = block.length > 0 ? `\n${block}` : "";
 					}
-				} finally {
-					closeSync(fd);
 				}
+			} finally {
+				closeSync(fd);
 			}
 		}
 	} catch (error) {
@@ -56,11 +50,9 @@ export function goalAppendRules(
 			const safeCode = typeof code === "string" && /^[A-Z][A-Z0-9_]{0,31}$/.test(code);
 			issue = `${operation}: ${safeCode ? code : "unknown error"}`;
 		}
-		appendCache = undefined;
 		rules = "";
 	}
 	if (issue) {
-		appendCache = undefined;
 		rules = "";
 	}
 	reportIssue?.(issue ? `pi-goal: ${GOAL_APPEND_FILE} ignored (${issue}).` : undefined);

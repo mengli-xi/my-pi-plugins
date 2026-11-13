@@ -53,7 +53,7 @@ binary 必须是实际文件的绝对路径，隔离环境的 `--version` 必须
 
 `<getAgentDir()>/goal-append.md` 由宿主管理，用于在 active Goal rules 附近协调 scope 和验证策略，不属于 objective，也不是项目可覆盖的 settings。缺失/空白不追加；暂停 context 必须始终排除 active rules、guard id 与附录。路径遵守 runtime agent identity，不能写死日常 profile。
 
-每次构造规则先检查 path 与 `dev/ino/size/mtimeNs/ctimeNs`，版本不变时复用已 trim 的文本（含空文本），变更后在下一 provider-request context 重读。默认路径每次从真实 getAgentDir() 取，不缓存 agent identity。仅接受 regular file，stat/open/read 的版本复核避免替换窗口，非阻塞 open 防止被替换成 FIFO 后挂住。
+每次构造规则读取小文件正文，快速同长度编辑也在下一 provider-request context 生效，不以 metadata 相同推断正文未变。默认路径每次从真实 getAgentDir() 取，不缓存 agent identity。仅接受 regular file，stat/open/read 的版本复核避免替换窗口，非阻塞 open 防止被替换成 FIFO 后挂住。
 
 missing/空白不追加；stat/read 故障会丢弃旧 cache，不带回 stale text。非 ENOENT 故障只报告 operation 与白名单 errno，不显示正文、原始 error message 或真实目录。应用层在 TUI/RPC 发 warning，无 UI 时写 stderr、不写 stdout；连续相同故障去重，成功后可再次报告，session_start 重置去重。不追加 transcript，不增加 provider turn，也不因附录故障停止 active Goal。验证范围包括缺失、创建/修改/atomic replace/删除、空白、agent identity、故障/恢复和非 regular file；这些行为说明不代表测试已经通过。
 

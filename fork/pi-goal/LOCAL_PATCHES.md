@@ -46,6 +46,6 @@ source session 与 exact origin checkpoint 限制 branch/fork authority，复制
 
 ## Host-owned 附录与 legacy RPC 保留边界
 
-`<getAgentDir()>/goal-append.md` 紧邻 active rules 协调宿主 scope/verification policy，不写死 home，不引入项目配置，也不进入 paused context。文件更新应可见，未变内容不应反复读取/解析，读取故障应可诊断且不泄露正文；这不改变 Goal 完成审计或后台 deadline。
+`<getAgentDir()>/goal-append.md` 紧邻 active rules 协调宿主 scope/verification policy，不写死 home，不引入项目配置，也不进入 paused context。每次请求读取小文件以保证快速同长度更新可见，读取故障应可诊断且不泄露正文；这不改变 Goal 完成审计或后台 deadline。
 
 既有 managed RPC 的 pi-goal:start/cancel/event channels 无版本、默认 OFF，仅作为旧兼容保留；不重命名，不伪装成 versioned API，也不另建控制面。开关不是权限沙箱，关闭后已接受 run 仍须有 exact state/cancel 直到 terminal。新协作走版本化 owner 协议，具体 legacy schema 和拒绝行为见 [协议](docs/protocols.md)。
