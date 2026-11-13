@@ -100,8 +100,14 @@ function skillRef(skill: Skill): SkillRef {
   };
 }
 
+interface PathVersion {
+  metadata: string;
+  directory: boolean;
+  content?: string;
+}
+
 interface CatalogSnapshot {
-  versions: Map<string, string>;
+  versions: Map<string, PathVersion>;
   skills: SkillRef[];
 }
 
@@ -112,22 +118,21 @@ function statVersion(stats: BigIntStats): string {
   return [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs].join(":");
 }
 
-function contentVersion(path: string, stats: BigIntStats): string {
-  // Directory timestamps can collide too: include entries to detect additions.
-  if (stats.isDirectory()) return JSON.stringify(readdirSync(path).sort());
-  if (stats.isFile() && (path.endsWith(".md") || IGNORE_FILES.has(basename(path)))) {
-    return createHash("sha256").update(readFileSync(path)).digest("hex");
-  }
-  return "";
+function fileContentVersion(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+function directoryVersion(path: string): string {
+  return JSON.stringify(readdirSync(path).sort());
 }
 
 function pathMetadata(path: string): { version: string; stats?: BigIntStats } {
   try {
     const link = lstatSync(path, { bigint: true });
-    if (!link.isSymbolicLink()) return { version: `${statVersion(link)}:${contentVersion(path, link)}`, stats: link };
+    if (!link.isSymbolicLink()) return { version: statVersion(link), stats: link };
     try {
       const target = statSync(path, { bigint: true });
-      return { version: `${statVersion(link)}>${statVersion(target)}:${contentVersion(path, target)}`, stats: target };
+      return { version: `${statVersion(link)}>${statVersion(target)}`, stats: target };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       return { version: `${statVersion(link)}>missing` };
@@ -138,15 +143,19 @@ function pathMetadata(path: string): { version: string; stats?: BigIntStats } {
   }
 }
 
-function versionsUnchanged(versions: ReadonlyMap<string, string>): boolean {
+function versionsUnchanged(versions: ReadonlyMap<string, PathVersion>): boolean {
   try {
+    const candidates: Array<[string, string]> = [];
     for (const [path, version] of versions) {
-      if (pathMetadata(path).version !== version) return false;
+      if (pathMetadata(path).version !== version.metadata) return false;
+      if (version.directory) {
+        if (directoryVersion(path) !== version.content) return false;
+      } else if (version.content !== undefined) candidates.push([path, version.content]);
     }
-    return true;
+    // Check content only after every cheap version/directory check passed.
+    return candidates.every(([path, content]) => fileContentVersion(path) === content);
   } catch {
-    // An unreadable metadata path cannot establish that the catalog is current.
-    return false;
+    return false; // Unreadable resources cannot establish a current catalog.
   }
 }
 
@@ -157,12 +166,22 @@ function versionsUnchanged(versions: ReadonlyMap<string, string>): boolean {
  * only the official loader decides which skills exist. Unverifiable metadata
  * disables reuse; additions to this upstream discovery surface require review.
  */
-function catalogVersions(dir: string): Map<string, string> | undefined {
-  const versions = new Map<string, string>();
+function catalogVersions(dir: string): Map<string, PathVersion> | undefined {
+  const versions = new Map<string, PathVersion>();
+  const remember = (path: string) => {
+    const { version, stats } = pathMetadata(path);
+    const directory = stats?.isDirectory() === true;
+    // The official loader reads SKILL.md at every depth, but other .md files only at the root.
+    const candidate = basename(path) === "SKILL.md" || IGNORE_FILES.has(basename(path))
+      || (dirname(path) === dir && path.endsWith(".md"));
+    const content = directory ? directoryVersion(path)
+      : stats?.isFile() && candidate ? fileContentVersion(path) : undefined;
+    versions.set(path, { metadata: version, directory, content });
+    return stats;
+  };
   const ancestors = new Set<string>();
   const visit = (path: string) => {
-    const { version, stats } = pathMetadata(path);
-    versions.set(path, version);
+    const stats = remember(path);
     if (!stats?.isDirectory()) return;
     const identity = `${stats.dev}:${stats.ino}`;
     if (ancestors.has(identity)) return;
@@ -171,7 +190,7 @@ function catalogVersions(dir: string): Map<string, string> | undefined {
       if (entry.name === "node_modules" || (entry.name.startsWith(".") && !IGNORE_FILES.has(entry.name))) continue;
       const child = join(path, entry.name);
       if (IGNORE_FILES.has(entry.name)) {
-        versions.set(child, pathMetadata(child).version);
+        remember(child);
       } else {
         visit(child);
       }

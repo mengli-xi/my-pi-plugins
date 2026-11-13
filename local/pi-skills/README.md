@@ -22,7 +22,7 @@ Use $example-skill for this task.
 
 候选合并 Pi 公开命令 catalog 与按需发现结果。agent directory 由公开 `getAgentDir()` 获取，遵守 `PI_CODING_AGENT_DIR`；用户 Agent Skills 目录遵守进程实际 HOME。项目只有受信时才扫描 `.pi/skills` 与从 cwd 向仓库根查找的 `.agents/skills`。目录规则和 frontmatter 解析使用 Pi 官方 loader。
 
-每次补全检查目录条目、符号链接及技能/ignore 小文件正文，避免快速同长度编辑漏刷。内容与 metadata 均未变时复用解析结果，变化才重新交给官方 loader。没有后台 watch 或轮询。相同 prefix 再次补全也能发现新增、删除和修改；发现结果优先于同路径的启动 catalog，已删除文件不留作补全候选。普通请求/context 阶段不扫描技能目录。
+每次补全先核对 metadata、目录条目及符号链接；均未变时才读官方候选文件（各层 `SKILL.md`、根目录直接 `.md`、ignore 文件）比对正文，避免快速同长度编辑漏刷，不读取普通嵌套 Markdown 正文。未变时复用解析结果，变化才重新交给官方 loader。没有后台 watch 或轮询。相同 prefix 再次补全也能发现新增、删除和修改；发现结果优先于同路径的启动 catalog，已删除文件不留作补全候选。普通请求/context 阶段不扫描技能目录。
 
 ### 注入与数据边界
 
