@@ -139,7 +139,7 @@ export default function hostFixture(pi) {
       const clipboard = getNativeClipboard();
       if (!clipboard?.setText) throw new Error("selection copy fixture needs the native clipboard helper");
       const original = clipboard.setText;
-      const capture = async (text) => { log({ event: "selection-copy", text }); };
+      const capture = async (text) => { log({ event: "selection-copy", via: "native-fixture", text }); };
       clipboard.setText = capture;
       if (getNativeClipboard()?.setText !== capture) throw new Error("clipboard capture was not installed");
       pi.on("session_shutdown", () => { clipboard.setText = original; });

@@ -49,7 +49,7 @@ for (const tool of ["fd", "rg"]) writeFileSync(join(toolBin, tool), `#!/bin/sh\n
 writeFileSync(join(toolBin, "wl-copy"), `#!${process.execPath}
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-appendFileSync(join(process.env.CC_HOST_FIXTURE_ROOT, "events.jsonl"), JSON.stringify({ event: "selection-copy", text: readFileSync(0, "utf8") }) + "\\n");
+appendFileSync(join(process.env.CC_HOST_FIXTURE_ROOT, "events.jsonl"), JSON.stringify({ event: "selection-copy", via: "wl-copy-fixture", text: readFileSync(0, "utf8") }) + "\\n");
 `, { mode: 0o755 });
 const fixturePath = process.env.PATH ? `${toolBin}:${process.env.PATH}` : toolBin;
 const artifactRoot = process.env.CC_HOST_FIXTURE_ARTIFACTS ? resolve(process.env.CC_HOST_FIXTURE_ARTIFACTS) : runRoot;
@@ -760,7 +760,9 @@ await scenario("selection-sticky-boundary", {
     const count = pi.events().filter(event => event.event === "selection-copy").length;
     pi.send("\x1by");
     await pi.waitEvents("native selection copy", events => events.filter(event => event.event === "selection-copy").length > count);
-    const text = pi.events().filter(event => event.event === "selection-copy").at(-1).text;
+    const copied = pi.events().filter(event => event.event === "selection-copy").at(-1);
+    assert.equal(copied.via, process.platform === "linux" ? "wl-copy-fixture" : "native-fixture", "copy must use the isolated clipboard substitute");
+    const text = copied.text;
     await pi.wait("copy feedback", () => pi.screen().includes("Copied!"));
     await pi.wait("copy flash cleared", () => !pi.screen().includes("Copied!"));
     return text;
