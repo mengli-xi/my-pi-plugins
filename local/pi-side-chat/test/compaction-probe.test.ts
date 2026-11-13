@@ -10,6 +10,13 @@ test("compaction probe accepts transparent dispatch and fails closed for broken 
     assert.equal(checkCompactionAppend(), true);
     prototype.addMessageToChat = function delegated(message) { original.call(this, message); };
     assert.equal(checkCompactionAppend(), true);
+    prototype.addMessageToChat = function markdownAware(message) {
+      assert.deepEqual((this as { getMarkdownTransformers(): unknown[] }).getMarkdownTransformers(), []);
+      original.call(this, message);
+    };
+    assert.equal(checkCompactionAppend(), true);
+    prototype.addMessageToChat = function missingSpacer(message) { void (message as { tokensBefore: number }).tokensBefore; };
+    assert.equal(checkCompactionAppend(), false);
     prototype.addMessageToChat = function dropped() {};
     assert.equal(checkCompactionAppend(), false);
     prototype.addMessageToChat = function broken() { throw new Error("drift"); };

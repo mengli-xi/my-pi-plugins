@@ -9,7 +9,7 @@
 - `side-chat.child.render-session-entries`
 - `side-chat.child.compaction-display`
 
-它们位于 `compat/pi-1.2-side-visibility.ts`，仅对 Side instance 隐藏 inherited IDs、boundary 与 inherited compaction/live summary，detach恢复原方法；不改 Main prototype，也不从执行上下文删除对应背景。compaction 行为检查在 `compat/pi-1.2-compaction-probe.ts`。probe失配必须在view初始化前拒绝，保留Main，不能猜测宿主结构后继续。
+它们位于 `compat/pi-1.2-side-visibility.ts`，仅对 Side instance 隐藏 inherited IDs、boundary 与 inherited compaction/live summary，detach恢复原方法；不改 Main prototype，也不从执行上下文删除对应背景。compaction 行为检查在 `compat/pi-1.2-compaction-probe.ts`：惰性摘要 getter 作为停止点，惰性构造前的 Markdown theme/transformer 查询由探针 receiver 的无副作用桩提供；同时验证原生 Spacer 和 summary 路径，不初始化真实 UI。probe失配必须在view初始化前拒绝，保留Main，不能猜测宿主结构后继续。
 
 ```sh
 PI_BIN=/path/to/stock-pi npm run check:host -w pi-side-chat

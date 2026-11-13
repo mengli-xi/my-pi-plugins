@@ -15,7 +15,7 @@ export function checkCompactionAppend(): boolean {
   const chatContainer = new Container();
   const reachedSummary = {};
   try {
-    append.call({ chatContainer, getMarkdownThemeWithSettings: () => ({}), outputPad: 1, toolOutputExpanded: true }, {
+    append.call({ chatContainer, getMarkdownThemeWithSettings: () => ({}), getMarkdownTransformers: () => [], outputPad: 1, toolOutputExpanded: true }, {
       role: "compactionSummary", summary: "SIDE_COMPACTION_PROBE_ONLY",
       get tokensBefore() { throw reachedSummary; },
       firstKeptEntryId: "probe", timestamp: 0,
