@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -27,7 +28,7 @@ test("retired backend environment is rejected instead of silently selecting a ba
 });
 
 test("config diagnostics identify the actual file and the key to remove", (t) => {
-  const root = mkdtempSync("/private/tmp/pi-side-config-test-");
+  const root = mkdtempSync(join(tmpdir(), "pi-side-config-test-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const path = join(root, "config.json");
   for (const key of ["defaultBackend", "extensionCommands"]) {

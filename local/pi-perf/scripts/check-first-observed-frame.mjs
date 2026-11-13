@@ -37,10 +37,11 @@ export default function(pi) {
 }
 `);
 let child;
+let terminalOutput = "";
 try {
   child = Bun.spawn({ cmd: [process.env.PI_BIN, "--offline", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-context-files", "--no-session", "--no-tools", "-e", root, "--tui-mode", "fullscreen"],
     cwd: root, env: checkEnvironment(root), stdin: "ignore", stderr: "pipe",
-    terminal: { cols: 100, rows: 28, data() {} } });
+    terminal: { cols: 100, rows: 28, data(_pty, data) { terminalOutput += Buffer.from(data).toString(); } } });
   const stderr = new Response(child.stderr).text();
   let state, startup;
   const deadline = Date.now() + 30_000;
@@ -55,7 +56,7 @@ try {
     } catch (error) { if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error; }
     await delay(25);
   }
-  assert.ok(startup, "first observed startup paint must be persisted");
+  assert.ok(startup, `first observed startup paint must be persisted; state=${JSON.stringify(state)}\n${terminalOutput}`);
   assert.equal(startup.piVersion, installedPiVersion());
   assert.equal(state.reason, "startup"); assert.equal(state.mode, "tui"); assert.equal(startup.mode, "tui");
   assert.ok(state.framesAtReady > 0, `stock Pi ${installedPiVersion()} must paint before session_start; recheck the observed-frame boundary if this changes`);

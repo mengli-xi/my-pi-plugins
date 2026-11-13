@@ -133,15 +133,17 @@ export default function hostFixture(pi) {
       : function (...args) { return original.apply(this, args); };
   }
   if (process.env.CC_HOST_FIXTURE_COPY_SELECTION) {
-    // Exercise Pi's real copy path without touching the user's clipboard.
-    // The stock macOS binary and the fixture share this exported helper.
-    const clipboard = getNativeClipboard();
-    if (process.platform !== "darwin" || !clipboard?.setText) throw new Error("selection copy fixture needs the stock macOS clipboard helper");
-    const original = clipboard.setText;
-    const capture = async (text) => { log({ event: "selection-copy", text }); };
-    clipboard.setText = capture;
-    if (getNativeClipboard()?.setText !== capture) throw new Error("clipboard capture was not installed");
-    pi.on("session_shutdown", () => { clipboard.setText = original; });
+    // macOS uses the native helper; Linux takes the real wl-copy path,
+    // intercepted by the harness's PATH stub (never the user's clipboard).
+    if (process.platform === "darwin") {
+      const clipboard = getNativeClipboard();
+      if (!clipboard?.setText) throw new Error("selection copy fixture needs the native clipboard helper");
+      const original = clipboard.setText;
+      const capture = async (text) => { log({ event: "selection-copy", text }); };
+      clipboard.setText = capture;
+      if (getNativeClipboard()?.setText !== capture) throw new Error("clipboard capture was not installed");
+      pi.on("session_shutdown", () => { clipboard.setText = original; });
+    }
     pi.registerShortcut("alt+y", { description: "Capture native selection copy in the fixture", handler: async () => {
       if (!await tui.copyActiveSelectionToClipboard()) throw new Error("no active selection to copy");
     } });

@@ -589,7 +589,7 @@ let active;
 let resumed;
 let runError;
 try {
-  root = await mkdtemp(join(tmpdir(), "pi-claude-style-provider-errors-"));
+  root = await mkdtemp(join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), "ccpe-"));
   home = join(root, "home");
   agentDir = join(root, "agent");
   sessionDir = join(root, "sessions");

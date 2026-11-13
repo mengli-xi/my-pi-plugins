@@ -53,15 +53,15 @@ test("Pi 1.5 SDK displays built-in output without a command or any provider requ
       },
     };
     await runtime.session.bindExtensions({ mode: "tui", uiContext: ui, onError: error => errors.push(error) });
-    const render = () => footer?.render(120).join("\n").replace(/\x1b\[[0-9;]*m/g, "") ?? "";
+    const render = () => footer?.render(root.length + 120).join("\n").replace(/\x1b\[[0-9;]*m/g, "") ?? "";
     assert.deepEqual(errors, []);
     assert.match(render(), /statusline-model\(cc-statusline-faux\)/, "synchronous fallback");
-    assert.equal(footer?.render(120).length, 2, "fallback uses the normal two-row layout");
+    assert.equal(footer?.render(root.length + 120).length, 2, "fallback uses the normal two-row layout");
     const deadline = Date.now() + 8_000;
     // R/W accounting is produced by the asset, not by MAIN_INITIAL_LINES.
     while (!render().includes("R:0·W:0") && Date.now() < deadline) await delay(20);
     assert.match(render(), /↑0·↓0.*R:0·W:0/, "external default script replaced the fallback");
-    assert.equal(footer?.render(120).length, 2, "default command does not change height without contributions");
+    assert.equal(footer?.render(root.length + 120).length, 2, "default command does not change height without contributions");
     assert.match(render(), /statusline-model\(cc-statusline-faux\)/);
     assert.doesNotMatch(render(), /\[\[pi:slot:/, "host composed semantic slots");
     assert.deepEqual(errors, []);

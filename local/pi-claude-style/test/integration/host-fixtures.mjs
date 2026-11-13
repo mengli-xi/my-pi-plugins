@@ -37,7 +37,7 @@ const COLS = 120;
 const ROWS = 40;
 // Scenarios run under a short temporary root so Pi's footer never truncates
 // the cwd; a requested artifact directory receives a copy at the end.
-const runRoot = mkdtempSync(join(tmpdir(), "cchf-"));
+const runRoot = mkdtempSync(join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), "cchf-"));
 // Pi looks up `fd` and `rg` on PATH and, offline, prints a startup warning into
 // the transcript when one is missing. Whether this machine happens to have them
 // changed the chat height and therefore every snapshot below the startup block,
@@ -45,6 +45,11 @@ const runRoot = mkdtempSync(join(tmpdir(), "cchf-"));
 const toolBin = join(runRoot, "bin");
 mkdirSync(toolBin, { recursive: true });
 for (const tool of ["fd", "rg"]) writeFileSync(join(toolBin, tool), `#!/bin/sh\necho "${tool} fixture"\n`, { mode: 0o755 });
+writeFileSync(join(toolBin, "wl-copy"), `#!${process.execPath}
+import { appendFileSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+appendFileSync(join(process.env.CC_HOST_FIXTURE_ROOT, "events.jsonl"), JSON.stringify({ event: "selection-copy", text: readFileSync(0, "utf8") }) + "\\n");
+`, { mode: 0o755 });
 const fixturePath = process.env.PATH ? `${toolBin}:${process.env.PATH}` : toolBin;
 const artifactRoot = process.env.CC_HOST_FIXTURE_ARTIFACTS ? resolve(process.env.CC_HOST_FIXTURE_ARTIFACTS) : runRoot;
 const delay = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -94,6 +99,8 @@ class PiTerminal {
       // depending on machine load.
       CC_HOST_FIXTURE_TPS: "6",
       PATH: fixturePath,
+      ...(extraEnv.CC_HOST_FIXTURE_COPY_SELECTION && process.platform === "linux"
+        ? { WAYLAND_DISPLAY: "fixture-wayland", DISPLAY: "", TERMUX_VERSION: "" } : {}),
       ...extraEnv,
     });
     let presentationPath = extensions[0];
