@@ -55,7 +55,7 @@ interface SelectorHost {
   selectedIndex?: number;
   currentModel?: CompatModelLike;
   scope?: "all" | "scoped";
-  searchInput?: { getValue(): string };
+  getSearchInput: ModelSelectorComponent["getSearchInput"];
   listContainer?: Container;
   scopeText?: { setText(text: string): void };
   scopeHintText?: { setText(text: string): void };
@@ -109,7 +109,7 @@ export function modelSelectorCompat(instance: unknown): ModelSelectorCompat {
     set selectedIndex(value) { host.selectedIndex = value; },
     get currentModel() { return host.currentModel; },
     get scope() { return host.scope; },
-    get searchValue() { return host.searchInput?.getValue() ?? ""; },
+    get searchValue() { return host.getSearchInput().getValue(); },
     get listChildren() { return host.listContainer?.children; },
     get errorMessage() { return host.errorMessage; },
     get refreshStatusMessage() { return host.refreshStatusMessage; },

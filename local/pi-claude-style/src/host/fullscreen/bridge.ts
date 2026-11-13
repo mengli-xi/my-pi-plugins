@@ -48,7 +48,7 @@ interface TuiMouseDispatchResult extends TuiMouseEventResult {
 }
 
 interface FullscreenTuiLike extends TUI {
-  focusedComponent?: Component & { wantsMouse?: unknown };
+  getFocusedComponent: TuiAltScreen["getFocusedComponent"];
   layoutRoot?: Component;
   currentLayout?: LayoutFrame;
   compositeScrollToEndIndicator?(screen: string[], frame: LayoutFrame, width: number): string[];
@@ -79,7 +79,7 @@ export const PROBES: readonly Probe[] = [
   },
   {
     id: "fullscreen.outsideClick",
-    needs: "TuiAltScreen.prototype.dispatchMouseToOverlay 与实例 focusedComponent/isOverlayFocused",
+    needs: "TuiAltScreen.prototype.dispatchMouseToOverlay 与实例 isOverlayFocused（焦点经公开 getFocusedComponent 读取）",
     breaks: "fullscreen 下详情面板的外部点击关闭失效，置顶问题条点了不跳转",
     check: () => typeof (TuiAltScreen.prototype as unknown as FullscreenTuiLike).dispatchMouseToOverlay === "function",
   },
@@ -336,8 +336,10 @@ function installMousePatch(interceptor: PressInterceptor): () => void {
         const claimed = intercept(this, event);
         if (claimed) { markOk("fullscreen.outsideClick"); return { hit: true, result: claimed }; }
       }
-      if (this.focusedComponent?.wantsMouse !== true || this.isOverlayFocused?.() !== true) return overlay;
-      const component = this.focusedComponent;
+      // Fail open if the host drops the public getter instead of throwing on every click.
+      if (typeof this.getFocusedComponent !== "function") return overlay;
+      const component = this.getFocusedComponent() as (Component & { wantsMouse?: unknown }) | null;
+      if (component?.wantsMouse !== true || this.isOverlayFocused?.() !== true) return overlay;
       const handled = component.handleMouse?.(event);
       if (!handled?.handled) return overlay;
       markOk("fullscreen.outsideClick");

@@ -21,7 +21,7 @@ function fixture() {
   const pi = { on(name: string, handler: Function) {
     const set = handlers.get(name) ?? new Set(); set.add(handler); handlers.set(name, set);
     return () => { set.delete(handler); };
-  }, registerMessageRenderer() {} } as unknown as ExtensionAPI;
+  }, registerMessageRenderer() {}, registerEntryRenderer() {} } as unknown as ExtensionAPI;
   const terminal = { columns: 120, rows: 40, write() {}, setProgress() {} } as unknown as Terminal;
   const renderer = new TuiAltScreen(terminal);
   const chat = new Container(), document = new Container();

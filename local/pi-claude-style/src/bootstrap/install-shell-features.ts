@@ -1,7 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { installEditorChrome } from "../editor-chrome.ts";
 import { clipboardImageMarkdownTransformer } from "../image-marker.ts";
-import { ownedMarkdownTransformer } from "../presentation-owner.ts";
 import { installInternalsMonitor } from "../internals-report.ts";
 import type { LifecycleManager } from "../lifecycle.ts";
 import type { CcStyleObservability } from "../observability.ts";
@@ -22,7 +21,7 @@ export function installShellFeatures(
   statuslineTranscriptCache: StatuslineTranscriptCache,
   layout: () => FullscreenLayoutConfig,
 ): void {
-  pi.registerMarkdownTransformer(ownedMarkdownTransformer(pi, clipboardImageMarkdownTransformer));
+  pi.registerMarkdownTransformer(clipboardImageMarkdownTransformer);
   let fullscreen: FullscreenHost | undefined;
   lifecycle.install({
     id: "fullscreen-host",

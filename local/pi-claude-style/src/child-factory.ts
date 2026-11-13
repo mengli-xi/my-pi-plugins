@@ -7,7 +7,7 @@ import { installTranscriptFeature } from "./features/transcript/install.ts";
 import { clipboardImageMarkdownTransformer } from "./image-marker.ts";
 import { LifecycleManager } from "./lifecycle.ts";
 import { CcStyleObservability } from "./observability.ts";
-import { disposePresentationOwner, installPresentationOwner, ownedMarkdownTransformer } from "./presentation-owner.ts";
+import { disposePresentationOwner, installPresentationOwner } from "./presentation-owner.ts";
 import { createRuntimeScope } from "./runtime-scope.ts";
 import installStatusLine from "./statusline/install.ts";
 import { CHILD_INITIAL_LINES } from "./statusline/initial-lines.ts";
@@ -59,7 +59,7 @@ export function createClaudeStyleChildExtension(options: ClaudeStyleChildOptions
         },
       });
       installPresentationOwner(api);
-      api.registerMarkdownTransformer(ownedMarkdownTransformer(api, clipboardImageMarkdownTransformer));
+      api.registerMarkdownTransformer(clipboardImageMarkdownTransformer);
       const runtime = createRuntimeScope();
       const lifecycle = new LifecycleManager();
       const effective = new ConfigService({ readOnly: true }).active;

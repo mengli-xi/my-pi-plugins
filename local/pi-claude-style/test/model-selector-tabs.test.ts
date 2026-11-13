@@ -20,7 +20,7 @@ import {
 	MODEL_CAPACITY_WATCH_CHANNEL,
 } from "../src/integration-contracts.ts";
 import { auditInternals, resetInternals, setHealthPath, flushInternalsHealth } from "../src/internals.ts";
-import { prepareModelSelectorRow } from "../src/compat/model-selector.ts";
+import { modelSelectorCompat, prepareModelSelectorRow } from "../src/compat/model-selector.ts";
 
 const strip = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
 
@@ -505,4 +505,45 @@ test("model selection and provider shortcuts live only in the right-aligned foot
   assert.ok(visibleWidth(narrow) <= 40);
   assert.match(narrow, /close.* ──$/);
   component.dispose();
+});
+
+
+test("filter forwards preferredModel on both provider and fail-open paths", () => {
+  restore();
+  const prototype = ModelSelectorComponent.prototype as any;
+  const native = prototype.filterModels;
+  const calls: unknown[][] = [];
+  prototype.filterModels = function (...args: unknown[]) { calls.push(args); return native.apply(this, args); };
+  const release = installProviderTabbedModelSelector();
+  try {
+    const { component } = selector([], MODELS.slice(0, 2));
+    const preferred = MODELS[1];
+    calls.length = 0;
+    (component as any).filterModels("claude", preferred);
+    assert.deepEqual(calls, [["claude", preferred]]);
+    calls.length = 0;
+    assert.throws(() => prototype.filterModels.call({}, "fallback", preferred));
+    assert.deepEqual(calls, [["fallback", preferred]], "fallback calls native exactly once with both arguments");
+    component.dispose();
+  } finally { release(); prototype.filterModels = native; }
+});
+
+test("native preferred selection and public search input survive provider tabs", () => {
+  restore();
+  const models = MODELS.slice(0, 2);
+  const control = selector([], models).component;
+  (control as any).filterModels("claude", models[1]);
+  const selected = (control as any).filteredModels[(control as any).selectedIndex].id;
+  control.dispose();
+  restore = installProviderTabbedModelSelector();
+  const { component } = selector([], models);
+  try {
+    component.getSearchInput().setValue("claude");
+    (component as any).filterModels("claude", models[1]);
+    assert.equal((component as any).filteredModels[(component as any).selectedIndex].id, selected);
+    assert.equal(modelSelectorCompat({ getSearchInput: () => component.getSearchInput() }).searchValue, "claude",
+      "adapter needs only the public getter, not a private searchInput field");
+    component.handleInput("\t");
+    assert.equal(component.getSearchInput().getValue(), "claude");
+  } finally { component.dispose(); }
 });

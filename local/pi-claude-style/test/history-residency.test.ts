@@ -253,6 +253,7 @@ test("native append capture gives a real custom message the same fold key when a
   const native = InteractiveMode.prototype as any, chat = new Container();
   const receiver = { chatContainer: chat, toolOutputExpanded: false, outputPad: 1,
     session: { extensionRunner: { getMessageRenderer: () => (_message: unknown, { expanded }: { expanded: boolean }) => ({ render: () => [expanded ? "expanded" : "collapsed"], invalidate() {} }) } },
+    getMarkdownTransformers: () => [],
     getMarkdownThemeWithSettings() { return undefined; }, addMessageToChat: native.addMessageToChat,
     renderSessionItems(items: unknown[]) { for (const item of items) this.addMessageToChat(item); },
   };

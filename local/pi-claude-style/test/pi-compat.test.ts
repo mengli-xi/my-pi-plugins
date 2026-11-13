@@ -35,6 +35,7 @@ test("public exported members are verified by TypeScript, not private probes", (
     [
       "assistant-message.updateContent",
       "editor-chrome.editor",
+      "fullscreen.focus",
       "model-selector-tabs.rowPresentation",
       "presentation-owner.renderer-boundaries",
       "repeated-errors.notify",

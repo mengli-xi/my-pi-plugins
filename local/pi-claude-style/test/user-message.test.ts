@@ -20,6 +20,7 @@ interface Handler {
 function stubPi() {
   const handlers = new Map<string, Handler>();
   const pi = {
+    registerEntryRenderer() {},
     on: (name: string, handler: Handler) => handlers.set(name, handler),
   } as never;
   const start = () =>

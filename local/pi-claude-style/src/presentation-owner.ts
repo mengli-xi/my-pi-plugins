@@ -1,4 +1,5 @@
-import type { ExtensionAPI, ExtensionContext, MarkdownTransformer } from "@earendil-works/pi-coding-agent";
+import { randomUUID } from "node:crypto";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { TextOpener } from "./openers.ts";
 import type { TUI } from "@earendil-works/pi-tui";
 import { AssistantMessageComponent, ExtensionRunner, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
@@ -16,6 +17,7 @@ interface Patch {
 }
 interface Owner {
   live: boolean;
+  rendererKey: string;
   openText?: TextOpener;
   tui?: TUI;
   locals: Map<object, object>;
@@ -31,7 +33,7 @@ interface Registry {
   patches: WeakMap<object, Map<PropertyKey, Patch>>;
   requests?: WeakMap<object, Owner>;
   sessions?: Map<string, Owner>;
-  transformerLookup?: ExtensionRunner["getMarkdownTransformers"];
+  entryLookup?: ExtensionRunner["getEntryRenderer"];
   current?: Owner;
 }
 // Internal CC ownership, shared by the source and bundled child module graphs.
@@ -70,11 +72,10 @@ function resolve(receiver: object, args: any[], kind: Kind): Owner | undefined {
       const sessionId = runner.createContext().sessionManager.getSessionId();
       const knownSession = shared.sessions?.get(sessionId);
       if (knownSession?.live) return knownSession;
-      // Reload restores history before session_start. Identify this runner by
-      // our own publicly registered callback, never by Pi's private fields.
-      for (const transform of shared.transformerLookup?.call(runner) ?? []) {
-        const registered = shared.receivers.get(transform);
-        if (!registered?.live) continue;
+      // Reload restores history before session_start. Query an owner-specific
+      // public registration, not callback identity (Pi may wrap callbacks).
+      for (const registered of shared.owners) {
+        if (!registered.live || !shared.entryLookup?.call(runner, registered.rendererKey)) continue;
         registered.sessionId = sessionId;
         (shared.sessions ??= new Map()).set(sessionId, registered);
         return registered;
@@ -94,7 +95,7 @@ function resolve(receiver: object, args: any[], kind: Kind): Owner | undefined {
   if (!owner && kind === "mode") {
     // Reload paints history before session_start mounts extension widgets.
     // Features with an audited mode/runner seam can identify that receiver by
-    // the owned public Markdown transformer already registered on its runner.
+    // the owner-specific public entry renderer registered on its runner.
     owner = [...shared.owners].find(candidate => {
       try { return candidate.live && candidate.modeMatches?.(receiver); } catch { return false; }
     });
@@ -108,10 +109,12 @@ export function installPresentationOwner(pi: ExtensionAPI): void {
   const shared = registry();
   let owner = shared.apis.get(pi);
   if (owner) return;
-  owner = { live: true, locals: new Map(), patches: new Set() };
+  owner = { live: true, rendererKey: `pi-claude-style:owner:${randomUUID()}`, locals: new Map(), patches: new Set() };
   shared.apis.set(pi, owner);
   shared.owners.add(owner);
-  shared.transformerLookup ??= ExtensionRunner.prototype.getMarkdownTransformers;
+  shared.entryLookup ??= ExtensionRunner.prototype.getEntryRenderer;
+  // No entry is appended; this registration is only an owner lookup boundary.
+  pi.registerEntryRenderer(owner.rendererKey, () => ({ render: () => [], invalidate() {} }));
   const installed = owner;
   // Idle sendMessage() reaches the session subscriber without an extension
   // message_start event. Its component is constructed before it joins the TUI.
@@ -419,15 +422,6 @@ export function openPresentationText(receiver: object, ...args: Parameters<TextO
 export function bindPresentationReceiver(receiver: object): void {
   const shared = registry();
   if (shared.current?.live) shared.receivers.set(receiver, shared.current);
-}
-
-/** Register an owned callback identity, including before a UI context exists. */
-export function ownedMarkdownTransformer(pi: ExtensionAPI, transform: MarkdownTransformer): MarkdownTransformer {
-  const owner = registry().apis.get(pi);
-  if (!owner) return transform;
-  const registered: MarkdownTransformer = (...args) => transform(...args);
-  registry().receivers.set(registered, owner);
-  return registered;
 }
 
 /**

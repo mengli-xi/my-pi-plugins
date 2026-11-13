@@ -23,7 +23,7 @@ export const PI_1_5_SURFACES: readonly PiCompatSurface[] = [
   {
     id: "presentation-owner.renderer-boundaries",
     owner: "ExtensionRunner / Component and Focusable / ToolExecutionComponent",
-    members: ["createContext", "getEntryRenderer", "getMessageRenderer", "resolveToolRenderers", "getMarkdownTransformers", "ExtensionAPI.registerMarkdownTransformer", "Component.render/invalidate/handleInput/handleMouse/wantsKeyRelease", "Focusable.focused", "TuiMouseEvent"],
+    members: ["createContext", "getEntryRenderer", "getMessageRenderer", "resolveToolRenderers", "getMarkdownTransformers", "ExtensionAPI.registerMarkdownTransformer", "ExtensionAPI.registerEntryRenderer", "Component.render/invalidate/handleInput/handleMouse/wantsKeyRelease", "Focusable.focused", "TuiMouseEvent"],
     stability: "public",
     verification: "typescript",
   },
@@ -121,7 +121,7 @@ export const PI_1_5_SURFACES: readonly PiCompatSurface[] = [
   {
     id: "model-selector-tabs.rowPresentation",
     owner: "Model / Text",
-    members: ["Model.name", "Model.contextWindow", "Model.input", "Text.setText"],
+    members: ["Model.name", "Model.contextWindow", "Model.input", "Text.setText", "ModelSelectorComponent.getSearchInput", "Input.getValue"],
     stability: "public",
     verification: "typescript",
   },
@@ -134,7 +134,6 @@ export const PI_1_5_SURFACES: readonly PiCompatSurface[] = [
       "activeModels",
       "filteredModels",
       "selectedIndex",
-      "searchInput",
       "listContainer",
       "listContainer.children[].text",
       "refreshStatusMessage",
@@ -182,9 +181,16 @@ export const PI_1_5_SURFACES: readonly PiCompatSurface[] = [
     verification: "live-probe",
   },
   {
+    id: "fullscreen.focus",
+    owner: "TuiAltScreen",
+    members: ["getFocusedComponent"],
+    stability: "public",
+    verification: "typescript",
+  },
+  {
     id: "fullscreen.outsideClick",
     owner: "TuiAltScreen",
-    members: ["dispatchMouseToOverlay", "focusedComponent", "isOverlayFocused"],
+    members: ["dispatchMouseToOverlay", "isOverlayFocused"],
     stability: "private",
     verification: "offline-probe",
   },

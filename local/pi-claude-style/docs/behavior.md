@@ -56,7 +56,7 @@ load、retry 和 queue 仍由本包绘制，provider owner 只提供语义数据
 
 - `Alt+O`：打开最新的工具分组。
 - `Alt+T`：折叠或展开 spinner 下方的 todo 列表。
-- `/model` / `Ctrl+L`：model 按 provider 分组到 tab 中；`Tab` 和 `Shift+Tab` 在 tab 之间移动，搜索和选择仍使用原生行为。 单 provider tab 的模型行省略重复的 `[provider]`；`scoped` 筛选结果包含多个 provider 时保留标签，区分同名模型。 所有 provider 的模型行尾都读取模型自身上下文窗口和图片输入能力，显示如 `IMAGE 600k`，不支持图片时用 `IMAGE` 的等宽空白占位；窗口按完整筛选列表的最大文本宽度左补空白，元数据段固定贴最右、负载/额度在左，因此容量长度不移动图片/窗口列；不依赖 capacity snapshot，空间不足先保留上下文/图片标记，仍放不下则保留原模型行。模型 id 后以 muted 显示自定义展示名（非空、不等于 id、且不以 id 结尾）；空间不足先省略展示名，再按原有顺序保留行尾元数据，原生搜索已匹配展示名。每个 tab 显示其 provider 的 model 总数，导航提示位于底部分隔线中，selector 为最大 provider 预留内容高度以避免切换 tab 时跳动。加载 `pi-model-capacity` 后，model 负载/quota、请求并发量、订阅窗口以及账户 remaining 会原地刷新；当前 provider 摘要与 Pi 原生 `Model catalogs refreshed.` 合并为一行，不再另占一行。quota 按剩余量使用暗绿、暗黄、暗红，load 保持 muted，DeepSeek remaining 在 >0 时为暗绿、耗尽为暗红。selector 只负责展示，并在关闭时停止轮询。
+- `/model` / `Ctrl+L`：model 按 provider 分组到 tab 中；`Tab` 和 `Shift+Tab` 在 tab 之间移动，搜索通过公开 `getSearchInput()` 读取，选择和 catalog 后台刷新保留原生 `preferredModel` 语义（Pi 1.5.2 起才有这个参数，1.5.0 忽略它）。 单 provider tab 的模型行省略重复的 `[provider]`；`scoped` 筛选结果包含多个 provider 时保留标签，区分同名模型。 所有 provider 的模型行尾都读取模型自身上下文窗口和图片输入能力，显示如 `IMAGE 600k`，不支持图片时用 `IMAGE` 的等宽空白占位；窗口按完整筛选列表的最大文本宽度左补空白，元数据段固定贴最右、负载/额度在左，因此容量长度不移动图片/窗口列；不依赖 capacity snapshot，空间不足先保留上下文/图片标记，仍放不下则保留原模型行。模型 id 后以 muted 显示自定义展示名（非空、不等于 id、且不以 id 结尾）；空间不足先省略展示名，再按原有顺序保留行尾元数据，原生搜索已匹配展示名。每个 tab 显示其 provider 的 model 总数，导航提示位于底部分隔线中，selector 为最大 provider 预留内容高度以避免切换 tab 时跳动。加载 `pi-model-capacity` 后，model 负载/quota、请求并发量、订阅窗口以及账户 remaining 会原地刷新；当前 provider 摘要与 Pi 原生 `Model catalogs refreshed.` 合并为一行，不再另占一行。quota 按剩余量使用暗绿、暗黄、暗红，load 保持 muted，DeepSeek remaining 在 >0 时为暗绿、耗尽为暗红。selector 只负责展示，并在关闭时停止轮询。
 - `/tool-transcript`：选择并打开历史分组。
 - `/tool-transcript show`：显示生效的 runtime 状态。
 - `/tool-transcript config`：显示配置路径。
@@ -605,7 +605,8 @@ user-message 装饰开关；历史与 streaming message identity 通过公开 se
 editor factory，statusline frame 按 session ID 保存 reload handoff，child 使用局部 frame。
 custom-entry registry 保持原 shape，按生成的 component 分派 opener 并引用计数。
 公开 ExtensionRunner 的 renderer lookup 用 session ID 识别归属；历史恢复早于 session_start
-时，用 CC 自己已注册的公开 Markdown transformer callback identity 识别 runner。EntryRenderer
+时，用每个 owner 独有的公开 `registerEntryRenderer` 注册键，经 `getEntryRenderer` 查询识别 runner；
+不比较回调 identity，不执行其他扩展的 Markdown transformer，也不追加占位 entry。EntryRenderer
 与 MessageRenderer 返回值使用 CC 自有 facade，在组件操作期间传递 scope；facade 不继承 Container，
 不添加 children、键盘或焦点语义。公开成员按原对象实际有无动态转发，focused 的读取和写入、
 wantsKeyRelease 的变化、getter/setter、class receiver、可选 dispose 与 symbol/layout 方法均保留。
@@ -671,7 +672,7 @@ managed child factory 必须在 execution 装配时安装，不等首次 view。
 
 所有压缩摘要留在实际发生的位置，只在**最新一次**压缩的 `firstKeptEntryId` 前插入「以上 N 条消息已压缩进摘要」分隔线；N 计该位置之前的 message entry，不含配置、custom entry 或摘要条目。现场压缩只重建常驻批次，保留未加载锚点；分隔线和摘要所在批次重载后按原始位置恢复，保留尾部不重复显示。全屏搜索只覆盖当前驻留部分，以前加载过但已卸载的正文也暂不参与搜索。上箭头输入历史独立从整条分支选取最近至多 100 个可入历史的用户输入，交给原生 append/editor 保留修剪与相邻去重；等 `session_start` 安装 editor 完成后单独填入，正文初始渲染和补载均不重复填入，也不清理活动工具状态。regular 模式保留 Pi 原生的上下文历史显示，不启用整分支和批次缓存。
 
-新增私有边界 `history.renderEntries` 行为校验 `renderSessionEntries` 及现有 compaction dispatch 两个分支的同步 clear/render，真实 dispatch 也检查同步次数；读取 mode 的 `session/sessionManager/renderer`。`session` 只用于通过公开 `AgentSession.extensionRunner` 和已注册 Markdown transformer 识别 `/reload` 重画早于 `session_start` 的归属。`history.selectionAnchors` 校验补载涉及的 `selectionAnchor/selectionFocus/selectionInitialRange/lastClick` 内容坐标。复用已登记的 `chatContainer/addMessageToChat`、`handleEvent` 和 fullscreen frame/scroll metadata；两项分别由 `scripts/check-internals-host.mjs` 与 `bun test/integration/full-history.mjs` 检查。安装后运行中失配同样完整回退：取消补载、撤掉窗口和加载行，在 idle 且原生 dispatch 完成后，先恢复选区方法，再按 `buildContextEntries()` 同步 GroupStore/Activity 两份 projection 并调用原生 renderer；`/internals` 记录失配，regular 不受影响。
+新增私有边界 `history.renderEntries` 行为校验 `renderSessionEntries` 及现有 compaction dispatch 两个分支的同步 clear/render，真实 dispatch 也检查同步次数；读取 mode 的 `session/sessionManager/renderer`。`session` 只用于通过公开 `AgentSession.extensionRunner` 和 owner 独有的公开 entry-renderer 注册键识别 `/reload` 重画早于 `session_start` 的归属。`history.selectionAnchors` 校验补载涉及的 `selectionAnchor/selectionFocus/selectionInitialRange/lastClick` 内容坐标。复用已登记的 `chatContainer/addMessageToChat`、`handleEvent` 和 fullscreen frame/scroll metadata；两项分别由 `scripts/check-internals-host.mjs` 与 `bun test/integration/full-history.mjs` 检查。安装后运行中失配同样完整回退：取消补载、撤掉窗口和加载行，在 idle 且原生 dispatch 完成后，先恢复选区方法，再按 `buildContextEntries()` 同步 GroupStore/Activity 两份 projection 并调用原生 renderer；`/internals` 记录失配，regular 不受影响。
 
 `PI_BIN=/path/to/pi bun test/integration/full-history.mjs` 用合成会话和 faux provider 检查完整历史、补载选区/视口、两类现场压缩、reload、settings rebuild、tree、fork、new、resume、输入历史与运行中回退；另用 2800 余条记录检验卸载、双向重载、折叠状态、选区保护和多次压缩。
 

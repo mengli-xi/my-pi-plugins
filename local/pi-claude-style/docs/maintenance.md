@@ -40,6 +40,27 @@ Working、typewriter、goal、preload、expiry 共用 runtime scheduler，4ms �
 
 Pi API 基线是 1.5，catalog 保留历史文件名 `src/compat/pi-1.3.ts`。25 个 private contracts（16 eager、9 live）与 probe 集合一一对应；公开 renderer API 由 typecheck/常规测试覆盖。health 先更新内存，再异步 atomic writer 合并落盘，shutdown flush；render/input 禁同步健康文件写入。prototype realm identity 必须与最终 host 一致，不添加 structural fallback 掩盖错误 class。
 
+### Pi 私有接缝与公开替代边界
+
+核对 stock Pi 1.5.2 的公开导出、声明与实现；公开替代也要求在 1.5.0 可用。下表的文件名位于
+`src/compat/`，`presentation-owner.ts` 位于 `src/`。保留不等于可以删功能，仍由原 probe 和宿主测试约束。
+上游路径相对 `packages/coding-agent/src/`，TUI 路径相对 `packages/tui/src/`。
+
+| 接缝 | 当前选择与依据 |
+| --- | --- |
+| full-history | 保持。`modes/interactive/interactive-mode.ts` 的 `renderSessionEntries/renderSessionItems`、renderer 和 chat container 仍私有；公开 `SessionManager.getBranch()` 只读数据，`context` 改模型上下文，均不能替代窗口驻留、补载及同步压缩重画。TUI 的公开 selection reset/copy 不提供坐标重映射。 |
+| model-selector | 搜索读取已换公开 API：`ModelSelectorComponent.getSearchInput()` → `Input.getValue()`；两版均公开。其余保持：filter/list/model arrays/scope/refresh fields 与 `Text.text` 仍私有，无内置 `/model` 装饰接口；公开自建 picker 不能保留原生刷新、默认模型保存等全部行为。`filterModels` 包装透传 `preferredModel`。 |
+| working-retry | 保持。`InteractiveMode.handleEvent/showStatusIndicator` 仍私有；公开 `ctx.ui.setWorking*` 只控制 working，不替换 retry indicator；扩展事件没有 `auto_retry_start/end`，不能保留倒计时、原生 Esc 和最终错误行为。 |
+| retry-session | 保持。`AgentSession.subscribe`、`bindExtensions` 和 `InteractiveMode.init` 已公开，但没有扩展级的 pre-bind session 订阅/after-init view 投影钩子；prototype 生命周期包装继续按私有合同探测，以保留后台首次进入及重进恢复。 |
+| session-info | 保持。`InteractiveMode.handleSessionCommand/chatContainer` 仍私有；公开 stats 和 `ctx.ui.custom` 不能截获内置 `/session` 并原样搬入面板，重写统计也会丢原生报告行为。 |
+| user-message | 保持。`components/user-message.ts` 的 `text`、mode 的 append/container 仍私有；Markdown transformer 只能改 Markdown，不能替代时间戳绑定、折叠行及 mounted component 归属。公开 render/mouse/branch API 继续使用。 |
+| assistant-message | 保持。`components/assistant-message.ts` 的 contentContainer/outputPad/isStreaming/lastMessage、TUI `MouseRegion.child` 与 `Markdown.defaultTextStyle` 仍私有；公开 `updateContent/setHideThinkingBlock` 不提供子项替换、源快照保留和 Thinking disclosure/typewriter 边界。 |
+| editor-image-segment | 保持。TUI `components/editor.ts` 的 `segment` 仍私有；公开 paste、text、cursor、history-add 不提供自定义原子段，原生 paste marker 绑定的是其自身 pastedTexts，不能表达 CC 图片路径与 Undo 映射。 |
+| pi-1.3.ts | 焦点读取已换公开 `TuiAltScreen.getFocusedComponent()`，两版均公开；保持目录及剩余合同。TUI `tui-alt-screen.ts` 的选区着色、帧合成、布局坐标、外部点击分派仍私有；公开布局设置、selection reset/copy 和 Editor `isShowingAutocomplete()` 不提供帧回调、菜单几何、选区重定位。Editor history/index 与 mode widget spacing 也无公开替代；公开 API 成员单独登记，不把 exported class 当作所有字段公开。 |
+| presentation-owner.ts | 已换公开 API：`registerEntryRenderer` 与 `ExtensionRunner.getEntryRenderer` 查询每个 owner 独有的注册键，替代 Markdown callback identity；不写会话、不运行 transformer。已有公开 renderer/component 包装和已审计 append/container seam 保持，以保留延迟 render、Main/child 隔离、reload pre-bind 和 teardown。 |
+
+搜索 getter 的 native 对照、owner pre-bind/跨 owner/reload/迟到 teardown、原生筛选参数的回归在包内测试；完整画面与历史/child 生命周期由 `check:host` 和根 integration 验证。
+
 `pi.claude-style.internals.v1` 是可选的进程内诊断贡献协议，不是执行或 UI ownership 授权。CC 发布 `globalThis[Symbol.for(key)]`：`probes` 为按稳定 id 索引的 Map，条目包含 `id/needs/breaks` 和可选 `check(): boolean`；可选 `health` 含 Pi `version` 与按 id 保存的 `state/detail`，state 为 ok/missing/broken/unexercised。Side Chat 经此登记、更新自己的两项 instance probe，不 import CC 源码或读健康文件。缺 CC 时贡献无人接收，Side 仍执行自己的本地检查；producer 不持有 registry 的文件路径或 writer。
 
 通知、版本和 package 更新走 Pi 原生。保留公开 `showError` 窄包装的理由是把最终 retry-failed 通知吸收到既有重复错误行，其余全部原样交还；info/warning 切断聚合。Working retry 四项 probe 只用于事件/indicator 与 session/view 恢复，失配保留原生重试或当前视图，不改 retry policy。provider activity 只读通用协议，不重引专用品牌 API。

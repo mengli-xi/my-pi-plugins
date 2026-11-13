@@ -63,7 +63,7 @@ interface SelectorState {
 	nativeKeyHints?: Component;
 }
 
-type FilterModels = (this: unknown, query: string) => void;
+type FilterModels = (this: unknown, query: string, preferredModel?: ModelLike) => void;
 type UpdateList = (this: unknown) => void;
 type HandleInput = (this: unknown, keyData: string) => void;
 type Dispose = (this: unknown) => void;
@@ -123,7 +123,7 @@ export const PROBES: Probe[] = [
 	},
 	{
 		id: "model-selector-tabs.fields",
-		needs: "ModelSelectorComponent 实例的模型数组、搜索框、列表容器与原生行 Text.text、refreshStatusMessage/refreshStatusSuccess、根 children、closed 和 tui.requestRender 字段",
+		needs: "ModelSelectorComponent 实例的模型数组、列表容器与原生行 Text.text、refreshStatusMessage/refreshStatusSuccess、根 children、closed 和 tui.requestRender 字段",
 		breaks: "/model 退回未按 provider 分组的原生列表，catalog refresh 与 capacity 无法合并",
 	},
 ];
@@ -491,7 +491,7 @@ export function installProviderTabbedModelSelector(capacitySource?: ModelCapacit
 		return () => {};
 	}
 
-	const patchedFilter: FilterModels = function providerFilter(query): void {
+	const patchedFilter: FilterModels = function providerFilter(query, preferredModel): void {
 		let originalModels: ModelItem[] | undefined;
 		let called = false;
 		try {
@@ -501,11 +501,11 @@ export function installProviderTabbedModelSelector(capacitySource?: ModelCapacit
 			originalModels = selector.activeModels;
 			selector.activeModels = modelsForTab(selector, state.selected);
 			called = true;
-			originalFilter.call(this, query);
+			originalFilter.call(this, query, preferredModel);
 			markOk("model-selector-tabs.methods");
 		} catch (error) {
 			markBroken("model-selector-tabs.fields", detail(error));
-			if (!called) originalFilter.call(this, query);
+			if (!called) originalFilter.call(this, query, preferredModel);
 		} finally {
 			if (originalModels) modelSelectorCompat(this).activeModels = originalModels;
 		}

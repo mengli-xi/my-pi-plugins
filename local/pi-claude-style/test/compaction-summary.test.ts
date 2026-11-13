@@ -13,7 +13,7 @@ const message = (summary = "# Kept context\n\n```ts\nconst kept = true;\n```", t
   role: "compactionSummary" as const, summary, tokensBefore, timestamp: 1,
 });
 function host() {
-  return { chatContainer: new Container(), getMarkdownThemeWithSettings: () => undefined, outputPad: 0, toolOutputExpanded: false };
+  return { chatContainer: new Container(), getMarkdownTransformers: () => [], getMarkdownThemeWithSettings: () => undefined, outputPad: 0, toolOutputExpanded: false };
 }
 function append(target: ReturnType<typeof host>, value: ReturnType<typeof message>, owner?: ExtensionAPI): Component {
   const prototype = owner ? presentationPrototype(owner, InteractiveMode.prototype as unknown as TimestampOwner, "mode")
@@ -84,7 +84,7 @@ test("an empty retained summary is explicitly identified in the panel", () => {
 });
 
 test("Main and child rows retain their own opener after Main teardown", () => {
-  const main = { on() {} } as unknown as ExtensionAPI, child = { on() {} } as unknown as ExtensionAPI;
+  const main = { on() {}, registerEntryRenderer() {} } as unknown as ExtensionAPI, child = { on() {}, registerEntryRenderer() {} } as unknown as ExtensionAPI;
   installPresentationOwner(main); installPresentationOwner(child);
   const opened: string[] = [];
   const releaseMain = installCompactCompactionSummaries(main, () => { opened.push("main"); return true; }, () => undefined);
