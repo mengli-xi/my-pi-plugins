@@ -95,6 +95,8 @@ async function stop(runtime) {
 
 try {
   for (const directory of [home, agent, cwd, sessionDir]) mkdirSync(directory);
+  execFileSync("git", ["init", cwd], { stdio: "pipe" });
+  const commonDir = realpathSync(join(cwd, ".git"));
   const settingsPath = join(agent, "settings.json");
   writeFileSync(settingsPath, JSON.stringify({
     packages: [packageRoot, fixtureRoot], extensions: ["-builtin:mcp"],
@@ -115,7 +117,7 @@ export default function(pi) {
   pi.registerProvider(faux.provider);
   pi.on("before_agent_start", event => { event.systemPromptOptions.sections.memory_fixture_other_owner = "preserve other owner"; });
 }`);
-  const memoryDir = join(agent, "pi-cc-memory/projects", createHash("sha256").update(`dir:${cwd}`).digest("hex"), "memory");
+  const memoryDir = join(agent, "pi-cc-memory/projects", createHash("sha256").update(`git:${commonDir}`).digest("hex"), "memory");
   // Seed before process startup: session_start freezes the index even before the first prompt.
   mkdirSync(memoryDir, { recursive: true });
   const indexPath = join(memoryDir, "MEMORY.md");

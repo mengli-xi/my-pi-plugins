@@ -3,6 +3,9 @@ import test from "node:test";
 import { describeFailure, describeInjectionPrompt, describeSchedule, describeTask, formatLocalTime } from "../src/presentation.ts";
 import type { Task } from "../src/task.ts";
 
+// Display helpers intentionally use the process local timezone.
+process.env.TZ = "Asia/Shanghai";
+
 const instant = Date.UTC(2026, 0, 2, 1, 4, 5);
 
 const task: Task = {
