@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, mkdtempSync, unlinkSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, mkdtempSync, rmSync, unlinkSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -459,5 +459,7 @@ try {
   writeFileSync(join(root, "terminal.raw"), raw); shot("final");
   if (child.exitCode === null) { child.kill("SIGTERM"); await Promise.race([child.exited, delay(5000)]); }
   if (child.exitCode === null) child.kill("SIGKILL");
+  await child.exited;
   writeFileSync(join(root, "stderr.log"), await stderr); child.terminal.close();
+  if (!process.env.PI_S2_VIEW_ARTIFACTS) rmSync(root, { recursive: true, force: true });
 }

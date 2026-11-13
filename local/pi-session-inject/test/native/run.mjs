@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const binary = piBin();
 assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), installedPiVersion());
 const artifact = process.env.MAILBOX_NATIVE_ARTIFACT_DIR ?? mkdtempSync(join(tmpdir(), "mailbox-native-"));
+try {
 const bundle = join(artifact, "bundles"); mkdirSync(bundle, { recursive: true });
 execFileSync("bun", ["build", join(root, "first.ts"), join(root, "second.ts"), "--target=node", "--format=esm", "--external=@earendil-works/pi-coding-agent", "--external=@earendil-works/pi-ai", `--outdir=${bundle}`], { stdio: "pipe" });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -115,4 +116,8 @@ for (const scenario of scenarios) {
   writeFileSync(join(directory, "rpc.jsonl"), stdout); writeFileSync(join(directory, "stderr.log"), stderr); results.push(result); console.log(JSON.stringify(result));
 }
 writeFileSync(join(artifact, "summary.json"), JSON.stringify({ binary, version: installedPiVersion(), realRequests: 0, artifact, results }, null, 2));
-console.log(`Artifacts: ${artifact}`); process.exitCode = results.every(result => result.passed) ? 0 : 1;
+if (process.env.MAILBOX_NATIVE_ARTIFACT_DIR) console.log(`Artifacts: ${artifact}`); process.exitCode = results.every(result => result.passed) ? 0 : 1;
+
+} finally {
+  if (!process.env.MAILBOX_NATIVE_ARTIFACT_DIR) rmSync(artifact, { recursive: true, force: true });
+}

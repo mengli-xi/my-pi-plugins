@@ -1,7 +1,7 @@
 import { installedPiVersion } from "../../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -146,5 +146,6 @@ try {
   writeFileSync(join(root, "rpc.jsonl"), stdout);
   writeFileSync(join(root, "stderr.log"), stderr);
   writeFileSync(join(root, "exit.json"), JSON.stringify(exit));
-  assert.deepEqual(exit, { code: 0, signal: null });
+  try { assert.deepEqual(exit, { code: 0, signal: null }); }
+  finally { if (!process.env.PI_PROCESSES_TEST_OUTPUT) rmSync(root, { recursive: true, force: true }); }
 }

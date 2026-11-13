@@ -11,6 +11,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const binary = piBin();
 assert.equal(execFileSync(binary, ["--version"], { encoding: "utf8" }).trim(), installedPiVersion());
 const artifact = process.env.MAILBOX_CANCEL_ARTIFACT_DIR ?? mkdtempSync(join(tmpdir(), "mailbox-cancel-"));
+try {
 const bundle = join(artifact, "bundles"); mkdirSync(bundle, { recursive: true });
 execFileSync("bun", ["build", join(root, "cancel-projection.ts"), "--target=node", "--format=esm", "--splitting", "--external=@earendil-works/*", `--outdir=${bundle}`], { stdio: "pipe" });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -95,4 +96,8 @@ for (const { scenario, receiptOnly, format, fulfilledIndex = 0, allCancelled = f
   results.push(result); console.log(JSON.stringify(result));
 }
 writeFileSync(join(artifact, "summary.json"), JSON.stringify({ version: installedPiVersion(), realRequests: 0, results }, null, 2));
-console.log(`Artifacts: ${artifact}`); process.exitCode = results.every(result => result.passed) ? 0 : 1;
+if (process.env.MAILBOX_CANCEL_ARTIFACT_DIR) console.log(`Artifacts: ${artifact}`); process.exitCode = results.every(result => result.passed) ? 0 : 1;
+
+} finally {
+  if (!process.env.MAILBOX_CANCEL_ARTIFACT_DIR) rmSync(artifact, { recursive: true, force: true });
+}
