@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,7 +33,9 @@ test("bundled daemon starts from a path containing spaces and percent signs with
   });
   const install = join(root, "space %h $HOME dir");
   mkdirSync(install);
-  const entry = join(install, "daemon.js");
+  const alias = join(root, "alias space %h");
+  symlinkSync(install, alias, "dir");
+  const entry = join(alias, "daemon.js");
   copyFileSync(fileURLToPath(new URL("../dist/daemon.js", import.meta.url)), entry);
   const agent = join(root, "agent");
   const paths = schedulerPaths(agent);
