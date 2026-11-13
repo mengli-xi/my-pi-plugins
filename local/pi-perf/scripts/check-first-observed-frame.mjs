@@ -72,5 +72,6 @@ try {
 } finally {
   if (child && child.exitCode === null) child.kill("SIGKILL");
   if (child) await child.exited;
+  child?.terminal?.close();
   rmSync(root, { recursive: true, force: true });
 }
