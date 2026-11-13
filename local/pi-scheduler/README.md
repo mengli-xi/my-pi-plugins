@@ -65,7 +65,7 @@ extension 默认解析当前 Pi package 的公开 CLI bin；编译版保留实�
 - `mailbox-receipts/<id>.json`（及 legacy receipt）：永久去重证据，不随运行历史清理。
 - `occupancy.json`、`daemon.log`、`daemon.lock`：占用、日志与 advisory lock 诊断。
 
-工具与命令仅走本地 Unix socket。socket 使用短且不随 TMPDIR 漂移的用户运行目录（`XDG_RUNTIME_DIR`，缺省或过长时 `/tmp`）；安装服务时固定同一目录，路径中的空格、`%` 和 `$` 按 systemd 语法转义。占用登记使用 session ID、PID、token、generation，持久恢复并检查 PID 存活；多个 live holder 不互相接管。holder 拒绝后每 5 秒重试原身份登记，同一原因警告去重。daemon 不与 live Pi 并发写 session。
+工具与命令仅走本地 Unix socket。socket 优先使用 `XDG_RUNTIME_DIR`，否则保持系统 `tmpdir()` 与原文件名；仅路径超长时使用经属主、非软链及私有权限校验的 `/tmp/pi-scheduler-<uid>/`（0700），不安全则拒绝。安装服务时固定同一默认目录，路径中的空格、`%` 和 `$` 按 systemd 语法转义。占用登记使用 session ID、PID、token、generation，持久恢复并检查 PID 存活；多个 live holder 不互相接管。holder 拒绝后每 5 秒重试原身份登记，同一原因警告去重。daemon 不与 live Pi 并发写 session。
 
 会话空闲时，真实会话活动（`agent_settled`）和 session_start 会立即拉取 daemon 的 offer；完全静默的会话每 30 秒轮询一次，因此新到期的会话任务最多晚约 30 秒被 pickup。
 

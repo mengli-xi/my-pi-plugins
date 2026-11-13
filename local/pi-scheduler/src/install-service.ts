@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { homedir, platform } from "node:os";
+import { homedir, platform, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 /** Each Pi profile owns its service, just as it owns its daemon socket/store. */
@@ -44,7 +44,7 @@ export function launchdPlist(spec: ServiceSpec): string {
   const env: Record<string, string> = {
     PI_CODING_AGENT_DIR: spec.agentDir,
     PI_SCHEDULER_BINARY: spec.piBinary,
-    ...(process.env.XDG_RUNTIME_DIR ? { XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR } : {}),
+    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || tmpdir(),
   };
   if (spec.concurrency) env.PI_SCHEDULER_CONCURRENCY = String(spec.concurrency);
   const envXml = Object.entries(env)
@@ -84,7 +84,7 @@ export function systemdUnit(spec: ServiceSpec): string {
     `Environment=${unitWord(`PI_CODING_AGENT_DIR=${spec.agentDir}`)}`,
     `Environment=${unitWord(`PI_SCHEDULER_BINARY=${spec.piBinary}`)}`,
   ];
-  if (process.env.XDG_RUNTIME_DIR) env.push(`Environment=${unitWord(`XDG_RUNTIME_DIR=${process.env.XDG_RUNTIME_DIR}`)}`);
+  env.push(`Environment=${unitWord(`XDG_RUNTIME_DIR=${process.env.XDG_RUNTIME_DIR || tmpdir()}`)}`);
   if (spec.concurrency) env.push(`Environment=PI_SCHEDULER_CONCURRENCY=${spec.concurrency}`);
   return `[Unit]
 Description=Pi scheduler daemon
