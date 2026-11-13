@@ -10,6 +10,7 @@
  * - PI_SCHEDULER_CONCURRENCY : optional integer, default 5.
  */
 
+import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -98,7 +99,7 @@ export async function main(): Promise<void> {
 }
 
 // Only run when invoked directly, not when imported by tests.
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   void main().catch((error) => {
     // Keep DaemonAlreadyRunningError's intentional exit distinct from a real
     // startup failure, but never leave an unhandled entrypoint rejection.

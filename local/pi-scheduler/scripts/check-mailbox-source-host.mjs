@@ -72,8 +72,10 @@ try {
   console.log(JSON.stringify({ binary, version: version.stdout.trim(), ...result, terminalTransitions: store.listRuns(f.taskId).length,
     scope: "E source callback + real bundled daemon IPC; A1 transport recovery not exercised" }, null, 2));
 } finally {
-  const exited = new Promise((resolve) => daemon.once("exit", resolve));
-  daemon.kill("SIGTERM");
-  await exited;
+  if (daemon.exitCode === null && daemon.signalCode === null) {
+    const exited = new Promise((resolve) => daemon.once("exit", resolve));
+    daemon.kill("SIGTERM");
+    await exited;
+  }
   rmSync(root, { recursive: true, force: true });
 }

@@ -5,7 +5,6 @@
  */
 
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 
 export interface SchedulerPaths {
@@ -23,7 +22,12 @@ export function schedulerPaths(agentDir: string): SchedulerPaths {
   const root = join(agentDir, "scheduler");
   // Keep the socket path short and stable per agent dir.
   const digest = createHash("sha256").update(agentDir).digest("hex").slice(0, 12);
-  const socket = join(tmpdir(), `pi-scheduler-${digest}.sock`);
+  // TMPDIR differs between shells and service managers and can exceed sun_path.
+  // XDG_RUNTIME_DIR is the user runtime contract; the installer freezes it.
+  const name = `pi-scheduler-${process.getuid?.() ?? 0}-${digest}.sock`;
+  const runtime = process.env.XDG_RUNTIME_DIR || "/tmp";
+  const candidate = join(runtime, name);
+  const socket = Buffer.byteLength(candidate) <= 103 ? candidate : join("/tmp", name);
   return {
     root,
     socket,

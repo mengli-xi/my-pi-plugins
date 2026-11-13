@@ -1,3 +1,4 @@
+import { schedulerPaths } from "../src/paths.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { once } from "node:events";
@@ -33,7 +34,7 @@ async function withServer(
   run: (context: { socketPath: string; store: SchedulerStore; occupancy: OccupancyRegistry }) => Promise<void>,
 ): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "pi-scheduler-control-"));
-  const socketPath = join(root, "daemon.sock");
+  const socketPath = schedulerPaths(root).socket;
   const store = new SchedulerStore(join(root, "store"));
   store.init();
   const occupancy = new OccupancyRegistry({ alive: () => true });

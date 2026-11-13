@@ -44,6 +44,7 @@ export function launchdPlist(spec: ServiceSpec): string {
   const env: Record<string, string> = {
     PI_CODING_AGENT_DIR: spec.agentDir,
     PI_SCHEDULER_BINARY: spec.piBinary,
+    ...(process.env.XDG_RUNTIME_DIR ? { XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR } : {}),
   };
   if (spec.concurrency) env.PI_SCHEDULER_CONCURRENCY = String(spec.concurrency);
   const envXml = Object.entries(env)
@@ -80,9 +81,10 @@ ${envXml}
 /** systemd user service unit. WantedBy=default.target = start on login/boot. */
 export function systemdUnit(spec: ServiceSpec): string {
   const env = [
-    `Environment=PI_CODING_AGENT_DIR=${spec.agentDir}`,
-    `Environment=PI_SCHEDULER_BINARY=${spec.piBinary}`,
+    `Environment=${unitWord(`PI_CODING_AGENT_DIR=${spec.agentDir}`)}`,
+    `Environment=${unitWord(`PI_SCHEDULER_BINARY=${spec.piBinary}`)}`,
   ];
+  if (process.env.XDG_RUNTIME_DIR) env.push(`Environment=${unitWord(`XDG_RUNTIME_DIR=${process.env.XDG_RUNTIME_DIR}`)}`);
   if (spec.concurrency) env.push(`Environment=PI_SCHEDULER_CONCURRENCY=${spec.concurrency}`);
   return `[Unit]
 Description=Pi scheduler daemon
@@ -90,7 +92,7 @@ After=default.target
 
 [Service]
 Type=simple
-ExecStart=${spec.runtime} ${spec.daemonEntry}
+ExecStart=:${unitWord(spec.runtime)} ${unitWord(spec.daemonEntry)}
 ${env.join("\n")}
 Restart=always
 RestartSec=5
@@ -155,4 +157,11 @@ function escapeXml(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+/** systemd.syntax quoting; %% prevents specifier expansion, : disables ExecStart $ expansion. */
+function unitWord(value: string): string {
+  return '"' + value.replace(/[%\\"\n\r\t]/g, character => ({
+    "%": "%%", "\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t",
+  })[character]!) + '"';
 }
