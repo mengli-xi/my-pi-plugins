@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { SupervisorClient, type SupervisorEvent } from "../../src/host/supervisor-client.ts";
@@ -147,6 +148,9 @@ test("request deadline closes an uncertain channel", async () => {
     assert.equal(client.closed, true);
     assert.match(lost?.message ?? "", /protocol-timeout/);
   } finally {
-    try { if (client.child.pid) process.kill(-client.child.pid, "SIGKILL"); } catch {}
+    client.terminate("SIGKILL");
+    await client.waitForExit();
+    client.close();
+    await rm(client.root, { recursive: true, force: true });
   }
 });
