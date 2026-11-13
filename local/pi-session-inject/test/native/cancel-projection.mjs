@@ -51,18 +51,21 @@ for (const { scenario, receiptOnly, format, fulfilledIndex = 0, allCancelled = f
     assert.equal(start.engineLoaded, false); assert.equal(start.engineLoading, false);
     live.send("INITIAL"); await live.until(() => live.rows().some(row => row.stage === "settled" && row.calls === 1));
     const snapshotPath = join(directory, "agent", "mailbox", "v1", start.sessionId, "pending.json");
-    const snapshot = () => existsSync(snapshotPath) ? JSON.parse(readFileSync(snapshotPath, "utf8")) : { pending: [], terminal: [] };
+    // ACK/attempt cleanup unlinks pending.json before removing the directory.
+    // Wait for completed GC, not an exists-then-read racing that unlink.
+    const gcComplete = () => !existsSync(dirname(snapshotPath));
     live.send("/canceltest-fulfilled"); await live.until(() => live.rows().some(row => row.stage === "recorded" && row.key === firstKey));
     assert.equal(live.rows().filter(row => row.stage === "request").length, 1, "append does not wake");
     if (allCancelled) {
-      live.send("/canceltest-cancel"); await live.until(() => live.rows().some(row => row.stage === "cancelled" && row.evidence.key === firstKey) && snapshot()?.pending.length === 0 && snapshot()?.terminal.length === 0);
+      live.send("/canceltest-cancel"); await live.until(() => live.rows().some(row => row.stage === "cancelled" && row.evidence.key === firstKey) && gcComplete());
     } else {
-      live.send("FULFILL"); await live.until(() => live.rows().some(row => row.stage === "settled" && row.calls === 2) && snapshot()?.pending.length === 0 && snapshot()?.terminal.length === 0);
+      live.send("FULFILL"); await live.until(() => live.rows().some(row => row.stage === "settled" && row.calls === 2)
+        && live.rows().some(row => row.stage === "terminal" && row.evidence.key === firstKey && row.evidence.outcome === "fulfilled") && gcComplete());
     }
     const before = allCancelled ? 1 : 2;
     live.send("/canceltest-cancelled"); await live.until(() => live.rows().some(row => row.stage === "recorded" && row.key === secondKey));
     assert.equal(live.rows().filter(row => row.stage === "request").length, before, "second append does not wake");
-    live.send("/canceltest-cancel"); await live.until(() => live.rows().some(row => row.stage === "cancelled" && row.evidence.key === secondKey) && snapshot()?.pending.length === 0 && snapshot()?.terminal.length === 0);
+    live.send("/canceltest-cancel"); await live.until(() => live.rows().some(row => row.stage === "cancelled" && row.evidence.key === secondKey) && gcComplete());
     const session = jsonl(start.file), body = session.filter(entry => entry.type === "custom_message" && entry.content === discardedText);
     assert.equal(body.length, 1); assert.ok(session.some(entry => entry.type === "custom" && entry.customType === "agent-mailbox-delivery-v1" && entry.data.terminals.some(item => item.evidence.outcome === "cancelled")));
     live.send("AFTER_CANCEL"); await live.until(() => live.rows().some(row => row.stage === "settled" && row.calls === before + 1));

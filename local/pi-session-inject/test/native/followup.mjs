@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,7 +78,9 @@ for (const scenario of goalOnly ? ["goal"] : [...(process.env.MAILBOX_GOAL_BUNDL
       if (scenario === "fork-return") {
         const child = rows().find(row => row.stage === "fork-child"); assert.equal(child.bodies, 0);
         const snapshot = join(directory, "agent", "mailbox", "v1", child.sessionId, "pending.json");
-        if (existsSync(snapshot)) assert.equal(JSON.parse(readFileSync(snapshot, "utf8")).pending.length, 0);
+        // 空信箱随时可能被 GC 删除，文件不存在也算 pending 为空。
+        try { assert.equal(JSON.parse(readFileSync(snapshot, "utf8")).pending.length, 0); }
+        catch (error) { if (error.code !== "ENOENT") throw error; }
       }
       send("AFTER_REOPEN"); await until(() => rows().filter(row => row.stage === "request").length === 2 && rows().filter(row => row.stage === "settled").length === 2);
       if (scenario === "fork-return") { await until(() => rows().some(row => row.stage === "terminal")); assert.equal(rows().filter(row => row.stage === "settled").at(-1).bodies, 1); }

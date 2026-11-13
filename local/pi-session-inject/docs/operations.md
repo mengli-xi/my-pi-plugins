@@ -30,6 +30,8 @@ Processes、Goal、Subagents、Scheduler、MCP Adapter 通过 producer 接口接
 
 运行 `npm run check`（含 transport SIGKILL 矩阵）、`npm run test:native`、`npm run test:followup`；后两项用 `PI_BIN` 指定 stock Pi（缺省用仓库根安装的 CLI），并安装 Bun。用隔离 HOME/agentDir/cwd/TMPDIR、offline faux 和网络拒绝 fixture，不读日常凭据或会话。真实 Goal 回归另需已获确认并重建的 `MAILBOX_GOAL_BUNDLE`，未提供就不宣称验证了 Goal。通过 workspace 依赖 引用，public exports 直接指向 TypeScript source。
 
+取消投影 native 场景在观察到对应终态后，等待整个空信箱目录被 GC，再推进下一步。
+
 消费者另行安装后，在 disposable profile 用 faux 回归：
 
 - 投递一条通知，检查 accepted、recorded、fulfilled 和 source ACK 分别成立；重复同 key 不重发，换正文报 conflict。
