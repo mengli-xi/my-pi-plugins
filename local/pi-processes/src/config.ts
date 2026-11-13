@@ -256,7 +256,7 @@ export async function loadProcessesConfig(input: { readonly agentDir: string; re
     const config = freeze(validateProcessesConfig(merged));
     assertRequiredExecutionIsolation(config.execution.isolation, required);
     authorities.set(config, { globalPath, ...(input.projectTrusted ? { projectPath } : {}), security: securityProjection(global, globalPath), required: JSON.stringify(required) });
-    await validateExecutable(config.execution.shell, new Set(["sh", "bash", "zsh"]));
+    await validateExecutable(config.execution.shell, new Set(["sh", "dash", "bash", "zsh"]));
     if (config.execution.helperRuntime !== "auto") await validateExecutable(config.execution.helperRuntime);
     await assertProcessesExecutionIsolationCurrent(config);
     return { ok: true, config, sources: [global ? globalPath : "", project ? projectPath : ""].filter(Boolean) };
