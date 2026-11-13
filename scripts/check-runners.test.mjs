@@ -236,9 +236,9 @@ try{scope.check()}catch(e){writeFileSync(${JSON.stringify(result)},JSON.stringif
 test("嵌套宿主被外层中断时，临时根归上层 TMPDIR 清理", { timeout: 45_000 }, async t => {
   const f = fixture(); t.after(() => f.cleanup());
   integrationFixture(f.root);
-  const hostRootFile = join(f.root, "host-root"), parentTmpFile = join(f.root, "parent-tmp");
+  const hostRootFile = join(f.root, "host-root"), parentTmpFile = join(f.root, "parent-tmp"), runtimeFile = join(f.root, "runtime-root");
   const hostWorker = join(f.root, "host-worker.mjs");
-  writeFileSync(hostWorker, `import {writeFileSync} from 'node:fs';import {dirname} from 'node:path';writeFileSync(${JSON.stringify(hostRootFile)},dirname(process.env.HOME));console.log('HOST_READY');setInterval(()=>{},1000);`);
+  writeFileSync(hostWorker, `import {writeFileSync} from 'node:fs';import {dirname} from 'node:path';writeFileSync(${JSON.stringify(hostRootFile)},dirname(process.env.HOME));writeFileSync(${JSON.stringify(runtimeFile)},process.env.XDG_RUNTIME_DIR);writeFileSync(process.env.XDG_RUNTIME_DIR+"/runtime-probe","owned");console.log('HOST_READY');setInterval(()=>{},1000);`);
   writeFileSync(join(f.root, "integration/ask.test.ts"), `import {spawn} from 'node:child_process';import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(parentTmpFile)},process.env.TMPDIR);const c=spawn(process.execPath,[${JSON.stringify(file("./check-host.mjs"))},process.execPath,${JSON.stringify(hostWorker)}],{env:process.env,stdio:'inherit'});await new Promise(r=>c.on('close',r));`);
   const wrapper = join(f.root, "nested.mjs");
   writeFileSync(wrapper, `import {runIntegration} from ${JSON.stringify(new URL("../integration/run.mjs", import.meta.url).href)};process.exitCode=await runIntegration('ask',${JSON.stringify(f.root)});`);
@@ -252,6 +252,8 @@ test("嵌套宿主被外层中断时，临时根归上层 TMPDIR 清理", { time
   const hostRoot = readFileSync(hostRootFile, "utf8"), parentTmp = readFileSync(parentTmpFile, "utf8");
   assert.ok(hostRoot.startsWith(parentTmp + "/"), hostRoot + " not within " + parentTmp);
   assert.equal(existsSync(hostRoot), false);
+  const runtimeRoot = readFileSync(runtimeFile, "utf8");
+  assert.equal(existsSync(join(runtimeRoot, "runtime-probe")), false, "outer interruption also removes the shared runtime artifacts");
   const directory = out.match(/日志：(.*)/)[1].trim();
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   assert.equal(JSON.parse(readFileSync(join(directory, "report.json"))).interrupted, "SIGINT");

@@ -123,7 +123,7 @@ try {
   send("/reload\r"); const reloaded = await wait("ready", 1);
   assert.ok(reloaded.hidden > 700, JSON.stringify(reloaded)); assert.ok(reloaded.users <= 110, JSON.stringify(reloaded));
   assert.deepEqual(reloaded.inputHistory, Array.from({ length: 100 }, (_, i) => `HISTORY_USER_${519 - i}`));
-  send("/fixture-redraw\r"); const redraw = await wait("redraw"); assert.equal(redraw.users, reloaded.users);
+  send("/fixture-redraw\r"); const redraw = await wait("redraw"); assert.equal(redraw.users, reloaded.users, JSON.stringify({ reloaded, redraw }));
   send("/fixture-tree\r"); const tree = await wait("tree"); assert.equal(tree.last, 249); assert.equal(tree.chronological, true);
   send("/fixture-fork\r"); const fork = await wait("ready", 2); assert.equal(fork.last, 199);
   assert.deepEqual(fork.inputHistory, Array.from({ length: 100 }, (_, i) => `HISTORY_USER_${199 - i}`));
