@@ -44,6 +44,7 @@ type MouseFn = NonNullable<Component["handleMouse"]>;
 
 interface PatchablePrototype {
   render: RenderFn;
+  invalidate(): void;
   handleMouse?: MouseFn;
   [key: symbol]: unknown;
 }
@@ -244,6 +245,28 @@ export function installCompactUserMessages(
   const releaseTransformHost = claimUserMessageTransformHost();
   if (!releaseTransformHost) return () => {};
   let activeTheme: Theme | undefined;
+  // One pre-transform frame per live component; native render still runs on hits.
+  interface Frame {
+    native: string[];
+    width: number;
+    theme: Theme | undefined;
+    title: string;
+    day: number;
+    maxLines: number;
+    horizontalPadding: number;
+    verticalPadding: number;
+    topMargin: number;
+    lines: string[];
+    hidden: boolean;
+  }
+  let frames = new WeakMap<object, Frame>();
+  const originalInvalidate = prototype.invalidate;
+  const ownInvalidate = Object.hasOwn(prototype, "invalidate");
+  const invalidate = function(this: object): void {
+    frames.delete(this);
+    originalInvalidate.call(this);
+  };
+  prototype.invalidate = invalidate;
   const boundMessages = new WeakMap<object, AgentMessage>();
   let entryTimes = new WeakMap<object, string>();
   let uniqueTimes = new Map<number, string | undefined>();
@@ -278,17 +301,39 @@ export function installCompactUserMessages(
   };
   prototype.render = function compactUserMessage(width: number): string[] {
     const safeWidth = Math.max(0, Math.floor(width));
-    if (safeWidth < 8) return applyUserMessageTransforms(original.call(this, safeWidth));
+    if (safeWidth < 8) {
+      frames.delete(this);
+      return applyUserMessageTransforms(original.call(this, safeWidth));
+    }
     const innerWidth = Math.max(
       1,
       safeWidth - 2 - config.horizontalPadding * 2,
     );
-    let body: string[];
+    let native: string[];
     try {
-      body = trimEmptyEdges(original.call(this, innerWidth));
+      native = original.call(this, innerWidth);
     } catch (error) {
+      frames.delete(this);
       return applyUserMessageTransforms(original.call(this, safeWidth));
     }
+    const message = boundMessages.get(this);
+    const timestamp = message ? entryTimes.get(message) ?? uniqueTimes.get(message.timestamp) : undefined;
+    const today = new Date();
+    const day = today.getFullYear() * 10000 + today.getMonth() * 100 + today.getDate();
+    const clock = timestamp ? formatUserMessageTimestamp(timestamp, today) : undefined;
+    const titleText = ` ${config.title}${clock ? ` ${clock}` : ""} `;
+    const cached = frames.get(this);
+    if (cached && cached.width === safeWidth && cached.theme === activeTheme && cached.title === titleText && cached.day === day
+      && cached.maxLines === config.maxLines && cached.horizontalPadding === config.horizontalPadding
+      && cached.verticalPadding === config.verticalPadding && cached.topMargin === config.topMargin
+      && cached.native.length === native.length && native.every((line, index) => line === cached.native[index])) {
+      // Refresh popup text even on hits: source can change while visible native rows stay equal (e.g. images).
+      (this as unknown as Record<symbol, unknown>)[FOLDED] = cached.hidden
+        ? replaceClipboardImagePaths(sourceText(this, trimEmptyEdges(native)))
+        : undefined;
+      return applyUserMessageTransforms(cached.lines.slice());
+    }
+    let body = trimEmptyEdges(native);
     if (!body.length) body = [""];
     const folded = foldBody(body, config.maxLines);
     (this as unknown as Record<symbol, unknown>)[FOLDED] = folded.hidden > 0
@@ -298,10 +343,6 @@ export function installCompactUserMessages(
       const hint = `… +${folded.hidden} lines · click to view`;
       body = [...folded.lines, color(activeTheme, "dim", hint)];
     }
-    const message = boundMessages.get(this);
-    const timestamp = message ? entryTimes.get(message) ?? uniqueTimes.get(message.timestamp) : undefined;
-    const clock = timestamp ? formatUserMessageTimestamp(timestamp) : undefined;
-    const titleText = ` ${config.title}${clock ? ` ${clock}` : ""} `;
     const title = truncateToWidth(titleText, safeWidth - 2, "");
     const titleWidth = visibleWidth(title);
     const top = `${color(activeTheme, "border", "╭")}${paintClaude(title)}${color(
@@ -325,12 +366,18 @@ export function installCompactUserMessages(
         "│",
       )}`;
     });
-    return applyUserMessageTransforms([
+    const lines = [
       ...Array.from({ length: config.topMargin }, () => ""),
       top,
       ...framed,
       bottom,
-    ]);
+    ];
+    frames.set(this, { native: native.slice(), width: safeWidth, theme: activeTheme,
+      title: titleText, day, maxLines: config.maxLines, horizontalPadding: config.horizontalPadding,
+      verticalPadding: config.verticalPadding, topMargin: config.topMargin,
+      lines, hidden: folded.hidden > 0 });
+    // Neither transforms nor the caller may mutate our stored frame.
+    return applyUserMessageTransforms(lines.slice());
   };
   /**
    * A folded box opens in the popup. A box that fits declines the click: there
@@ -347,7 +394,9 @@ export function installCompactUserMessages(
   const installed = { owner: PATCH_OWNER, original, originalMouse, ownMouse, restoreTimestampBinding } satisfies PatchState;
   prototype[PATCH_STATE] = installed;
 
+  pi.on("session_shutdown", () => { frames = new WeakMap(); });
   pi.on("session_start", (_event, ctx) => {
+    frames = new WeakMap();
     activeTheme = ctx.hasUI ? ctx.ui.theme : undefined;
     syncEntryTimes(ctx);
   });
@@ -357,11 +406,16 @@ export function installCompactUserMessages(
   pi.on("session_tree", (_event, ctx) => syncEntryTimes(ctx));
 
   return () => {
+    frames = new WeakMap();
     releaseTransformHost();
     const state = prototype[PATCH_STATE] as PatchState | undefined;
     if (state !== installed) return;
     state.restoreTimestampBinding();
     prototype.render = state.original;
+    if (prototype.invalidate === invalidate) {
+      if (ownInvalidate) prototype.invalidate = originalInvalidate;
+      else delete (prototype as Partial<PatchablePrototype>).invalidate;
+    }
     if (state.ownMouse) prototype.handleMouse = state.originalMouse;
     else delete prototype.handleMouse;
     delete prototype[PATCH_STATE];

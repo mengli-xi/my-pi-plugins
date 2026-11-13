@@ -58,6 +58,8 @@ Tier-0 的 pre-history renderer hooks 同步安装。命令、overlay 和长报�
 
 ## 调度与性能
 
+用户消息框每个组件只缓存最近一帧；原生 render 和外部 transform 仍每次调用，原生行、宽度、主题、标题日期或折叠状态变了才重绘，dispose 或 owner 退役时释放。
+
 runtime 自有 working、spinner/shimmer、typewriter、goal、preload、expiry 共用 `UiScheduler` 的一次性 deadline，4ms 窗口共用 wakeup；按 wall clock 跳过过时动画，不补播。dispose 在 telemetry 退役前清空任务。
 
 Typewriter 只合并展示 snapshot，不改 protocol/session。Markdown/render/event-loop 压力可延长下一帧并扩大追赶 batch，但 provider 间隙不触发降速；工具和 terminal error 立即绕过，尾部在有限期限排空。
