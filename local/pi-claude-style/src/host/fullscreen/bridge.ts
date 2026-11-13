@@ -114,14 +114,18 @@ function requestLayoutModule(): void {
   layoutModuleRequested = true;
   // Pi 1.5 aliases the public root to index.js; a bare subpath becomes
   // index.js/dist/layout.js. Resolve from the host-reported package instead,
-  // then import an absolute sibling URL. Missing private modules still fail
-  // the geometry probe and leave UIKit's estimate in place.
+  // then import an absolute sibling URL. Compiled hosts need not ship that
+  // optional file: native frames remain authoritative; UIKit estimates gaps.
   (async () => {
     const entry = createRequire(join(getPackageDir(), "package.json")).resolve("@earendil-works/pi-tui");
     return import(new URL("./layout.js", pathToFileURL(entry)).href) as Promise<LayoutModule>;
   })().then(
     (module) => { layoutModule = module; },
-    (error: unknown) => markBroken("fullscreen.editorGeometry", `pi-tui dist/layout.js: ${String(error)}`),
+    (error: unknown) => {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") return;
+      markBroken("fullscreen.editorGeometry", `pi-tui dist/layout.js: ${String(error)}`);
+    },
   );
 }
 
