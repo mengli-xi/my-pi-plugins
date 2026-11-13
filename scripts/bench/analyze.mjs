@@ -206,8 +206,17 @@ for (const root of roots) {
       ),
       long,
       idle,
+      switches: Object.fromEntries(["new", "resume"].map(command => {
+        const samples = runs.flatMap(run => run.switches ?? []).filter(sample => sample.command === command);
+        return [command, {
+          readyMs: summarize(samples.map(sample => sample.elapsedMs)),
+          chooserMs: summarize(samples.map(sample => sample.chooserMs)),
+          replacementMs: summarize(samples.map(sample => sample.replacement.elapsedMs)),
+          renderMs: summarize(samples.map(sample => sample.replacement.renderMs)),
+        }];
+      })),
       resume: runs
-        .filter((r) => r.resumesFrom)
+        .filter((r) => r.resumesFrom && !r.switches)
         .map((r) => ({
           id: r.id,
           readyMs: r.readyMs,

@@ -146,6 +146,45 @@ registerHooks({
         "handler",
       );
     }
+    if (url.endsWith("/core/agent-session-runtime.js")) {
+      source += `
+for (const method of ["teardownCurrent", "finishSessionReplacement"]) {
+  const original = AgentSessionRuntime.prototype[method];
+  AgentSessionRuntime.prototype[method] = function(...args) {
+    return globalThis.__piBench.timed(method, "host", () => original.apply(this, args));
+  };
+}
+for (const method of ["newSession", "switchSession"]) {
+  const original = AgentSessionRuntime.prototype[method];
+  if (typeof original !== "function") throw new Error("Pi session replacement 钩子已变化");
+  AgentSessionRuntime.prototype[method] = async function(...args) {
+    const start = performance.now();
+    const imports = globalThis.__piBench.imports.length;
+    const factories = globalThis.__piBench.factories.length;
+    globalThis.__piBench.reset();
+    try {
+      return await original.apply(this, args);
+    } finally {
+      globalThis.__piBench.emit({ type: "switch-complete", method, elapsedMs: performance.now() - start,
+        ...globalThis.__piBench.sample(), imports: globalThis.__piBench.imports.slice(imports),
+        factories: globalThis.__piBench.factories.slice(factories) });
+    }
+  };
+}
+`;
+      bench.hooks.push("sessionReplacement");
+    }
+    if (url.endsWith("/modes/interactive/components/session-selector.js")) {
+      source += `
+const benchLoadScope = SessionSelectorComponent.prototype.loadScope;
+SessionSelectorComponent.prototype.loadScope = async function(...args) {
+  const result = await benchLoadScope.apply(this, args);
+  globalThis.__piBench.emit({ type: "selector-ready" });
+  return result;
+};
+`;
+      bench.hooks.push("sessionSelector");
+    }
     if (url.endsWith("/core/extensions/runner.js")) {
       source += `
 const benchError = ExtensionRunner.prototype.emitError;

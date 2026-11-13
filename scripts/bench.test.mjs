@@ -130,6 +130,41 @@ test("settled 边界等待全部异步 handler", () => {
   }
 });
 
+test("会话切换计时等待新 runtime 和异步 UI rebind，不以 session_start 提前结束", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-bench-switch-"));
+  try {
+    execFileSync(process.execPath, ["--import", source("./bench/instrument.mjs"), "--input-type=module", "-e", `
+      import assert from 'node:assert/strict';
+      import { readFileSync } from 'node:fs';
+      const { AgentSessionRuntime } = await import(${JSON.stringify(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/agent-session-runtime.js", import.meta.url).href)});
+      const sequence = [];
+      const old = { sessionFile: undefined, sessionManager: { getSessionDir() { return undefined; }, isPersisted() { return false; } },
+        abort: async () => {}, extensionRunner: { hasHandlers(event) { return event === 'session_shutdown'; }, emit: async () => { sequence.push('shutdown'); } },
+        dispose() { sequence.push('disposed'); } };
+      const next = {};
+      const runtime = new AgentSessionRuntime(old, { cwd: process.cwd(), agentDir: process.env.PI_CODING_AGENT_DIR }, async () => {
+        await globalThis.__piBench.timed('factory', 'fixture', () => {});
+        return { session: next, services: {} };
+      });
+      runtime.setRebindSession(async session => {
+        assert.equal(session, next);
+        sequence.push('session_start');
+        await new Promise(resolve => setTimeout(resolve, 20));
+        sequence.push('editable');
+      });
+      await runtime.newSession();
+      assert.deepEqual(sequence, ['shutdown', 'disposed', 'session_start', 'editable']);
+      const event = readFileSync(process.env.PI_BENCH_METRICS, 'utf8').trim().split('\\n').map(JSON.parse).at(-1);
+      assert.equal(event.type, 'switch-complete');
+      assert.equal(event.method, 'newSession');
+      assert.ok(event.handlers['host:finishSessionReplacement'].ms >= 15);
+      assert.equal(event.factories.length, 1);
+    `], { env: checkEnvironment(root, { PI_BENCH_METRICS: join(root, "metrics.jsonl") }) });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("指标 socket 与原始 JSONL 内容一致", async () => {
   const root = mkdtempSync("/tmp/pi-bench-stream-"),
     lines = [];
@@ -281,6 +316,16 @@ test("分析器区分冷启动与恢复，计算 CPU/帧并正确归属包路径
             ],
           },
           {
+            configuration: "all",
+            readyMs: 99,
+            ready: sample,
+            resumesFrom: "switch-target.jsonl",
+            rounds: [],
+            idle: [],
+            switches: [{ command: "resume", elapsedMs: 30, chooserMs: 4,
+              replacement: { elapsedMs: 25, renderMs: 7 } }],
+          },
+          {
             configuration: "modern",
             readyMs: 10,
             ready: sample,
@@ -338,6 +383,10 @@ test("分析器区分冷启动与恢复，计算 CPU/帧并正确归属包路径
     assert.equal(result.profiles.find((p) => p.kind.includes("allocation")).top[0].bytes, 3000);
     assert.equal(group.coldMs.n, 1);
     assert.equal(group.resume[0].users, 200);
+    assert.equal(group.resume.length, 1, "会话内切换不是冷启动 resume");
+    assert.equal(group.switches.resume.readyMs.median, 30);
+    assert.equal(group.switches.resume.chooserMs.median, 4);
+    assert.equal(group.switches.resume.renderMs.median, 7);
     assert.equal(group.long[0].windows[0].cpuPercentOneCore, 30);
     assert.equal(group.long[0].windows[0].cycleCpuPercentOneCore, 20);
     assert.equal(result.groups.modern.long[0].windows[0].cycleCpuMsPerRound, 1);

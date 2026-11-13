@@ -24,8 +24,12 @@ perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite long --trace-
 perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite resume --only all --repetitions 3 --session-source .perf-baseline/long/001-all/session.jsonl --output .perf-baseline/resume
 perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite idle --only all --idle-seconds 600 --output .perf-baseline/idle
 perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite profile --only all --rounds 20 --session-source .perf-baseline/long/001-all/session.jsonl --output .perf-baseline/profile
+# 会话内 /new 与 /resume（选择已有会话），不是 --resume 冷启动
+perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite switch --git --repetitions 3 --session-source .perf-baseline/long/001-all/session.jsonl --output .perf-baseline/switch
 node scripts/bench/analyze.mjs .perf-baseline/cold .perf-baseline/long .perf-baseline/profile
 ```
+
+`switch` 默认测 none、all 及逐个单插件；小/长历史分别传对应检查点。同一 PTY 中交替 `/new`、`/resume`（首次 `/new` 从空会话开始，后续从恢复目标离开），记录命令 Enter（resume 为确认选择的 Enter）到新编辑器处理 `/bench-ready` 的时间，另记选择器打开时间，排除模拟选会话的 40ms。终点包含探针输入及期间发生的绘制，不保证最后一帧已显示，不以 session_start 代替可输入；每次记录 uptime/load，保留原始样本。用 `--cpu-profile` 可附加 V8 profile；内存钩子只在测试进程中分段计时，不修改宿主文件。前后比较应串行交替跑同配置、同次数；诊断 profile 与正式计时分开。
 
 `--only` 支持 `none`、`all`、包目录名及 `without:包目录名`，可用逗号组合。
 `--git` 初始化临时 Git cwd；`PI_BENCH_NODE=/absolute/path/to/node` 选择被测 Node。
@@ -34,7 +38,7 @@ node scripts/bench/analyze.mjs .perf-baseline/cold .perf-baseline/long .perf-bas
 ## 测量边界
 
 - 真实 Node CLI、112×38 regular PTY；每次使用独立 HOME、agent、session、XDG 与临时缓存，固定本地 faux provider。自动 compact/retry/cache warming 关闭。
-- `all` 为全部 24 个仓库插件，含 Gallery 与四个 Fork；共享库成本归消费者。`none` 保留共同探针、faux 和宿主内建功能。
+- `all` 为当前 workspace 声明的全部插件，含 Gallery 与四个 Fork；共享库成本归消费者。`none` 保留共同探针、faux 和宿主内建功能。
 - 冷启动从进程启动到 `/bench-ready` 被处理；`--bundled` 测正式 bin。import/factory/handler/帧细分来自未打包 CLI 的内存钩子，两种模块图分别比较。
 - 每轮真实输入、一次 read、2256-byte Markdown 答复及 1568-byte 工具输出；轮耗时为 input→全部 settled handlers 完成，随后留 40ms 排空最终帧。尾窗取第 901–1000 轮。
 - resume 复制检查点到新 profile，只重定位 header.cwd，校验恢复用户消息数。本摘要每检查点采样 3 次，对应上面的显式 `--repetitions 3` 示例。

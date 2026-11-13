@@ -1,5 +1,6 @@
 // Bun 管理 PTY，被测 Pi 始终使用 Node。
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -24,11 +25,13 @@ const options = {
   git: false,
   sessionSource: "",
   traceOnly: false,
+  cpuProfile: false,
 };
 const flags = {
   "--bundled": "bundled",
   "--git": "git",
   "--trace-only": "traceOnly",
+  "--cpu-profile": "cpuProfile",
 };
 const values = {
   "--suite": "suite",
@@ -52,15 +55,15 @@ for (let i = 2; i < process.argv.length; i++) {
   assert.ok(name && value !== undefined && !value.startsWith("--"), `未知或缺少值的参数：${key}`);
   options[name] = typeof options[name] === "number" ? Number(value) : value;
 }
-assert.ok(["all", "cold", "long", "idle", "profile", "smoke", "resume"].includes(options.suite), "未知 suite");
+assert.ok(["all", "cold", "long", "idle", "profile", "smoke", "resume", "switch"].includes(options.suite), "未知 suite");
 for (const key of ["repetitions", "rounds", "idleSeconds", "replyBlocks", "toolLines"]) {
   assert.ok(Number.isInteger(options[key]) && options[key] > 0, `${key} 必须为正整数`);
 }
 assert.ok(options.rounds <= 5000, "轮数超出 faux 响应预算");
 assert.ok(options.replyBlocks <= 256 && options.toolLines <= 1000, "答复或工具输出超出模型限制");
 assert.ok(
-  !options.sessionSource || ["profile", "resume"].includes(options.suite),
-  "--session-source 仅用于 profile/resume",
+  !options.sessionSource || ["profile", "resume", "switch"].includes(options.suite),
+  "--session-source 仅用于 profile/resume/switch",
 );
 assert.ok(!options.traceOnly || options.suite === "long", "--trace-only 仅用于 long");
 assert.ok(options.suite !== "resume" || options.sessionSource, "resume 需要 --session-source");
@@ -231,7 +234,7 @@ for (const [signal, status] of [
   });
 }
 
-async function measure(config, { rounds = 0, idleSeconds = 0, sessionSource, profile = false } = {}) {
+async function measure(config, { rounds = 0, idleSeconds = 0, sessionSource, profile = false, switches = false } = {}) {
   const id = `${String(++serial).padStart(3, "0")}-${config.name.replaceAll(":", "-")}${sessionSource ? "-resume" : ""}`;
   const artifacts = join(out, id);
   mkdirSync(artifacts);
@@ -279,6 +282,17 @@ async function measure(config, { rounds = 0, idleSeconds = 0, sessionSource, pro
       lines[0] = JSON.stringify(header);
       writeFileSync(session, lines.join("\n") + "\n");
     }
+    if (switches) {
+      assert.ok(sessionSource, "switch 需要 --session-source");
+      const lines = readFileSync(session, "utf8").trimEnd().split("\n");
+      // 固定选择器的唯一搜索词，不依赖磁盘 mtime 排序。
+      const leaf = JSON.parse(lines.at(-1)).id;
+      lines.push(JSON.stringify({ type: "session_info", id: "bench-name", parentId: leaf,
+        timestamp: new Date().toISOString(), name: "BENCH_SWITCH_TARGET" }));
+      writeFileSync(join(root, "sessions", "target.jsonl"), lines.join("\n") + "\n");
+      // 启动空会话，恢复目标只由真实 /resume 选择器打开。
+      writeFileSync(session, JSON.stringify({ ...JSON.parse(lines[0]), id: randomUUID() }) + "\n");
+    }
     const fixtureText = "Local fixture output: abcdefghijklmnopqrstuvwxyz\n".repeat(options.toolLines);
     writeFileSync(join(root, "cwd", "fixture.txt"), fixtureText);
     writeFileSync(
@@ -309,7 +323,8 @@ async function measure(config, { rounds = 0, idleSeconds = 0, sessionSource, pro
     const args = [
       node,
       ...(!options.bundled ? ["--import", join(here, "instrument.mjs")] : []),
-      ...(profile ? ["--cpu-prof", "--heap-prof", `--cpu-prof-dir=${artifacts}`, `--heap-prof-dir=${artifacts}`] : []),
+      ...(profile || options.cpuProfile ? ["--cpu-prof", `--cpu-prof-dir=${artifacts}`] : []),
+      ...(profile ? ["--heap-prof", `--heap-prof-dir=${artifacts}`] : []),
       cli,
       "--offline",
       "--tui-mode",
@@ -418,7 +433,7 @@ async function measure(config, { rounds = 0, idleSeconds = 0, sessionSource, pro
     result.ready = await wait("ready");
     result.readyMs = performance.now() - start;
     assert.equal(result.ready.mode, "tui", "宿主必须为 TUI 模式");
-    if (sessionSource) assert.equal(result.ready.userMessages, priorUsers, "恢复的用户消息数不完整");
+    if (sessionSource && !switches) assert.equal(result.ready.userMessages, priorUsers, "恢复的用户消息数不完整");
     if (!options.bundled) {
       for (const pkg of config.packages)
         for (const entry of pkg.pi.extensions) {
@@ -435,8 +450,41 @@ async function measure(config, { rounds = 0, idleSeconds = 0, sessionSource, pro
         "requestRender",
         "TuiMainScreen",
         "settledBoundary",
+        ...(switches ? ["sessionReplacement", "sessionSelector"] : []),
       ]) {
         assert.ok(result.ready.hooks.includes(hook), `缺少计时钩子：${hook}`);
+      }
+    }
+    if (switches) {
+      result.switches = [];
+      for (let repeat = 0; repeat < options.repetitions; repeat++) {
+        for (const command of ["new", "resume"]) {
+          let after = events.length;
+          child.terminal.write(`/${command}`);
+          await delay(40); // 输入命令的时间不计入 Enter→ready。
+          let chooserMs = 0;
+          let enter = performance.now();
+          child.terminal.write("\r");
+          if (command === "resume") {
+            await wait("selector-ready", after);
+            chooserMs = performance.now() - enter;
+            child.terminal.write("BENCH_SWITCH_TARGET");
+            await delay(40); // 模拟选择，排除用户思考时间。
+            after = events.length;
+            enter = performance.now();
+            child.terminal.write("\r");
+          }
+          const replacement = await wait("switch-complete", after);
+          // 真正经新编辑器输入探针命令；不能拿 session_start 当可输入终点。
+          const ackAfter = events.length;
+          send("/bench-ready");
+          const ready = await wait("ready", ackAfter);
+          const elapsedMs = performance.now() - enter;
+          assert.equal(ready.userMessages, command === "resume" ? priorUsers : 0);
+          result.switches.push({ command, repeat, elapsedMs, chooserMs, replacement,
+            load: loadavg(), uptime: uptime() });
+          console.log(`${id} ${command} #${repeat + 1} ms=${elapsedMs.toFixed(1)} chooser=${chooserMs.toFixed(1)}`);
+        }
       }
     }
     for (let round = 1; round <= rounds; round++) {
@@ -516,8 +564,11 @@ async function measure(config, { rounds = 0, idleSeconds = 0, sessionSource, pro
   }
 }
 try {
-  const configs = selected ?? (options.suite === "cold" ? configurations : configurations.slice(0, 2));
-  if (options.suite === "cold") {
+  const configs = selected ?? (["cold", "switch"].includes(options.suite) ? configurations : configurations.slice(0, 2));
+  if (options.suite === "switch") {
+    assert.ok(options.sessionSource && !options.bundled, "switch 需要 --session-source 和未打包诊断 CLI");
+    for (const config of configs) await measure(config, { switches: true, sessionSource: options.sessionSource });
+  } else if (options.suite === "cold") {
     // 交错采样，减轻机器负载随时间漂移的影响。
     for (let repeat = 0; repeat < options.repetitions; repeat++) for (const config of configs) await measure(config);
     report.coldSummary = Object.fromEntries(
