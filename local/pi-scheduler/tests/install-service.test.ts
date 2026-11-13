@@ -37,11 +37,11 @@ test("launchd plist starts at load, keeps alive, and bakes in the env", () => {
 
 test("systemd unit restarts always and installs to default.target", () => {
   const unit = systemdUnit(spec);
-  assert.match(unit, /ExecStart=\/usr\/local\/bin\/node \/pkg\/dist\/daemon-entry\.js/);
+  assert.match(unit, /ExecStart=:"\/usr\/local\/bin\/node" "\/pkg\/dist\/daemon-entry\.js"/);
   assert.match(unit, /Restart=always/);
   assert.match(unit, /WantedBy=default\.target/);
-  assert.match(unit, /Environment=PI_CODING_AGENT_DIR=\/home\/u\/\.pi\/agent/);
-  assert.match(unit, /Environment=PI_SCHEDULER_BINARY=\/home\/u\/bin\/pi/);
+  assert.match(unit, /Environment="PI_CODING_AGENT_DIR=\/home\/u\/\.pi\/agent"/);
+  assert.match(unit, /Environment="PI_SCHEDULER_BINARY=\/home\/u\/bin\/pi"/);
 });
 
 test("plist escapes XML metacharacters in paths", () => {
@@ -78,4 +78,14 @@ test("the system notifier is fire-and-forget and never throws without a session"
     assert.equal(existsSync(calls), true, "the stubbed system notifier handled the request");
   }
   restore();
+});
+
+test("systemd quotes path words and escapes specifiers without shell expansion", () => {
+  const unit = systemdUnit({
+    runtime: '/runtime space/node', daemonEntry: '/install %h/$HOME/"daemon".js',
+    agentDir: '/profile %u/space dir', piBinary: '/bin/with space/pi', logPath: '/log',
+  });
+  assert.ok(unit.includes('ExecStart=:"/runtime space/node" "/install %%h/$HOME/\\"daemon\\".js"'));
+  assert.ok(unit.includes('Environment="PI_CODING_AGENT_DIR=/profile %%u/space dir"'));
+  assert.ok(unit.includes('Environment="PI_SCHEDULER_BINARY=/bin/with space/pi"'));
 });
