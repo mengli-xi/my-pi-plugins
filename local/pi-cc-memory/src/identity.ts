@@ -145,10 +145,35 @@ export async function resolveProject(cwd: string, agentDir: string, options: Pro
     // Discovery belongs to cwd, not the caller's Git invocation/config/discovery overrides.
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
     const gitEnv = { ...env, LC_ALL: "C", GIT_OPTIONAL_LOCKS: "0" };
+    let markerVerified = false;
     try {
-      const { stdout } = await discoverGit(["-C", canonicalCwd, "rev-parse", "--path-format=absolute", "--git-common-dir"], git, gitEnv);
-      // Git terminates the path with one newline; preserve whitespace in actual path names.
-      commonDir = stdout.replace(/\r?\n$/, "");
+      // Keep Git's automatic discovery (including filesystem/bare boundaries), but
+      // ask the same process to validate the nearest marker. A damaged inner .git
+      // must not silently inherit an outer repository. HEAD makes a possible
+      // bare/admin boundary ambiguous, so those cases retain the full fallback.
+      const marker = await nearestGitMarker(canonicalCwd, undefined, true);
+      if (marker) {
+        const { stdout } = await discoverGit([
+          "-C", canonicalCwd, "rev-parse", "--path-format=absolute", "--git-common-dir",
+          "--absolute-git-dir", "--resolve-git-dir", marker,
+        ], git, gitEnv);
+        const paths = stdout.replace(/\r?\n$/, "").split("\n");
+        if (paths.length === 3) {
+          const [common, discovered, marked] = paths as [string, string, string];
+          if (await realpath(discovered) !== await realpath(marked)) {
+            throw new Error(`Git 发现结果与最近标记 ${marker} 不一致。`);
+          }
+          commonDir = common;
+          markerVerified = true;
+        }
+        // Newlines in paths make line-oriented output ambiguous. Preserve the
+        // original single-path discovery/verification rather than guessing.
+      }
+      if (!markerVerified) {
+        const { stdout } = await discoverGit(["-C", canonicalCwd, "rev-parse", "--path-format=absolute", "--git-common-dir"], git, gitEnv);
+        // Git terminates the path with one newline; preserve whitespace in actual path names.
+        commonDir = stdout.replace(/\r?\n$/, "");
+      }
       identity = "";
     } catch (error) {
       const failure = error as NodeJS.ErrnoException & { stderr?: string };
@@ -166,7 +191,7 @@ export async function resolveProject(cwd: string, agentDir: string, options: Pro
     if (commonDir !== undefined) {
       const canonicalCommonDir = await realpath(commonDir);
       // Stop at a containing bare/admin directory; markers above it belong to another project.
-      const marker = await nearestGitMarker(canonicalCwd, canonicalCommonDir);
+      const marker = markerVerified ? undefined : await nearestGitMarker(canonicalCwd, canonicalCommonDir);
       if (marker) {
         // Explicit --git-dir validates directories AND gitfiles, without skipping a broken inner repo.
         const { stdout } = await discoverGit(["-C", canonicalCwd, "--git-dir", marker, "rev-parse", "--path-format=absolute", "--git-common-dir"], git, gitEnv);

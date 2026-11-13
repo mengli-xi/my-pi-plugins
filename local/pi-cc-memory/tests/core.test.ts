@@ -116,30 +116,30 @@ test("identity cache skips Git only while cwd, nearest marker and common directo
     const resolve = createProjectResolver();
     const initial = await resolve(cwd, agent);
     assert.ok(initial.available && initial.identity.startsWith("git:"), JSON.stringify(initial));
-    assert.equal(await calls(), 2);
-    assert.deepEqual(await resolve(cwd, agent), initial); assert.equal(await calls(), 2, "stable fingerprint does not start Git");
+    assert.equal(await calls(), 1);
+    assert.deepEqual(await resolve(cwd, agent), initial); assert.equal(await calls(), 1, "stable fingerprint does not start Git");
     const alias = join(root, "alias"); await symlink(cwd, alias);
-    assert.deepEqual(await resolve(alias, agent), initial); assert.equal(await calls(), 2, "canonical cwd aliases share the cache");
+    assert.deepEqual(await resolve(alias, agent), initial); assert.equal(await calls(), 1, "canonical cwd aliases share the cache");
 
     git("init", inner);
     const nested = await resolve(cwd, agent);
-    assert.ok(nested.available && nested.identity !== initial.identity); assert.equal(await calls(), 4, "new inner marker re-runs discovery");
+    assert.ok(nested.available && nested.identity !== initial.identity); assert.equal(await calls(), 2, "new inner marker re-runs discovery");
     await rm(join(inner, ".git"), { recursive: true });
-    assert.deepEqual(await resolve(cwd, agent), initial); assert.equal(await calls(), 6, "deleted marker re-runs discovery");
+    assert.deepEqual(await resolve(cwd, agent), initial); assert.equal(await calls(), 3, "deleted marker re-runs discovery");
     const changedCwd = await resolve(other, agent);
-    assert.ok(changedCwd.available && changedCwd.identity !== initial.identity); assert.equal(await calls(), 8, "different cwd re-runs discovery");
-    assert.deepEqual(await resolve(cwd, agent), initial); assert.equal(await calls(), 10, "cache retains only the last cwd");
+    assert.ok(changedCwd.available && changedCwd.identity !== initial.identity); assert.equal(await calls(), 4, "different cwd re-runs discovery");
+    assert.deepEqual(await resolve(cwd, agent), initial); assert.equal(await calls(), 5, "cache retains only the last cwd");
 
     // Replacing a gitfile or rewriting it must not retain its previous target.
     await writeFile(join(inner, ".git"), `gitdir: ${join(other, ".git")}\n`);
-    assert.deepEqual(await resolve(cwd, agent), changedCwd); assert.equal(await calls(), 12);
+    assert.deepEqual(await resolve(cwd, agent), changedCwd); assert.equal(await calls(), 6);
     await writeFile(join(inner, ".git"), `gitdir: ${join(outer, ".git")}\n`);
-    assert.deepEqual(await resolve(cwd, agent), initial); assert.equal(await calls(), 14);
+    assert.deepEqual(await resolve(cwd, agent), initial); assert.equal(await calls(), 7);
     await rm(join(inner, ".git")); await symlink(join(other, ".git"), join(inner, ".git"));
-    assert.deepEqual(await resolve(cwd, agent), changedCwd); assert.equal(await calls(), 16);
+    assert.deepEqual(await resolve(cwd, agent), changedCwd); assert.equal(await calls(), 8);
     const savedCommon = join(other, "saved-git");
     await rename(join(other, ".git"), savedCommon); git("init", other);
-    assert.deepEqual(await resolve(cwd, agent), changedCwd); assert.equal(await calls(), 18, "same common-dir path with a new inode re-runs discovery");
+    assert.deepEqual(await resolve(cwd, agent), changedCwd); assert.equal(await calls(), 9, "same common-dir path with a new inode re-runs discovery");
     await rm(join(other, ".git"), { recursive: true });
     assert.equal((await resolve(cwd, agent)).available, false);
     const failedCalls = await calls();
@@ -171,7 +171,7 @@ test("identity cache follows commondir symlinks and their current contents", asy
     const second = await resolve(cwd, agent);
     assert.deepEqual(second, await resolveProject(cwd, agent));
     assert.ok(second.available && second.identity === `git:${await realpath(join(b, ".git"))}`);
-    assert.equal(await calls(), warm + 4, "changed pointer and fresh reference each run full discovery");
+    assert.equal(await calls(), warm + 2, "changed pointer and fresh reference each run full discovery");
     const rewritten = await calls(); assert.deepEqual(await resolve(cwd, agent), second); assert.equal(await calls(), rewritten);
     await rm(pointer);
     assert.deepEqual(await resolve(cwd, agent), await resolveProject(cwd, agent), "unreadable pointer uses full discovery");
@@ -322,6 +322,35 @@ test("Git failures fail closed; missing Git uses directory with warning", async 
   }
 });
 
+test("marked discovery validates the nearest marker in one Git process", async () => {
+  await withCountingGit(async ({ root, git, calls }) => {
+    const repo = join(root, "repo");
+    git("init", repo);
+    const before = await calls();
+    const project = await resolveProject(repo, join(root, "agent"));
+    assert.ok(project.available && project.identity === `git:${await realpath(join(repo, ".git"))}`);
+    assert.equal(await calls() - before, 1);
+    // Automatic Git discovery skips damaged inner markers; our validation must not.
+    const inner = join(repo, "inner");
+    git("init", inner);
+    await rm(join(inner, ".git/HEAD"));
+    assert.equal((await resolveProject(inner, join(root, "agent"))).available, false);
+  });
+});
+
+test("newline-containing Git paths retain unambiguous discovery and marker validation", async () => {
+  await withCountingGit(async ({ root, git }) => {
+    const repo = join(root, "repo\nwith newline");
+    git("init", repo);
+    const project = await resolveProject(repo, join(root, "agent"));
+    assert.ok(project.available && project.identity === `git:${await realpath(join(repo, ".git"))}`, JSON.stringify(project));
+    const inner = join(repo, "inner");
+    git("init", inner);
+    await rm(join(inner, ".git/HEAD"));
+    assert.equal((await resolveProject(inner, join(root, "agent"))).available, false);
+  });
+});
+
 test("a Git timeout is retried once and the retried discovery succeeds", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-memory-git-timeout-retry-"));
   try {
@@ -332,16 +361,17 @@ test("a Git timeout is retried once and the retried discovery succeeds", async (
     const project = await resolveProject(repo, join(root, "agent"), {
       runGit: async (file, args, options) => {
         attempts.push({ args, timeout: options.timeout });
-        // Only the first rev-parse times out; the retry and the marker verification really run.
+        // Only the first rev-parse times out; the retry discovers and verifies the marker.
         if (attempts.length === 1) throw timeout;
         return exec(file, args, options);
       },
     });
     assert.ok(project.available, JSON.stringify(project));
     assert.equal(project.identity, `git:${await realpath(join(repo, ".git"))}`);
-    assert.equal(attempts.length, 3, "timed-out attempt, its retry, then the marker verification");
+    assert.equal(attempts.length, 2, "timed-out attempt, then one discovery/verification retry");
     assert.deepEqual(attempts[0]!.args, attempts[1]!.args);
-    assert.deepEqual(attempts.map((attempt) => attempt.timeout), [15_000, 15_000, 15_000]);
+    assert.ok(attempts[1]!.args.includes("--resolve-git-dir"));
+    assert.deepEqual(attempts.map((attempt) => attempt.timeout), [15_000, 15_000]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

@@ -7,8 +7,8 @@ Claude Code 式项目记忆。Pi 1.5 公开 API，TypeScript 直接加载，无 
 `<getAgentDir()>/pi-cc-memory/projects/<sha256(identity)>/memory/`，在 `session_start` 建目录。
 
 - Git identity 为 `git:<realpath(git-common-dir)>`，主 checkout 和 linked worktree 共用；嵌套 repo、submodule、独立 clone 分开。
-- Git 发现只按 cwd：清除继承的 `GIT_*` 覆盖，保留 PATH 等普通环境。最近 `.git` 标记用显式 `--git-dir` 验证，损坏标记不回退目录或跳过后使用父仓库；正常 gitfile、worktree、submodule 和 symlink 可用。
-- 非 Git identity 为 `dir:<realpath(ctx.cwd)>`。Git 未安装时按目录使用并警告；其他 Git 错误、超时或目录失效时警告并停止注入，避免写入另一个库。每次 Git 调用（`rev-parse` 和 `--git-dir` 标记验证）超时 15 秒，超时后重试一次；两次都超时则给出「Git 超时（15 秒）」警告并停止注入。非超时错误不重试。
+- Git 发现只按 cwd：清除继承的 `GIT_*` 覆盖，保留 PATH 等普通环境。普通 marked checkout 在同一次 `rev-parse` 中发现 common-dir、取得实际 admin-dir 并用 `--resolve-git-dir` 验证最近 `.git` 标记，两份 admin-dir 的 canonical 路径必须一致；不跨会话复用结果。可能的 bare/admin 边界、含换行的路径等歧义情况保留单路径发现与显式 `--git-dir` 验证。损坏标记不回退目录或跳过后使用父仓库；正常 gitfile、worktree、submodule 和 symlink 可用。
+- 非 Git identity 为 `dir:<realpath(ctx.cwd)>`。Git 未安装时按目录使用并警告；其他 Git 错误、超时或目录失效时警告并停止注入，避免写入另一个库。普通 marked checkout 的合并 `rev-parse` 命令超时 15 秒，超时后重试一次；歧义回退中的各次单路径发现或显式标记验证也各限时 15 秒并只在超时后重试一次；两次都超时则给出「Git 超时（15 秒）」警告并停止注入。非超时错误不重试。
 - 每次 `before_agent_start` 用文件系统指纹核对 identity；只缓存有 `.git` 标记且完整解析成功的项目。目录比 canonical 路径、类型、dev/inode，gitfile 和 `commondir` 比真实文件路径与内容，并重新推导 canonical common-dir；普通 status/add/commit/checkout 不使缓存失效。gitfile/commondir 文本先核对 dev/inode/size/mtime/ctime，版本未变时复用文本；每轮仍重新核对 symlink 的真实目标及项目边界，文件版本变化会重新读取，失败不回退旧缓存；这不是原子读取事务。指针变化、目录替换或核对失败时完整重解；没有 `.git`（含 bare/admin）、查找 `.git` 的路径上出现 `HEAD`（可能有 bare/admin 边界）、失败和 Git 不可用的结果不缓存，会话开始/结束清空缓存。命中时不复验 admin 的 HEAD 或 Git executable：HEAD 损坏或同 PATH 下 Git 被删除，允许本会话继续沿用原 identity，下个会话完整发现。cwd 改变但仍属同一项目时继续使用快照，项目身份变化时重新取快照。移动 common-dir/目录会改变 key，不猜迁移。
 - `user` 也是项目内资料；跨项目通用偏好仍使用 AGENTS。
 
