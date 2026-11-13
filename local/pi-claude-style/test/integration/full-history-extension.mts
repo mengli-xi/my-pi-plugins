@@ -35,7 +35,8 @@ export default function fixture(pi) {
     const header = rows.match(/加载更早的 (\d+) 条记录/u);
     const compact = [...rows.matchAll(/\[compaction\]/gu)];
     const boundary = rows.indexOf("已压缩进摘要");
-    log({ label, branch: ctx.sessionManager.getBranch().length, hidden: Number(header?.[1] ?? 0),
+    const branch = ctx.sessionManager.getBranch();
+    log({ label, branch: branch.length, tail: branch.slice(-8).map(entry => ({ id: entry.id, type: entry.type, role: entry.message?.role, customType: entry.customType, content: entry.customType === "internals" ? entry.content : undefined })), hidden: Number(header?.[1] ?? 0),
       users: ids.length, unique: new Set(ids).size, first: ids[0], last: ids.at(-1),
       userIds: ids, inputHistory: [...mode.editor.history],
       anchors: mode.chatContainer.children.filter(isHistoryAnchor).length,
@@ -45,6 +46,7 @@ export default function fixture(pi) {
       firstSummaryExpanded: summary?.expanded === true, selection: mode.renderer.getActiveSelectionText(),
       chronological: ids.every((id, index) => index === 0 || id > ids[index - 1]), compactions: compact.length,
       boundary: boundary >= 0, boundaryBeforeKept: boundary >= 0 && boundary < rows.indexOf(process.env.CC_FULL_HISTORY_UNLOAD === "1" ? "HISTORY_USER_680" : "HISTORY_USER_340"),
+      faults: auditInternals().filter(row => ["broken", "missing"].includes(row.state)),
       health: auditInternals().filter(row => row.id.startsWith("history.")).map(({ id, state, detail }) => ({ id, state, detail })), ...extra });
   }
   pi.on("session_start", (_event, context) => {
