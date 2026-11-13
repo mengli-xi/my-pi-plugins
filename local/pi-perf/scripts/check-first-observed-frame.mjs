@@ -39,7 +39,7 @@ export default function(pi) {
 let child;
 let terminalOutput = "";
 try {
-  child = Bun.spawn({ cmd: [process.env.PI_BIN, "--offline", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-context-files", "--no-session", "--no-tools", "-e", root, "--tui-mode", "fullscreen"],
+  child = Bun.spawn({ cmd: [process.env.PI_BIN, "--offline", "--approve", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-context-files", "--no-session", "--no-tools", "-e", root, "--tui-mode", "fullscreen"],
     cwd: root, env: checkEnvironment(root), stdin: "ignore", stderr: "pipe",
     terminal: { cols: 100, rows: 28, data(_pty, data) { terminalOutput += Buffer.from(data).toString(); } } });
   const stderr = new Response(child.stderr).text();

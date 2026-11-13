@@ -108,6 +108,7 @@ try {
 } finally {
   if (child.exitCode === null) child.kill("SIGKILL");
   await child.exited;
+  child.terminal?.close();
   terminal.dispose();
   rmSync(root, { recursive: true, force: true });
 }
