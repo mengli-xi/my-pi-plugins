@@ -60,7 +60,7 @@ test("runtime discovery scans user skills and only trusted project skills", asyn
   }
 });
 
-async function countedDiscovery(id: string) {
+async function countedDiscovery(id: string, frozenTimestamps = false) {
   const skillsUrl = new URL(`../skills.ts?discovery-test=${id}`, import.meta.url).href;
   const sdkUrl = import.meta.resolve("@earendil-works/pi-coding-agent");
   const wrapperUrl = `data:text/javascript,${encodeURIComponent(`
@@ -73,8 +73,21 @@ async function countedDiscovery(id: string) {
       return load(options);
     }
   `)}`;
+  const fsUrl = `data:text/javascript,${encodeURIComponent(`
+    export * from "node:fs";
+    import { lstatSync as lstat, statSync as stat } from "node:fs";
+    function freeze(stats) {
+      if (typeof stats.mtimeNs !== "bigint") return stats;
+      return Object.assign(Object.create(Object.getPrototypeOf(stats)), stats, { mtimeNs: 0n, ctimeNs: 0n });
+    }
+    export const lstatSync = (...args) => freeze(lstat(...args));
+    export const statSync = (...args) => freeze(stat(...args));
+  `)}`;
   const hook = registerHooks({
     resolve(specifier, context, nextResolve) {
+      if (frozenTimestamps && context.parentURL === skillsUrl && specifier === "node:fs") {
+        return { url: fsUrl, shortCircuit: true };
+      }
       if (context.parentURL === skillsUrl && specifier === "@earendil-works/pi-coding-agent") {
         return { url: wrapperUrl, shortCircuit: true };
       }
@@ -112,7 +125,7 @@ test("completion reuses unchanged official catalogs but refreshes both repeated 
     const initialCalls = calls.length;
     assert.equal(initialCalls, 2);
     for (const prefix of ["$hot", "$h", "$", "$unknown", "$hot"]) await suggest(prefix);
-    assert.equal(calls.length, initialCalls, "unchanged prefixes do not invoke the loader or reread SKILL.md");
+    assert.equal(calls.length, initialCalls, "unchanged contents do not invoke the loader or reparse SKILL.md");
 
     await writeSkill(path, "hot-first", "Updated description for the same prefix");
     assert.match((await suggest("$hot"))?.items[0].description ?? "", /Updated description/);
@@ -195,7 +208,7 @@ test("catalog versions follow symlink targets and defer all ignore decisions to 
       assert.deepEqual(names(), []);
       const ignoredCalls = calls.length;
       assert.deepEqual(names(), []);
-      assert.equal(calls.length, ignoredCalls, "ignore files are not reread when metadata is unchanged");
+      assert.equal(calls.length, ignoredCalls, "unchanged ignore contents do not invoke the loader");
       await writeFile(ignore, "direct.md\n");
       assert.deepEqual(names(), ["linked-restored"]);
       await rm(ignore);
@@ -213,6 +226,22 @@ test("catalog versions follow symlink targets and defer all ignore decisions to 
     await mkdir(dirname(replacement));
     await writeSkill(replacement, "new-target-inode");
     assert.deepEqual(names(), ["file-link-restored", "new-target-inode"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("completion refreshes rapid same-length skill edits when timestamps collide", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-skills-rapid-"));
+  const { discover } = await countedDiscovery("rapid-edits", true);
+  const options = { cwd: root, agentDir: join(root, "agent"), home: join(root, "home"), projectTrusted: false };
+  const path = join(options.agentDir, "skills", "rapid", "SKILL.md");
+  try {
+    for (let i = 0; i < 40; i++) {
+      const name = i % 2 ? "skill-first" : "skill-later";
+      await writeSkill(path, name);
+      assert.deepEqual(discover(options).map(skill => skill.name), [name]);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

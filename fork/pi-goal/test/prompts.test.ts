@@ -19,49 +19,37 @@ async function appendFixture(t: TestContext) {
 	return { dir, path: join(dir, "goal-append.md") };
 }
 
-test("goalAppendRules returns trimmed content with a leading newline", async () => {
-	const dir = await mkdtemp(join(tmpdir(), "goal-append-"));
+test("goalAppendRules returns trimmed content with a leading newline", async (t) => {
+	const { dir } = await appendFixture(t);
 	const path = join(dir, "goal-append.md");
 	await writeFile(path, "\n- Completion means scope is met.\n\n");
 	assert.equal(goalAppendRules(path), "\n- Completion means scope is met.");
 });
 
-test("goalAppendRules returns empty string for a missing file", async () => {
-	const dir = await mkdtemp(join(tmpdir(), "goal-append-"));
+test("goalAppendRules returns empty string for a missing file", async (t) => {
+	const { dir } = await appendFixture(t);
 	assert.equal(goalAppendRules(join(dir, "goal-append.md")), "");
 });
 
-test("goalAppendRules returns empty string for a whitespace-only file", async () => {
-	const dir = await mkdtemp(join(tmpdir(), "goal-append-"));
+test("goalAppendRules returns empty string for a whitespace-only file", async (t) => {
+	const { dir } = await appendFixture(t);
 	const path = join(dir, "goal-append.md");
 	await writeFile(path, "  \n\n");
 	assert.equal(goalAppendRules(path), "");
 });
 
-test("goalAppendRules reuses text only while every stable version field is unchanged", async (t) => {
+test("goalAppendRules reads rapid same-length edits even with identical metadata", async (t) => {
 	const { path } = await appendFixture(t);
 	await writeFile(path, "- first");
-	const initial = fs.statSync(path, { bigint: true });
-	let version = initial;
+	const version = fs.statSync(path, { bigint: true });
 	t.mock.method(fs, "statSync", () => version);
 	t.mock.method(fs, "fstatSync", () => version);
-	const read = t.mock.method(fs, "readFileSync");
 	syncBuiltinESMExports();
-
-	assert.equal(goalAppendRules(path), "\n- first");
-	assert.equal(goalAppendRules(path), "\n- first");
-	assert.equal(read.mock.callCount(), 1);
-	for (const field of ["dev", "ino", "size", "mtimeNs", "ctimeNs"] as const) {
-		await writeFile(path, `- ${field}`);
-		version = Object.assign(Object.create(Object.getPrototypeOf(initial)), version, {
-			[field]: version[field] + 1n,
-		});
-		assert.equal(goalAppendRules(path), `\n- ${field}`);
-		const reads = read.mock.callCount();
-		assert.equal(goalAppendRules(path), `\n- ${field}`);
-		assert.equal(read.mock.callCount(), reads, `${field}: unchanged metadata reuses text`);
+	for (let i = 0; i < 40; i++) {
+		const text = i % 2 ? "- first" : "- later";
+		await writeFile(path, text);
+		assert.equal(goalAppendRules(path), `\n${text}`);
 	}
-	assert.equal(read.mock.callCount(), 6);
 });
 
 test("goalAppendRules follows the current getAgentDir and does not cache its path", async (t) => {
