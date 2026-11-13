@@ -3,9 +3,11 @@ import test from "node:test";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   AssistantMessageComponent,
+  SessionManager,
   getMarkdownTheme,
   initTheme,
   type ExtensionAPI,
+  type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import {
   Markdown,
@@ -32,6 +34,7 @@ import {
   thinkingRuns,
   withoutSpinnerHeadline,
 } from "../src/assistant-message.ts";
+import { installPresentationOwner, disposePresentationOwner } from "../src/presentation-owner.ts";
 import { CodeFenceMarkerHidingComponent } from "../src/code-fence.ts";
 import { click } from "./native-mouse.ts";
 import type { AssistantMessagesConfig } from "../src/types.ts";
@@ -73,6 +76,64 @@ function plainRows(lines: readonly string[]): string[] {
       .trimEnd()
   );
 }
+
+test("binding and teardown do not reset the host's identical Thinking label and rebuild painted history", () => {
+  const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>();
+  const pi = { on(event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) {
+    const registered = handlers.get(event) ?? [];
+    registered.push(handler); handlers.set(event, registered);
+  } } as unknown as ExtensionAPI;
+  const restore = installClaudeAssistantMessages(pi, config);
+  try {
+    const row = new AssistantMessageComponent(message([
+      { type: "thinking", thinking: "inspect first" }, { type: "text", text: "answer" },
+    ]), true);
+    const before = plainRows(row.render(80));
+    let rebuilds = 0;
+    const update = row.updateContent;
+    row.updateContent = function(...args) { rebuilds++; return update.apply(this, args); };
+    const ctx = { mode: "tui", hasUI: true, ui: {
+      theme: { fg: (_name: string, text: string) => text, italic: (text: string) => text },
+      setWidget() {},
+      // Exercise Pi's real public component setter: even the same label rebuilds.
+      setHiddenThinkingLabel(label?: string) { row.setHiddenThinkingLabel(label ?? "Thinking..."); },
+    } } as unknown as ExtensionContext;
+    for (const event of ["session_start", "resources_discover", "session_info_changed"])
+      for (const handler of handlers.get(event) ?? []) handler({ type: event }, ctx);
+    assert.equal(rebuilds, 0);
+    assert.deepEqual(plainRows(row.render(80)), before, "Thinking and prose presentation stays unchanged");
+    restore();
+    assert.equal(rebuilds, 0, "the host resets its own global UI after shutdown");
+  } finally { restore(); }
+});
+
+test("restoring a shorter branch retires off-branch invalidators before they can revive discarded Activity", () => {
+  const timeline = new ActivityTimelineStore({ isManagedTool: () => true, isTranscriptAnchor: () => true });
+  const first = { ...message([{ type: "thinking", thinking: "kept" },
+    { type: "toolCall", id: "kept-tool", name: "read", arguments: {} }]), timestamp: 1_000 };
+  const discarded = { ...message([{ type: "thinking", thinking: "discarded" },
+    { type: "toolCall", id: "discarded-tool", name: "read", arguments: {} }]), timestamp: 2_000 };
+  const entries = (messages: AssistantMessage[]) => messages.map((message, index) => ({
+    type: "message" as const, id: String(index), parentId: index ? String(index - 1) : null,
+    timestamp: new Date(message.timestamp).toISOString(), message,
+  }));
+  rebuildActivityTimelineFromSession(entries([first, discarded]), timeline);
+  const restore = installClaudeAssistantMessages({ on() {} } as unknown as ExtensionAPI,
+    { ...config, collapsedThinking: "activity" }, undefined, () => false, undefined, timeline);
+  try {
+    const keptRow = new AssistantMessageComponent(first, false);
+    const removedRow = new AssistantMessageComponent(discarded, false);
+    let keptInvalidations = 0, discardedInvalidations = 0;
+    const kept = keptRow.invalidate.bind(keptRow), removed = removedRow.invalidate.bind(removedRow);
+    keptRow.invalidate = () => { keptInvalidations++; kept(); };
+    removedRow.invalidate = () => { discardedInvalidations++; removed(); };
+    rebuildActivityTimelineFromSession(entries([first]), timeline);
+    assert.equal(discardedInvalidations, 0, "do not rebuild old rows that the host is about to unmount");
+    assert.ok(keptInvalidations > 0, "surviving Thinking still follows the restored projection");
+    assert.equal(timeline.phaseForToolCall("discarded-tool"), undefined, "an old component must not resurrect off-branch Activity");
+    assert.ok(timeline.phaseForToolCall("kept-tool"));
+  } finally { restore(); }
+});
 
 test("marks one logical assistant block and aligns continuation lines", () => {
   const component = new LogicalBulletComponent(
@@ -1277,4 +1338,95 @@ test("a native single assistant error sanitizes presentation without mutating it
   } finally {
     restore();
   }
+});
+
+function retiredThinkingFixture(mode: AssistantMessagesConfig["collapsedThinking"], hidden: boolean, label = "native old label", timeline?: ActivityTimelineStore, source?: AssistantMessage) {
+  const starts: Array<(event: unknown, ctx: ExtensionContext) => unknown> = [];
+  const pi = { on(name: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) {
+    if (name === "session_start") starts.push(handler);
+  }, registerEntryRenderer() {} } as unknown as ExtensionAPI;
+  installPresentationOwner(pi);
+  const restore = installClaudeAssistantMessages(pi, { ...config, collapsedThinking: mode }, undefined, () => false, undefined, timeline);
+  const data = source ?? message([{ type: "thinking", thinking: "Inspect and compare the evidence." }, { type: "text", text: "the answer" }]);
+  const row = new AssistantMessageComponent(data, hidden, getMarkdownTheme(), label);
+  const tui = { children: [row], requestRender() {} };
+  const ctx = { mode: "tui", hasUI: true, sessionManager: SessionManager.inMemory(), ui: {
+    theme: { fg: (_name: string, text: string) => text, italic: (text: string) => text },
+    setWidget(_key: string, create: unknown) { if (typeof create === "function") create(tui); },
+  } } as unknown as ExtensionContext;
+  for (const start of starts) start({}, ctx);
+  row.updateContent(data);
+  return { row, data, retire() { disposePresentationOwner(pi); restore(); }, close() { disposePresentationOwner(pi); restore(); } };
+}
+
+for (const mode of ["activity", "preview"] as const) for (const hidden of [false, true]) {
+  test(`CC-owned Thinking ignores label-only resets but still obeys public changes: ${mode}/${hidden}`, () => {
+    const fixture = retiredThinkingFixture(mode, hidden);
+    try {
+      const painted = fixture.row.render(80);
+      assert.ok(!plainRows(painted).join("\n").includes("native old label"));
+      fixture.retire(); fixture.row.setHiddenThinkingLabel("native new label");
+      assert.deepEqual(fixture.row.render(80), painted, "CC owns both the displayed Thinking label and its folding policy");
+      fixture.row.setHideThinkingBlock(!hidden);
+      const updated = plainRows(fixture.row.render(80)).join("\n");
+      if (!hidden) assert.ok(updated.includes("native new label"), "real setter was executed before the later Ctrl+T");
+      else assert.ok(updated.includes("Inspect and compare"));
+      assert.notDeepEqual(fixture.row.render(80), painted, "the label-only exception must not swallow a visibility update");
+    } finally { fixture.close(); }
+  });
+}
+
+test("native-label Thinking and missing native runs never gain the CC-owned exception", () => {
+  for (const [mode, label] of [["label", "native old label"], ["activity", ""]] as const) {
+    const fixture = retiredThinkingFixture(mode, true, label);
+    try {
+      fixture.row.render(80); fixture.retire(); fixture.row.setHiddenThinkingLabel("native replacement");
+      assert.ok(plainRows(fixture.row.render(80)).join("\n").includes("native replacement"));
+    } finally { fixture.close(); }
+  }
+});
+
+test("Thinking input modified after updateContent but before rendering cannot bless an old CC snapshot", () => {
+  const fixture = retiredThinkingFixture("activity", false);
+  try {
+    const thinking = fixture.data.content[0];
+    assert.equal(thinking?.type, "thinking");
+    if (thinking?.type !== "thinking") throw new Error("fixture has no Thinking");
+    thinking.thinking = "changed reasoning before render";
+    const painted = plainRows(fixture.row.render(80)).join("\n");
+    assert.ok(painted.includes("Inspect and compare"), "native Markdown still contains the updateContent input");
+    fixture.retire(); fixture.row.setHiddenThinkingLabel("reset");
+    assert.ok(plainRows(fixture.row.render(80)).join("\n").includes("changed reasoning before render"));
+  } finally { fixture.close(); }
+});
+
+test("pruned Activity details still use CC-owned Thinking presentation", () => {
+  const timeline = new ActivityTimelineStore({ isManagedTool: () => true, maxPhases: 1 });
+  const old = { ...message([{ type: "thinking", thinking: "old reasoning" }, { type: "text", text: "old answer" }]), timestamp: 1000 };
+  const recent = { ...message([{ type: "thinking", thinking: "recent reasoning" }, { type: "text", text: "recent answer" }]), timestamp: 2000 };
+  const entries = [old, recent].map((message, i) => ({ type: "message" as const, id: String(i), parentId: null,
+    timestamp: new Date(message.timestamp).toISOString(), message }));
+  rebuildActivityTimelineFromSession(entries, timeline);
+  const fixture = retiredThinkingFixture("activity", true, "native old label", timeline, old);
+  try {
+    const painted = plainRows(fixture.row.render(80)).join("\n");
+    assert.ok(!painted.includes("native old label"), "payload pruning keeps the CC projection and its label");
+    fixture.retire(); fixture.row.setHiddenThinkingLabel("changed native label");
+    assert.equal(plainRows(fixture.row.render(80)).join("\n"), painted);
+    fixture.row.invalidate();
+    assert.ok(plainRows(fixture.row.render(80)).join("\n").includes("changed native label"));
+  } finally { fixture.close(); timeline.clear(); }
+});
+
+test("an empty hidden label invalidates even CC-owned Thinking because native runs can disappear", () => {
+  const fixture = retiredThinkingFixture("activity", true);
+  try {
+    const painted = plainRows(fixture.row.render(80)).join("\n");
+    assert.ok(painted.includes("Thinking"));
+    fixture.retire(); fixture.row.setHiddenThinkingLabel(" ");
+    const hidden = plainRows(fixture.row.render(80)).join("\n");
+    assert.ok(!hidden.includes("Thinking")); assert.ok(!hidden.includes("Inspect and compare"));
+    fixture.row.setHideThinkingBlock(false);
+    assert.ok(plainRows(fixture.row.render(80)).join("\n").includes("Inspect and compare"));
+  } finally { fixture.close(); }
 });

@@ -819,6 +819,11 @@ export function rebuildActivityTimelineFromSession(
   entries: readonly SessionEntry[],
   timeline: ActivityTimelineStore,
 ): void {
+  // endRestore() invalidates surviving components. Drop off-branch bindings
+  // first: their updateContent() calls ensureAssistant(), which would otherwise
+  // recreate the very records this restore removed (and reflow the old view).
+  timeline.retainMessages(entries.flatMap(entry =>
+    entry.type === "message" && entry.message.role === "assistant" ? [entry.message] : []));
   timeline.beginRestore();
   try {
     for (const entry of entries) {

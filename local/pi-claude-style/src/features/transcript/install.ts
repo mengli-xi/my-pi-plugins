@@ -520,16 +520,13 @@ export function installTranscriptFeature(options: InstallTranscriptFeatureOption
         });
         rebuildActivityTimelineFromSession(entries, activityTimeline);
         const calls = new Set<string>();
-        const assistants = [];
         for (const entry of entries) if (entry.type === "message") {
           if (entry.message.role === "assistant") {
-            assistants.push(entry.message);
             for (const block of entry.message.content) if (block.type === "toolCall") calls.add(block.id);
           }
           if (entry.message.role === "toolResult") for (const call of entry.message.nestedCalls?.calls ?? []) calls.add(call.id);
         }
         store.retainRenderers(calls);
-        activityTimeline.retainMessages(assistants);
         return result;
       },
     );

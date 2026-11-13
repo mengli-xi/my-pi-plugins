@@ -1,3 +1,4 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { TextOpener } from "./openers.ts";
@@ -35,6 +36,7 @@ interface Registry {
   sessions?: Map<string, Owner>;
   entryLookup?: ExtensionRunner["getEntryRenderer"];
   current?: Owner;
+  assistantInputs?: WeakMap<object, { key: string; hasThinking: boolean; labelIndependent: boolean; revision: number }>;
 }
 // Internal CC ownership, shared by the source and bundled child module graphs.
 const KEY = Symbol.for("pi.claude-style.presentation-owners.v1");
@@ -145,6 +147,15 @@ export function installPresentationOwner(pi: ExtensionAPI): void {
     scoped.invalidate = function () {
       invalidate.call(this);
     };
+    if (kind === "assistant") {
+      const assistant = scoped as AssistantMessageComponent;
+      const update = assistant.updateContent;
+      assistant.updateContent = function(message, isStreaming) {
+        const result = update.call(this, message, isStreaming);
+        rememberAssistantInput(this, message);
+        return result;
+      };
+    }
   }
   const runner = presentationPrototype(pi, ExtensionRunner.prototype, "runner");
   const entryRenderer = runner.getEntryRenderer;
@@ -339,6 +350,97 @@ function ownedCustom(owner: Owner, component: Component): Component {
   return facade;
 }
 
+// Public mutations on Pi's transcript components/containers. Theme changes call
+// invalidate; Ctrl+T calls setHideThinkingBlock; tool expansion calls setExpanded.
+const FRAME_MUTATIONS = [
+  "invalidate", "updateContent", "setHideThinkingBlock", "setHiddenThinkingLabel", "setOutputPad",
+  "updateArgs", "markExecutionStarted", "setArgsComplete", "updateResult", "setExpanded",
+  "setShowImages", "setImageWidthCells", "addChild", "removeChild", "clear", "setBgFn", "setPaddingX",
+  "handleMouse", "handleInput",
+] as const;
+
+function rememberAssistantInput(receiver: object, message: AssistantMessage): void {
+  const inputs = registry().assistantInputs ??= new WeakMap();
+  const previous = inputs.get(receiver);
+  const hasThinking = message.content.some(part => part.type === "thinking");
+  inputs.set(receiver, { key: assistantInputKey(message), hasThinking,
+    labelIndependent: !hasThinking, revision: (previous?.revision ?? 0) + 1 });
+}
+
+/** The transcript installer can prove its rendered Thinking has no native label. */
+export function recordAssistantThinkingPresentation(receiver: object, labelIndependent: boolean): void {
+  const input = registry().assistantInputs?.get(receiver);
+  if (input && labelIndependent && !input.labelIndependent) {
+    input.labelIndependent = true;
+    input.revision++;
+  }
+}
+
+/** Capture public input values before callers can mutate their DTO in place. */
+function assistantInputKey(message: AssistantMessage): string {
+  return JSON.stringify([message.content.map(part => part.type === "text" ? [part.type, part.text]
+    : part.type === "thinking" ? [part.type, part.thinking] : [part.type]), message.stopReason, message.errorMessage]);
+}
+
+/** Keep only an unchanged outgoing frame; no context or owner is captured. */
+function rememberRenderedRows(receiver: object, prototype: object, kind: Kind, width: number, rendered: string[]): void {
+  const mutations: Array<{ key: string; own?: PropertyDescriptor }> = [];
+  for (const key of FRAME_MUTATIONS) {
+    if (typeof Reflect.get(receiver, key) !== "function") continue;
+    const own = Object.getOwnPropertyDescriptor(receiver, key);
+    // An unguardable mutation must not leave a permanently frozen component.
+    if (own && (!own.configurable || !("value" in own))) return;
+    mutations.push({ key, own });
+  }
+  let rows: string[] | undefined = rendered.slice();
+  let inputRevision: number | undefined, labelKey: string | undefined, labelUpdate = false, requiresLabel = false;
+  const rememberInput = () => {
+    const input = registry().assistantInputs?.get(receiver);
+    if (input && input.revision !== inputRevision) {
+      inputRevision = input.revision;
+      labelKey = input.labelIndependent ? input.key : undefined;
+      requiresLabel = input.hasThinking;
+    }
+  };
+  // Only the stock assistant's documented label-only operation is eligible.
+  const labelOnly = prototype === AssistantMessageComponent.prototype;
+  if (labelOnly) rememberInput();
+  for (const { key, own } of mutations) Object.defineProperty(receiver, key, {
+    configurable: true, writable: own?.writable ?? true, enumerable: own?.enumerable ?? false,
+    value: function(this: object, ...args: any[]) {
+      const nestedLabelUpdate = key === "updateContent" && labelUpdate
+        && labelKey !== undefined && assistantInputKey(args[0]) === labelKey;
+      // An empty native label can remove hidden runs altogether. Without a
+      // public visibility getter, conservatively invalidate all Thinking rows.
+      const labelOnlyCall = key === "setHiddenThinkingLabel" && labelOnly && labelKey !== undefined
+        && (!requiresLabel || (typeof args[0] === "string" && args[0].trim().length > 0));
+      if (!nestedLabelUpdate && !labelOnlyCall) rows = undefined;
+      const mutate = (own ? own.value : Reflect.get(prototype, key)) as Method;
+      const previous = labelUpdate;
+      labelUpdate ||= labelOnlyCall;
+      const nativeInput = labelOnly && key === "updateContent" && !resolve(this, args, kind);
+      try {
+        const result = mutate.apply(this, args);
+        if (nativeInput) rememberAssistantInput(this, args[0]);
+        return result;
+      } finally { labelUpdate = previous; }
+    },
+  });
+  Object.defineProperty(receiver, "render", { configurable: true, writable: true,
+    value: function(this: object, nextWidth: number) {
+      const nextOwner = resolve(this, [nextWidth], kind);
+      if (!nextOwner && rows && nextWidth === width) return rows.slice();
+      const render = Reflect.get(prototype, "render") as Method;
+      const next = render.call(this, nextWidth) as string[];
+      // Once retired content changes (or resizes), keep using the real renderer
+      // until a live owner adopts it. Never resurrect the old styled snapshot.
+      width = nextWidth; rows = nextOwner ? next.slice() : undefined;
+      if (nextOwner && labelOnly) rememberInput();
+      return next;
+    },
+  });
+}
+
 /**
  * Existing installers keep their local closures and cleanup. Only the actual
  * prototype receives a process-wide dispatcher; its WeakMap receiver lookup
@@ -375,8 +477,15 @@ export function presentationPrototype<T>(pi: ExtensionAPI | undefined, prototype
           const method = selected && methods.get(selected);
           const previous = shared.current;
           shared.current = method ? selected : undefined;
-          try { return (method ?? fallback)?.apply(this, args); }
-          finally { shared.current = previous; }
+          try {
+            const result = (method ?? fallback)?.apply(this, args);
+            if (!method && key === "updateContent" && kind === "assistant") rememberAssistantInput(this, args[0]);
+            if (key === "render" && method && (kind === "component" || kind === "assistant")
+              && !Object.hasOwn(this, "render") && Object.isExtensible(this)) {
+              rememberRenderedRows(this, actual, kind, args[0], result as string[]);
+            }
+            return result;
+          } finally { shared.current = previous; }
         };
         patch = { original: original ?? (fallback ? { value: fallback } : undefined), dispatcher, methods,
           restore() {

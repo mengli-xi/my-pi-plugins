@@ -1,4 +1,4 @@
-import { presentationPrototype } from "./presentation-owner.ts";
+import { presentationPrototype, recordAssistantThinkingPresentation } from "./presentation-owner.ts";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   getMarkdownTheme,
@@ -1112,6 +1112,11 @@ function decorateChildren(
   if (!hasVisibleContent(message)) return;
 
   const plans = planAssistantChildren(children, message, projected);
+  // All native runs must be accounted for. Missing/opaque runs (including an
+  // empty native hidden label) cannot be treated as CC-owned presentation.
+  const representedRuns = new Set(plans.filter(plan => plan.role === "thinking").map(plan => plan.runIndex));
+  let labelIndependent = !representedRuns.has(undefined)
+    && representedRuns.size === thinkingRunLayout(message).nativeRunIndices.length;
   const runs = projected
     ? thinkingStates.map((state) => state.document.snapshot())
     : thinkingRuns(message);
@@ -1277,6 +1282,9 @@ function decorateChildren(
         continue;
       }
     }
+    // The activity/preview branches above own their labels. This fallback can
+    // still retain native Text labels, whereas expanded Markdown has none.
+    if (nativeChildren.some(child => child instanceof Text || constructorName(child) === "Text")) labelIndependent = false;
     children[plan.index] = projectedThinking(
       clickable(
         collapsed
@@ -1298,6 +1306,7 @@ function decorateChildren(
     if (!isSpacerComponent(spacer)) continue;
     children[index] = new ProjectedSpacerComponent(spacer!, layout, index);
   }
+  recordAssistantThinkingPresentation(instance as unknown as object, labelIndependent);
 }
 
 export function installClaudeAssistantMessages(
@@ -1428,7 +1437,6 @@ export function installClaudeAssistantMessages(
     if (!snapshot) return false;
     activeTheme = snapshot.ui?.theme;
     activeUI = snapshot.ui;
-    activeUI?.setHiddenThinkingLabel(HIDDEN_THINKING_LABEL);
     if (snapshot.mode === "tui" && snapshot.ui) {
       // The invisible pulse supplies the TUI render handle used when a new
       // Thinking block retires the previous block, even with typewriter off.
@@ -1455,7 +1463,6 @@ export function installClaudeAssistantMessages(
   });
 
   return () => {
-    activeUI?.setHiddenThinkingLabel();
     activeUI?.setWidget(TYPEWRITER_WIDGET_KEY, undefined);
     typewriter.dispose();
     thinkingHandoff.dispose();

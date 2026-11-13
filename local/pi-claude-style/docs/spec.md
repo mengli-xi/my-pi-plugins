@@ -15,6 +15,16 @@
 
 每次 factory 调用创建独立 `RuntimeScope`。`LifecycleManager` 统一拥有 feature disposer、widget、timer、subscription、opener、prototype lease 和 lazy task；所有 `session_shutdown` reason 都退役当前 runtime，按反向安装顺序幂等释放。`disposed` 后不得重新安装。可取消的 before-switch/fork 不提前清空当前 session projection。
 
+可装饰的 native transcript 组件保留最近一次渲染行的独立数组副本（已有自有 render、不可扩展或无法守护内容变更方法的对象保持原样）。owner 退役后、宿主尚未卸载旧视图时，同宽且未失效的帧复用快照，避免原生 renderer 重排整段旧历史。快照随组件回收，不另建业务 payload 索引。
+
+`invalidate`、内容更新、工具展开、Thinking 切换及其他公开内容变更会丢弃快照；主题变化通过 `invalidate` 生效。退役组件变宽或失效后持续走真实渲染，直到新 owner 认领；活跃帧一直执行当前 renderer，存入的数组不与调用方共享。没有公开入口的内部更新（如 ToolExecutionComponent 异步图片转换完成后调用私有 `updateDisplay`）不会使快照失效，只影响 owner 已退役但组件仍挂载的短窗口。
+
+stock assistant 无 Thinking，或所有 Thinking 都由 CC 的 Activity/preview/展开布局接管且不再使用原生 Text 标签时，非空隐藏标签重置不改变其画面；仍执行真实 setter 和嵌套更新。渲染器仅发布自己已完成布局的标签独立性，不读宿主私有 `hideThinkingBlock`；仍使用原生折叠标签、缺失/未知 run 的行保持保守失效；含 Thinking 的行遇空标签也失效，因为原生可能直接移除该 run。
+
+内容 key 在公开 `updateContent` 输入记录时生成，不持有可被调用方就地修改的消息对象。快照只复用相同输入及已证实与原生标签无关的行；后续 invalidate、Thinking 切换、padding 或内容更新仍会丢弃快照。
+
+Thinking 标签由行组件呈现，不在绑定/清理时重复设置与原生默认值相同的全局隐藏标签，避免重建已挂载历史；宿主仍负责全局 UI 重置。分支投影重建前先退役已离开分支的 message invalidator，避免旧组件在恢复通知中重新引入已丢弃的 Activity。保留分支上的 Thinking 组件仍正常更新。
+
 普通 UI/config/selector/diff 状态属于 installer/runtime，不通过模块全局 closure 继承。确需跨编译副本仲裁的 registry 使用带版本 `Symbol.for()`、owner token 和精确 receiver/prototype identity；旧 disposer 不得释放新 owner。statusline 最后成功帧按 session 保存有限 reload handoff，不保存 context 或 timer。
 
 Tier-0 的 pre-history renderer hooks 同步安装。命令、overlay 和长报告按首次使用加载：

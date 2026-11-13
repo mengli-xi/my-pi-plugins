@@ -46,6 +46,33 @@ test("unloaded assistant messages release renderer invalidators", () => {
   assert.ok(kept > 0); assert.equal(unloaded, 0);
 });
 
+test("retained-away response keys can register a new message without reviving old callbacks", () => {
+  const store = timeline();
+  const old = assistant(1, [{ type: "thinking", thinking: "old content" }]);
+  let oldCalls = 0, newCalls = 0;
+  store.observeAssistant(old, false);
+  store.registerMessage(old, () => oldCalls++);
+  Object.assign(old, { responseId: "reused-response" });
+  store.observeAssistant(old, false); // The response key aliases its provisional key.
+  store.retainMessages([]);
+  oldCalls = 0;
+  const next = Object.assign(assistant(2, [{ type: "thinking", thinking: "new content" }]), { responseId: "reused-response" });
+  store.registerMessage(next, () => newCalls++);
+  store.observeAssistant(next, false);
+  assert.ok(newCalls > 0, "the response key can be registered again immediately after retain");
+  const observed = newCalls;
+  rebuildActivityTimelineFromSession([entry("2", next)], store);
+  assert.ok(newCalls > observed, "the new callback also survives restoration of its aliased key");
+  assert.equal(oldCalls, 0, "a matching response key must not resurrect the discarded renderer");
+  assert.ok(newCalls > 0, "the replacement renderer follows restoration");
+  assert.equal(store.thinkingForMessage(next)?.[0]?.document.snapshot(), "new content");
+  const before = newCalls;
+  store.retainMessages([next]);
+  store.observeAssistant({ ...next, content: [{ type: "thinking", thinking: "updated content" }] }, true);
+  assert.ok(newCalls > before, "subsequent updates keep targeting the new renderer");
+  assert.equal(oldCalls, 0);
+});
+
 function entry(id: string, message: unknown): SessionEntry {
   return {
     type: "message",
