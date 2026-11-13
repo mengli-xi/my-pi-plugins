@@ -235,6 +235,8 @@ try{scope.check()}catch(e){writeFileSync(${JSON.stringify(result)},JSON.stringif
 
 test("嵌套宿主被外层中断时，临时根归上层 TMPDIR 清理", { timeout: 45_000 }, async t => {
   const f = fixture(); t.after(() => f.cleanup());
+  // This simulated top-level runner must own its root, not borrow our test runner's.
+  delete f.env.PI_CHECK_RUNTIME_DIR;
   integrationFixture(f.root);
   const hostRootFile = join(f.root, "host-root"), parentTmpFile = join(f.root, "parent-tmp"), runtimeFile = join(f.root, "runtime-root");
   const hostWorker = join(f.root, "host-worker.mjs");
