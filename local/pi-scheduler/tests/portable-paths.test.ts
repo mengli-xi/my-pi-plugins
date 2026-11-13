@@ -43,7 +43,7 @@ test("bundled daemon starts from a path containing spaces and percent signs with
   const agent = join(root, "agent");
   const paths = schedulerPaths(agent);
   daemon = spawn(process.execPath, [entry], {
-    env: { ...process.env, TMPDIR: join(root, "long-".repeat(40)), PI_CODING_AGENT_DIR: agent, PI_SCHEDULER_BINARY: process.execPath },
+    env: { ...process.env, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || tmpdir(), TMPDIR: join(root, "long-".repeat(40)), PI_CODING_AGENT_DIR: agent, PI_SCHEDULER_BINARY: process.execPath },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";

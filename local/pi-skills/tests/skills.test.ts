@@ -247,6 +247,26 @@ test("completion refreshes rapid same-length skill edits when timestamps collide
   }
 });
 
+test("content checks ignore non-candidate Markdown but still refresh equal-length ignore edits", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-skills-candidates-"));
+  const { discover, calls } = await countedDiscovery("candidate-contents", true);
+  const options = { cwd: root, agentDir: join(root, "agent"), home: join(root, "home"), projectTrusted: false };
+  const dir = join(options.agentDir, "skills"), skill = join(dir, "live-skill", "SKILL.md");
+  try {
+    await writeSkill(skill, "live-skill");
+    await writeFile(join(dirname(skill), "README.md"), "a");
+    await writeFile(join(dir, ".ignore"), "dead-skill/\n");
+    assert.deepEqual(discover(options).map(skill => skill.name), ["live-skill"]);
+    const warm = calls.length;
+    await writeFile(join(dirname(skill), "README.md"), "b");
+    assert.deepEqual(discover(options).map(skill => skill.name), ["live-skill"]);
+    assert.equal(calls.length, warm, "a non-candidate body does not reload the official catalog");
+    await writeFile(join(dir, ".ignore"), "live-skill/\n");
+    assert.deepEqual(discover(options), []);
+    assert.equal(calls.length, warm + 1, "equal metadata cannot hide changed official ignore rules");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("leading native skill commands normalize to the sole inline syntax", () => {
   assert.deepEqual(parseSkillCommandInvocation("/skill:deploy production  west "), {
     name: "deploy",
