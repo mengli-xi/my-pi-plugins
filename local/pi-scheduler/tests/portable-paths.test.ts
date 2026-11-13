@@ -1,3 +1,4 @@
+import { createConnection, createServer } from "node:net";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
@@ -9,17 +10,30 @@ import test from "node:test";
 import { ping } from "../src/client.ts";
 import { schedulerPaths } from "../src/paths.ts";
 
-test("a frozen runtime directory keeps socket identity across TMPDIR changes", (t) => {
+test("a frozen runtime directory keeps socket identity across TMPDIR changes", async (t) => {
   const original = process.env.TMPDIR;
   const runtime = process.env.XDG_RUNTIME_DIR;
-  process.env.XDG_RUNTIME_DIR = tmpdir();
+  process.env.XDG_RUNTIME_DIR = runtime || tmpdir();
   t.after(() => { if (runtime === undefined) delete process.env.XDG_RUNTIME_DIR; else process.env.XDG_RUNTIME_DIR = runtime; });
   t.after(() => { if (original === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = original; });
-  const agent = join(tmpdir(), "portable-profile");
+  const root = mkdtempSync(join(tmpdir(), "scheduler-frozen-"));
+  const server = createServer(socket => socket.destroy());
+  t.after(async () => {
+    if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));
+    rmSync(root, { recursive: true, force: true });
+  });
+  const agent = join(root, "profile");
   const first = schedulerPaths(agent).socket;
   process.env.TMPDIR = join(tmpdir(), "long-".repeat(40));
   assert.equal(schedulerPaths(agent).socket, first);
-  assert.ok(Buffer.byteLength(first) <= 103);
+  assert.ok(Buffer.byteLength(first) <= (process.platform === "darwin" ? 103 : 107));
+  // Check the real kernel boundary too; a Linux path need not fit macOS's smaller limit.
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(first, resolve); });
+  await new Promise<void>((resolve, reject) => {
+    const client = createConnection(first);
+    client.once("error", reject);
+    client.once("connect", () => { client.destroy(); resolve(); });
+  });
   assert.notEqual(schedulerPaths(agent + "-other").socket, first);
 });
 

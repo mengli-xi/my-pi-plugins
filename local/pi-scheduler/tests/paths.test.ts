@@ -58,6 +58,13 @@ test("only overlong socket paths use a private 0700 per-user directory", async (
   assert.equal(lstatSync(f.privateDir).uid, process.getuid!());
   process.env.XDG_RUNTIME_DIR = longTemp;
   assert.equal(dirname(f.paths().socket), f.fallback);
+  const name = basename(f.paths().socket), limit = process.platform === "darwin" ? 103 : 107;
+  const exact = "/" + "x".repeat(limit - Buffer.byteLength(name) - 2);
+  process.env.XDG_RUNTIME_DIR = exact;
+  assert.equal(Buffer.byteLength(f.paths().socket), limit);
+  assert.equal(dirname(f.paths().socket), exact, "the exact usable limit must retain the default directory");
+  process.env.XDG_RUNTIME_DIR = exact + "x";
+  assert.equal(dirname(f.paths().socket), f.fallback);
 });
 
 for (const occupied of ["foreign", "wide", "symlink", "file"]) {
