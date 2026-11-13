@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -105,4 +105,33 @@ test("accepts managed policy only from agentDir and locks its helper runtime bef
     assert.equal(daily.config.managed, undefined);
     assert.equal(daily.config.execution.helperRuntime, "/bin/sh");
   }
+});
+
+test("accepts a shell symlink resolving to dash while retaining executable policy checks", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-processes-shell-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const agentDir = join(root, "agent"), config = join(agentDir, "pi-processes", "config.json");
+  await mkdir(join(agentDir, "pi-processes"), { recursive: true });
+  // Only executable admission is exercised; this self-owned fixture is never run.
+  const dash = join(root, "dash"), shell = join(root, "shell-link"), other = join(root, "fish");
+  await writeFile(dash, "shell fixture", { mode: 0o700 });
+  await writeFile(other, "shell fixture", { mode: 0o700 });
+  await symlink(dash, shell);
+  const load = async (path: string) => {
+    await writeFile(config, JSON.stringify({ schemaVersion: 1, execution: { shell: path } }));
+    return loadProcessesConfig({ agentDir, cwd: root, projectTrusted: false });
+  };
+  const accepted = await load(shell);
+  assert.equal(accepted.ok, true, JSON.stringify(accepted));
+  if (accepted.ok) assert.equal(accepted.config.execution.shell, shell);
+  const relative = await load("relative/dash");
+  assert.equal(relative.ok, false);
+  if (!relative.ok) assert.match(relative.diagnostic.message, /must be absolute/);
+  await chmod(dash, 0o600);
+  const notExecutable = await load(shell);
+  assert.equal(notExecutable.ok, false);
+  if (!notExecutable.ok) assert.match(notExecutable.diagnostic.message, /EACCES/);
+  const unsupported = await load(other);
+  assert.equal(unsupported.ok, false);
+  if (!unsupported.ok) assert.match(unsupported.diagnostic.message, /unsupported executable basename/);
 });

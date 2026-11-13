@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,8 +9,11 @@ import test from "node:test";
 import { ping } from "../src/client.ts";
 import { schedulerPaths } from "../src/paths.ts";
 
-test("socket identity does not depend on TMPDIR, including overlong paths", (t) => {
+test("a frozen runtime directory keeps socket identity across TMPDIR changes", (t) => {
   const original = process.env.TMPDIR;
+  const runtime = process.env.XDG_RUNTIME_DIR;
+  process.env.XDG_RUNTIME_DIR = tmpdir();
+  t.after(() => { if (runtime === undefined) delete process.env.XDG_RUNTIME_DIR; else process.env.XDG_RUNTIME_DIR = runtime; });
   t.after(() => { if (original === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = original; });
   const agent = join(tmpdir(), "portable-profile");
   const first = schedulerPaths(agent).socket;
@@ -53,4 +56,16 @@ test("bundled daemon starts from a path containing spaces and percent signs with
     await delay(100);
   }
   assert.ok(ready, `daemon answers on the same short socket: ${output}`);
+});
+
+test("importing the daemon with a missing argv entry is not a direct invocation", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "scheduler-import-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const entry = new URL("../src/daemon-entry.ts", import.meta.url).href;
+  const loader = fileURLToPath(new URL("../../../ts-resolve.mjs", import.meta.url));
+  const result = spawnSync(process.execPath, ["--import", loader, "--experimental-strip-types", "--input-type=module", "-e",
+    `process.argv[1] = ${JSON.stringify(join(root, "missing"))}; await import(${JSON.stringify(entry)}); console.log("IMPORTED");`],
+    { encoding: "utf8", timeout: 30000 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "IMPORTED");
 });

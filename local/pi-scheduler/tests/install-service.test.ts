@@ -89,3 +89,13 @@ test("systemd quotes path words and escapes specifiers without shell expansion",
   assert.ok(unit.includes('Environment="PI_CODING_AGENT_DIR=/profile %%u/space dir"'));
   assert.ok(unit.includes('Environment="PI_SCHEDULER_BINARY=/bin/with space/pi"'));
 });
+
+test("service definitions freeze the caller's tmpdir even without XDG_RUNTIME_DIR", (t) => {
+  const previous = { XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR, TMPDIR: process.env.TMPDIR };
+  t.after(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  delete process.env.XDG_RUNTIME_DIR;
+  process.env.TMPDIR = "/fixture tmp %h";
+  const spec = { runtime: "/node", daemonEntry: "/daemon.js", agentDir: "/agent", piBinary: "/pi", logPath: "/log" };
+  assert.ok(systemdUnit(spec).includes('Environment="XDG_RUNTIME_DIR=/fixture tmp %%h"'));
+  assert.ok(launchdPlist(spec).includes('<key>XDG_RUNTIME_DIR</key>\n      <string>/fixture tmp %h</string>'));
+});
