@@ -38,6 +38,7 @@ const ROWS = 40;
 // Scenarios run under a short temporary root so Pi's footer never truncates
 // the cwd; a requested artifact directory receives a copy at the end.
 const runRoot = mkdtempSync(join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), "cchf-"));
+try {
 // Pi looks up `fd` and `rg` on PATH and, offline, prints a startup warning into
 // the transcript when one is missing. Whether this machine happens to have them
 // changed the chat height and therefore every snapshot below the startup block,
@@ -1002,5 +1003,9 @@ if (artifactRoot !== runRoot) {
 }
 for (const result of results) console.log(`${result.passed ? "ok  " : "FAIL"} ${result.name}${result.passed ? "" : `\n${result.error}`}`);
 for (const failure of failures) console.log(`SNAPSHOT ${failure}`);
-console.log(`artifacts: ${artifactRoot}`);
+if (process.env.CC_HOST_FIXTURE_ARTIFACTS) console.log(`artifacts: ${artifactRoot}`);
 if (results.some((result) => !result.passed) || failures.length > 0) process.exitCode = 1;
+
+} finally {
+  rmSync(runRoot, { recursive: true, force: true });
+}

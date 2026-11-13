@@ -68,7 +68,10 @@ export function checkEnvironment(root, extra = {}) {
     // npm/Bun/curl 的联网步骤仍需继承现有代理；缺省时不造空变量。
     ...Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(https?_proxy|no_proxy)$/i.test(key))),
     HOME: join(root, "home"),
-    ...(process.env.XDG_RUNTIME_DIR ? { XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR } : {}),
+    // Share only a runner-owned, short runtime root across nested harnesses.
+    // Its original owner removes it on failure/timeout; never reuse a live desktop runtime.
+    XDG_RUNTIME_DIR: process.env.PI_CHECK_RUNTIME_DIR ?? root,
+    PI_CHECK_RUNTIME_DIR: process.env.PI_CHECK_RUNTIME_DIR ?? root,
     XDG_CONFIG_HOME: join(root, "config"), XDG_CACHE_HOME: join(root, "cache"),
     XDG_DATA_HOME: join(root, "data"), XDG_STATE_HOME: join(root, "state"),
     TMPDIR: join(root, "tmp"), TMP: join(root, "tmp"), TEMP: join(root, "tmp"),
