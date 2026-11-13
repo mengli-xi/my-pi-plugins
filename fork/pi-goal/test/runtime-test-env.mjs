@@ -1,8 +1,8 @@
-import { installedPiVersion } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { installedPiVersion } from "../../../scripts/pi-checks.mjs";
 
 // Deliberately allowlist the child environment: no credentials or daily Pi settings.
 // NODE_OPTIONS carries the caller's offline guard into version probes and Pi children.
