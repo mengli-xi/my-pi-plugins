@@ -96,7 +96,7 @@ for (const scenario of scenarios) {
     if (scenario === "full-batch") store.putInjection(secondMarker);
   }
   if ((!full && !recovery) || ["full-normal", "full-batch", "full-recovered-source"].includes(scenario)) store.writeOccupancy([{ sessionId: marker.sessionId, pid: process.pid, holderToken: "driver", bindingGen: 1 }]);
-  const env = { PATH: process.env.PATH, HOME: join(directory, "home"), PI_CODING_AGENT_DIR: agent, PI_SCHEDULER_BINARY: binary,
+  const env = { PATH: process.env.PATH, ...(process.env.XDG_RUNTIME_DIR ? { XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR } : {}), HOME: join(directory, "home"), PI_CODING_AGENT_DIR: agent, PI_SCHEDULER_BINARY: binary,
     TMPDIR: tmpdir(), PI_OFFLINE: "1", PI_TELEMETRY: "0" };
   let daemonStderr = "";
   const spawnDaemon = () => {
