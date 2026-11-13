@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,12 +109,12 @@ test("报告区分包、步骤和失败项，并列出原始日志与验证边�
     { package: "pi-example", item: "✖ failed seam" },
     { package: "pi-example", item: "FAIL  cold-loading.test.ts > loads production" },
   ]);
-  const text = renderReport({ from: ["1.5.0"], target: "1.6.0", directory: "/tmp/check", notices: ["真实 provider 未覆盖"], steps: [
+  const text = renderReport({ from: ["1.5.0"], target: "1.6.0", directory: "/tmp/check", binary: { url: "https://example.invalid/pi.tar.gz", sumsUrl: "https://example.invalid/SHA256SUMS", sha256: "ab".repeat(32) }, notices: ["真实 provider 未覆盖"], steps: [
     { package: "pi-example", stage: "私有 seam", item: "check:host", status: "failed", log: "/tmp/check/host.log", failures },
     { package: "new", stage: "私有 seam", item: "check:internals", status: "passed" },
     { package: "仓库", stage: "应用", item: "--apply", status: "skipped", reason: "有失败" },
   ] });
-  for (const fragment of ["失败 · pi-example · 私有 seam · check:host", "host seam", "host.log", "通过 · new", "未运行 · 仓库", "有失败", "真实 provider", "report.json"]) assert.ok(text.includes(fragment), fragment);
+  for (const fragment of ["失败 · pi-example · 私有 seam · check:host", "host seam", "host.log", "通过 · new", "未运行 · 仓库", "有失败", "真实 provider", "report.json", "SHA256：", "https://example.invalid/pi.tar.gz"]) assert.ok(text.includes(fragment), fragment);
 });
 
 test("隔离环境不继承用户 profile、provider 凭据或 Pi 目录覆盖", () => {
@@ -234,7 +234,7 @@ test("版本不存在时在安装前失败、写报告且不改源仓库", async
   }
 });
 
-for (const scenario of ["只报告", "失败后继续", "应用", "工作区变动", "包测试失败", "构建失败", "peer未覆盖", "额外套件失败", "快速应用", "README声明缺失", "二进制校验失败"]) {
+for (const scenario of ["只报告", "保留副本", "失败后继续", "应用", "工作区变动", "包测试失败", "构建失败", "peer未覆盖", "额外套件失败", "快速应用", "README声明缺失", "二进制校验失败"]) {
   test(`离线流程：${scenario}`, async () => {
     const f = fixture();
     const previous = process.cwd(), path = process.env.PATH;
@@ -279,13 +279,15 @@ if [ "$1" = run ] && [ "$2" = test ] && [ -f "FAIL_TEST_$4" ]; then echo "✖ fi
       let result;
       const quick = scenario === "快速应用";
       const target = quick ? "1.5.1" : "1.6.0";
-      try { result = await main([target, ...(quick ? ["--quick"] : []), ...(scenario === "只报告" ? [] : ["--apply"])]); }
+      try { result = await main([target, ...(quick ? ["--quick"] : []), ...(scenario === "保留副本" ? ["--keep"] : []), ...(["只报告", "保留副本"].includes(scenario) ? [] : ["--apply"])]); }
       finally { console.log = originalLog; }
       reportDirectory = lines.join("\n").match(/报告：(.*)\/report.json/)[1];
       const report = JSON.parse(readFileSync(join(reportDirectory, "report.json")));
       const reportText = readFileSync(join(reportDirectory, "report.json"), "utf8");
       if (process.platform === "darwin") assert.match(report.directory, /^\/tmp\/pi-upgrade-/);
-      assert.throws(() => readFileSync(join(reportDirectory, "repository/package.json")), { code: "ENOENT" });
+      assert.equal(existsSync(join(reportDirectory, "repository/package.json")), scenario === "保留副本");
+      assert.equal(existsSync(join(reportDirectory, "binary")), scenario === "保留副本");
+      if (scenario === "保留副本") assert.ok(existsSync(report.binary.binary));
       assert.equal(result, ["失败后继续", "工作区变动", "包测试失败", "构建失败", "peer未覆盖", "额外套件失败", "README声明缺失", "二进制校验失败"].includes(scenario) ? 1 : 0);
       const binarySteps = report.steps.filter(step => step.stage === "官方二进制");
       assert.ok(binarySteps.some(step => step.item === "下载、SHA256、版本"));
