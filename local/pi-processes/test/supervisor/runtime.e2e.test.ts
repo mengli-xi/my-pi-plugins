@@ -326,7 +326,7 @@ test("scope cleanup cannot postpone the command deadline with a longer stop grac
     await harness.waitForExit(30_000);
     assert.throws(() => process.kill(-pgid!, 0), (error: unknown) => (error as NodeJS.ErrnoException).code === "ESRCH");
   } finally {
-    if (harness.child.exitCode === null) await harness.dispose();
+    await harness.dispose();
     if (pgid) { try { process.kill(-pgid, "SIGKILL"); } catch {} }
   }
 });
@@ -381,7 +381,7 @@ test("invalid cleanup request returns an error without abandoning a live group",
       (error: unknown) => (error as NodeJS.ErrnoException).code === "ESRCH",
     );
   } finally {
-    if (harness.child.exitCode === null) await harness.dispose();
+    await harness.dispose();
     if (pgid) {
       try { process.kill(-pgid, "SIGKILL"); } catch {}
     }
@@ -405,7 +405,7 @@ test("parent EOF after an unobserved spawn request still cleans the spawned grou
       (error: unknown) => (error as NodeJS.ErrnoException).code === "ESRCH",
     );
   } finally {
-    if (harness.child.exitCode === null) await harness.dispose();
+    await harness.dispose();
     if (pgid) {
       try { process.kill(-pgid, "SIGKILL"); } catch {}
     }
@@ -430,7 +430,7 @@ test("terminalization kills descendants left in the command process group", asyn
     ok(await harness.send("cleanup", { operationId: op(), reason: "scope-ended" }));
     await harness.waitForExit();
   } finally {
-    if (harness.child.exitCode === null) await harness.dispose();
+    await harness.dispose();
     if (pgid) {
       try { process.kill(-pgid, "SIGKILL"); } catch {}
     }
@@ -454,7 +454,7 @@ test("parent pipe EOF kills owned groups, removes its root, and exits", async ()
     );
     await assert.rejects(access(harness.root));
   } finally {
-    if (harness.child.exitCode === null) await harness.dispose();
+    await harness.dispose();
     if (pgid) {
       try { process.kill(-pgid, "SIGKILL"); } catch {}
     }
@@ -493,6 +493,6 @@ test("stdin EOF, stdout/stderr storage, stop, health and cleanup", async () => {
     await harness.waitForExit();
     await assert.rejects(access(harness.root));
   } finally {
-    if (harness.child.exitCode === null) await harness.dispose();
+    await harness.dispose();
   }
 });

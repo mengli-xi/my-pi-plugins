@@ -9,6 +9,7 @@ import { Spacer, Text } from "@earendil-works/pi-tui";
 
 import {
   auditInternals,
+  flushInternalsHealth,
   declareProbes,
   resetInternals,
   setHealthPath,
@@ -57,11 +58,12 @@ beforeEach(() => {
   setHealthPath(join(dir, "health.json"));
 });
 
-afterEach(() => {
+afterEach(async () => {
   restore();
   restore = () => {};
   delete (InteractiveMode.prototype as unknown as Record<string, unknown>)
     .handleSessionCommand;
+  await flushInternalsHealth();
   resetInternals();
   rmSync(dir, { recursive: true, force: true });
 });

@@ -2,12 +2,19 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 
 // Point the extension's agent dir at an empty temp dir: without this the
 // ultra branch reads the developer's live ~/.pi/agent config and the suite
 // passes or fails depending on whose machine it runs on.
-process.env.PI_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "pi-effort-agent-"));
+const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+const agentDir = mkdtempSync(join(tmpdir(), "pi-effort-agent-"));
+process.env.PI_CODING_AGENT_DIR = agentDir;
+after(() => {
+  if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+  else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+  rmSync(agentDir, { recursive: true, force: true });
+});
 
 import type {
   ExtensionAPI,

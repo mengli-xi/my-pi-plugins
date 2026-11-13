@@ -1,3 +1,5 @@
+import { after } from "node:test";
+import { rmSync as removeFixtures } from "node:fs";
 import assert from "node:assert/strict";
 import fs, { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -15,10 +17,13 @@ import {
   ultraGate,
 } from "../ultra.ts";
 
+const fixtureRoot = mkdtempSync(join(tmpdir(), "test-fixtures-"));
+after(() => removeFixtures(fixtureRoot, { recursive: true, force: true }));
+
 const CONFIG = { subagentTool: "spawn_agent", subagentPackage: "local/pi-subagents" };
 
 test("missing config uses defaults, valid overrides apply, and invalid JSON fails closed", () => {
-  const dir = mkdtempSync(join(tmpdir(), "ultra-"));
+  const dir = mkdtempSync(join(fixtureRoot, "ultra-"));
   assert.equal(readUltraConfig(dir).subagentTool, "spawn_agent");
   assert.equal(readUltraConfig(dir).subagentPackage, undefined);
 
@@ -31,7 +36,7 @@ test("missing config uses defaults, valid overrides apply, and invalid JSON fail
 });
 
 test("prompt text comes from the override file when present", () => {
-  const dir = mkdtempSync(join(tmpdir(), "ultra-"));
+  const dir = mkdtempSync(join(fixtureRoot, "ultra-"));
   assert.equal(loadUltraPrompt(dir), DEFAULT_ULTRA_PROMPT);
   writeFileSync(join(dir, "ultra-prompt.md"), "\n  delegate boldly \n");
   assert.equal(loadUltraPrompt(dir), "delegate boldly");
@@ -80,7 +85,7 @@ test("the default delegation prompt preserves user instructions and permissions"
 });
 
 test("unchanged files reuse bytes and parsed results, and replacement refreshes them", (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "ultra-cache-"));
+  const dir = mkdtempSync(join(fixtureRoot, "ultra-cache-"));
   const configPath = join(dir, "pi-effort.json");
   const promptPath = join(dir, "ultra-prompt.md");
   const settingsPath = join(dir, "settings.json");
@@ -127,7 +132,7 @@ test("unchanged files reuse bytes and parsed results, and replacement refreshes 
 });
 
 test("invalid versions cache a safe error and recover after edits", (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "ultra-errors-"));
+  const dir = mkdtempSync(join(fixtureRoot, "ultra-errors-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, "pi-effort.json");
   writeFileSync(path, '{"private-marker": invalid}');
@@ -148,13 +153,13 @@ test("invalid versions cache a safe error and recover after edits", (t) => {
   assert.throws(() => loadUltraPrompt(dir), /ultra-prompt\.md.*EISDIR/);
   rmSync(join(dir, "ultra-prompt.md"), { recursive: true });
   assert.equal(loadUltraPrompt(dir), DEFAULT_ULTRA_PROMPT);
-  const another = mkdtempSync(join(tmpdir(), "ultra-other-"));
+  const another = mkdtempSync(join(fixtureRoot, "ultra-other-"));
   t.after(() => rmSync(another, { recursive: true, force: true }));
   assert.equal(readUltraConfig(another).subagentTool, "spawn_agent", "agent directory identities do not share config");
 });
 
 test("the settings check answers only when it can", () => {
-  const dir = mkdtempSync(join(tmpdir(), "ultra-"));
+  const dir = mkdtempSync(join(fixtureRoot, "ultra-"));
   assert.equal(subagentPackageEnabled(dir, { subagentTool: "spawn_agent" }), undefined,
     "no package configured");
   assert.equal(subagentPackageEnabled(dir, CONFIG), undefined, "settings unreadable");

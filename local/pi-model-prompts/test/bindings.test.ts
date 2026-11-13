@@ -1,3 +1,5 @@
+import { after } from "node:test";
+import { rmSync as removeFixtures } from "node:fs";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,8 +16,11 @@ import {
   saveBindings,
 } from "../bindings.ts";
 
+const fixtureRoot = mkdtempSync(join(tmpdir(), "test-fixtures-"));
+after(() => removeFixtures(fixtureRoot, { recursive: true, force: true }));
+
 function dirWithPrompt(name: string, body: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "model-prompts-"));
+  const dir = mkdtempSync(join(fixtureRoot, "model-prompts-"));
   mkdirSync(join(dir, "prompts"), { recursive: true });
   writeFileSync(join(dir, "prompts", `${name}.md`), body);
   return dir;
@@ -30,7 +35,7 @@ test("rejects prompt names that could escape the prompts directory", () => {
 });
 
 test("missing or malformed bindings.json yields no bindings", () => {
-  const dir = mkdtempSync(join(tmpdir(), "model-prompts-"));
+  const dir = mkdtempSync(join(fixtureRoot, "model-prompts-"));
   assert.equal(Object.keys(loadBindings(dir)).length, 0);
   writeFileSync(join(dir, "bindings.json"), "{ not json");
   assert.equal(Object.keys(loadBindings(dir)).length, 0);
@@ -39,7 +44,7 @@ test("missing or malformed bindings.json yields no bindings", () => {
 });
 
 test("loadBindings drops unsafe names, non-string ids and empty lists", () => {
-  const dir = mkdtempSync(join(tmpdir(), "model-prompts-"));
+  const dir = mkdtempSync(join(fixtureRoot, "model-prompts-"));
   writeFileSync(join(dir, "bindings.json"), JSON.stringify({
     "zh-writing": ["grok-4.6", 42, "grok-4.6", "model-a"],
     "../escape": ["grok-4.6"],
@@ -50,7 +55,7 @@ test("loadBindings drops unsafe names, non-string ids and empty lists", () => {
 });
 
 test("saveBindings prunes empty prompts and round-trips sorted", () => {
-  const dir = mkdtempSync(join(tmpdir(), "model-prompts-"));
+  const dir = mkdtempSync(join(fixtureRoot, "model-prompts-"));
   saveBindings(dir, { b: ["z", "a", "a"], a: [], "../bad": ["x"] });
   assert.deepEqual({ ...loadBindings(dir) }, { b: ["a", "z"] });
 });
@@ -65,7 +70,7 @@ test("listPrompts reports sizes and the models each prompt is bound to", () => {
 });
 
 test("listPrompts is empty when the prompts directory is absent", () => {
-  assert.deepEqual(listPrompts(mkdtempSync(join(tmpdir(), "model-prompts-"))), []);
+  assert.deepEqual(listPrompts(mkdtempSync(join(fixtureRoot, "model-prompts-"))), []);
 });
 
 test("loadPrompt trims and treats a whitespace-only file as absent", () => {
@@ -89,7 +94,7 @@ test("promptsForModel returns only prompts bound to that model", () => {
 });
 
 test("a binding whose prompt file is gone contributes nothing", () => {
-  const dir = mkdtempSync(join(tmpdir(), "model-prompts-"));
+  const dir = mkdtempSync(join(fixtureRoot, "model-prompts-"));
   saveBindings(dir, { ghost: ["grok-4.6"] });
   assert.deepEqual([...promptsForModel(dir, "grok-4.6")], []);
 });

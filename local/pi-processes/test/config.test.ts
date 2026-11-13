@@ -32,13 +32,11 @@ test("validates complete managed policies and the frozen timeout ceiling", () =>
 });
 
 test("loads global/project config only for trusted projects and rejects duplicate keys", async (t) => {
-  const root = await mkdir(join(tmpdir(), `pi-processes-config-${process.pid}-${Date.now()}`), { recursive: true }).then(() => join(tmpdir(), `pi-processes-config-${process.pid}-${Date.now()}`));
-  // Use a second, actually-created root to avoid sharing state across reruns.
   const home = join(tmpdir(), `pi-processes-home-${process.pid}-${Math.random().toString(16).slice(2)}`);
   const cwd = join(tmpdir(), `pi-processes-cwd-${process.pid}-${Math.random().toString(16).slice(2)}`);
   await mkdir(join(home, "pi-processes"), { recursive: true });
   await mkdir(join(cwd, ".pi"), { recursive: true });
-  t.after(async () => { await import("node:fs/promises").then(({ rm }) => Promise.all([rm(home, { recursive: true, force: true }), rm(cwd, { recursive: true, force: true }), rm(root, { recursive: true, force: true })])); });
+  t.after(async () => { await import("node:fs/promises").then(({ rm }) => Promise.all([rm(home, { recursive: true, force: true }), rm(cwd, { recursive: true, force: true })])); });
   await writeFile(join(home, "pi-processes", "config.json"), JSON.stringify({ schemaVersion: 1, limits: { maxLiveProcesses: 7 } }));
   await writeFile(join(cwd, ".pi", "pi-processes.json"), JSON.stringify({ schemaVersion: 1, limits: { maxLiveProcesses: 9 } }));
   const untrusted = await loadProcessesConfig({ agentDir: home, cwd, projectTrusted: false });

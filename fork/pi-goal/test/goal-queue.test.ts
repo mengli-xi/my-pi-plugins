@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import {
 	GOAL_SNAPSHOT_CHANNEL,
 	GOAL_SNAPSHOT_REQUEST_CHANNEL,
@@ -13,6 +13,7 @@ import { goalWithTestMailbox as goal } from "./mailbox-support.js";
 import { createMockContext, createMockPi } from "./support.js";
 
 const settingsDirectory = mkdtempSync(join(tmpdir(), "pi-goal-queue-settings-"));
+after(() => rmSync(settingsDirectory, { recursive: true, force: true }));
 const enabledSettingsPath = join(settingsDirectory, "enabled.json");
 const disabledSettingsPath = join(settingsDirectory, "disabled.json");
 writeFileSync(enabledSettingsPath, '{"experimental":{"goals":true}}\n');

@@ -1,3 +1,5 @@
+import { after } from "node:test";
+import { rmSync as removeFixtures } from "node:fs";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,6 +7,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { openSettings } from "../settings.ts";
+
+const fixtureRoot = mkdtempSync(join(tmpdir(), "test-fixtures-"));
+after(() => removeFixtures(fixtureRoot, { recursive: true, force: true }));
 
 interface TestComponent {
   focused?: boolean;
@@ -102,7 +107,7 @@ function editorFocusHarness(inputs: readonly string[], onCustom?: (call: number)
 }
 
 test("closing the two-stage settings flow restores input focus to the editor", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "model-prompt-settings-"));
+  const dir = mkdtempSync(join(fixtureRoot, "model-prompt-settings-"));
   mkdirSync(join(dir, "prompts"));
   writeFileSync(join(dir, "prompts", "alpha.md"), "alpha");
   writeFileSync(join(dir, "prompts", "beta.md"), "beta");
@@ -118,7 +123,7 @@ test("closing the two-stage settings flow restores input focus to the editor", a
 });
 
 test("saving refuses a concurrent edit made while the model panel is open", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mp-concurrent-"));
+  const dir = mkdtempSync(join(fixtureRoot, "mp-concurrent-"));
   mkdirSync(join(dir, "prompts"));
   writeFileSync(join(dir, "prompts/brief.md"), "brief");
   const path = join(dir, "bindings.json");
@@ -131,7 +136,7 @@ test("saving refuses a concurrent edit made while the model panel is open", asyn
 });
 
 test("corrupt bindings make settings read-only without opening a picker", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mp-readonly-"));
+  const dir = mkdtempSync(join(fixtureRoot, "mp-readonly-"));
   mkdirSync(join(dir, "prompts"));
   writeFileSync(join(dir, "prompts/brief.md"), "brief");
   const path = join(dir, "bindings.json");

@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderLayoutFrame } from "@earendil-works/pi-tui/dist/layout.js";
-import { auditInternals, declareProbes, HEALTH_PATH, markBroken, resetInternals, setHealthPath } from "../src/internals.ts";
+import { auditInternals, flushInternalsHealth, declareProbes, HEALTH_PATH, markBroken, resetInternals, setHealthPath } from "../src/internals.ts";
 
 import {
   Container,
@@ -133,7 +133,7 @@ test("recomputes fullscreen geometry after a resize before the next host frame",
 function isolatedGeometryHealth(t: test.TestContext): () => ReturnType<typeof auditInternals>[number] | undefined {
   const root = mkdtempSync(join(tmpdir(), "pinned-geometry-health-"));
   resetInternals(); setHealthPath(join(root, "health.json")); declareProbes(PROBES);
-  t.after(() => { resetInternals(); setHealthPath(HEALTH_PATH); rmSync(root, { recursive: true, force: true }); });
+  t.after(async () => { await flushInternalsHealth(); resetInternals(); setHealthPath(HEALTH_PATH); rmSync(root, { recursive: true, force: true }); });
   return () => auditInternals().find(row => row.id === "fullscreen.editorGeometry");
 }
 

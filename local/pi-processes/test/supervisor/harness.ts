@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { Readable, Writable } from "node:stream";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -83,7 +83,6 @@ export async function startSupervisor(options: { runtime: string; supervisorPath
     type: "hello",
     payload: { piPid: process.pid, sessionScopeId: "session-e2e", extensionVersion: "test", platform: process.platform },
   }));
-  await waitFor((frame) => frame.type === "ready");
 
   const waitForExit = async (timeoutMs = 15_000): Promise<void> => {
     if (child.exitCode !== null || child.signalCode !== null) return;
@@ -120,6 +119,21 @@ export async function startSupervisor(options: { runtime: string; supervisorPath
     return { requestId, requestSequence: sequence };
   };
 
+  const dispose = async () => {
+    input.destroy();
+    try {
+      if (child.exitCode === null && child.signalCode === null && child.pid) {
+        try { process.kill(-child.pid, "SIGKILL"); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+      }
+      await waitForExit();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  };
+  try { await waitFor((frame) => frame.type === "ready"); }
+  catch (error) { await dispose(); throw error; }
+
   return {
     child,
     hostNonce,
@@ -134,12 +148,6 @@ export async function startSupervisor(options: { runtime: string; supervisorPath
     waitFor,
     closeInput() { input.end(); },
     waitForExit,
-    async dispose() {
-      input.destroy();
-      if (child.exitCode === null && child.signalCode === null && child.pid) {
-        try { process.kill(-child.pid, "SIGKILL"); } catch {}
-      }
-      await waitForExit();
-    },
+    dispose,
   };
 }
