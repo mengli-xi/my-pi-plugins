@@ -21,6 +21,8 @@
 - 共享库和协议里不写死具体插件名。需要区分参与方时，由参与方自己注册身份。现有 ABI key 保持不变（如 `pi.subagents.process-wait-bridge.v1`/`v2`、`pi.goal.continuation-obligation.v1`），新协议用中性命名。
 - 新增或修改协议时，同步更新根 [README](README.md) 的能力协议表：协议名、提供方、使用方、缺失时怎么降级。
 
+支持 macOS，以及 Ubuntu 24.04 x86_64 glibc、Node 24、Bun 1.3+、本地 ext4 的 Linux 基线。
+
 ## 测试
 
 - 每个包只测自己：离线单元测试、合同测试，加少量用 faux provider 跑的本包 e2e。包内测试不加载别的插件。
