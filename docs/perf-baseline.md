@@ -25,11 +25,16 @@ perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite resume --only
 perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite idle --only all --idle-seconds 600 --output .perf-baseline/idle
 perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite profile --only all --rounds 20 --session-source .perf-baseline/long/001-all/session.jsonl --output .perf-baseline/profile
 # 会话内 /new 与 /resume（选择已有会话），不是 --resume 冷启动
-perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite switch --git --repetitions 3 --session-source .perf-baseline/long/001-all/session.jsonl --output .perf-baseline/switch
+perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite switch --only none,pi-claude-style --windows 5 --repetitions 2 --session-source .perf-baseline/long/001-all/session.jsonl --output .perf-baseline/switch
+perl -e 'alarm 2400; exec @ARGV' bun scripts/bench/run.mjs --suite interact --only none,all --windows 3 --repetitions 2 --session-source .perf-baseline/long/001-all/session.jsonl --output .perf-baseline/interact
 node scripts/bench/analyze.mjs .perf-baseline/cold .perf-baseline/long .perf-baseline/profile
 ```
 
-`switch` 默认测 none、all 及逐个单插件；小/长历史分别传对应检查点。同一 PTY 中交替 `/new`、`/resume`（首次 `/new` 从空会话开始，后续从恢复目标离开），记录命令 Enter（resume 为确认选择的 Enter）到新编辑器处理 `/bench-ready` 的时间，另记选择器打开时间，排除模拟选会话的 40ms。终点包含探针输入及期间发生的绘制，不保证最后一帧已显示，不以 session_start 代替可输入；每次记录 uptime/load，保留原始样本。用 `--cpu-profile` 可附加 V8 profile；内存钩子只在测试进程中分段计时，不修改宿主文件。前后比较应串行交替跑同配置、同次数；诊断 profile 与正式计时分开。
+- `switch` 先恢复目标再 `/new`，保证离开长历史；`interact` 还测 Esc、双 Esc、Rewind/undo/history，`--navigation-only` 只留切换、双 Esc 和 Rewind。`--windows` 按 `--only` 顺序串行交替；默认 none/all/逐插件。
+- 真实 PTY 选择/输入，探针确认可输入，选择器打开另计；保留 uptime/load，临时目录遵守 TMPDIR。`--cpu-profile` 只作独立诊断，不用于正式 AB。
+- `--steady-frames 40` 在 resume 后用公开 UI 更新触发真帧，记录耗时/RSS（前 10 帧预热、不强制 GC），不混入输入延迟。带 Thinking 的轨迹可用 `node scripts/bench/with-thinking.mjs input.jsonl output.jsonl` 生成；保留工具轨迹，每轮最终 assistant 加一段 Thinking；加 `--standalone` 将它置于原首段正文后，避免被工具 phase 归档，原工具与正文不删改。`--hide-thinking` 关闭显示，省略则开启。
+
+会话内操作不等于冷启动 resume；异步事件墙钟须扣开交错绘制再判断插件成本。
 
 `--only` 支持 `none`、`all`、包目录名及 `without:包目录名`，可用逗号组合。
 `--git` 初始化临时 Git cwd；`PI_BENCH_NODE=/absolute/path/to/node` 选择被测 Node。

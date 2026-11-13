@@ -206,13 +206,18 @@ for (const root of roots) {
       ),
       long,
       idle,
+      interactions: Object.fromEntries([...new Set(runs.flatMap(run => (run.interactions ?? []).map(s => s.command)))].map(command => {
+        const samples = runs.flatMap(run => run.interactions ?? []).filter(s => s.command === command);
+        return [command, { readyMs: summarize(samples.map(s => s.elapsedMs)),
+          chooserMs: summarize(samples.map(s => s.chooserMs ?? 0)) }];
+      })),
       switches: Object.fromEntries(["new", "resume"].map(command => {
         const samples = runs.flatMap(run => run.switches ?? []).filter(sample => sample.command === command);
         return [command, {
           readyMs: summarize(samples.map(sample => sample.elapsedMs)),
           chooserMs: summarize(samples.map(sample => sample.chooserMs)),
           replacementMs: summarize(samples.map(sample => sample.replacement.elapsedMs)),
-          renderMs: summarize(samples.map(sample => sample.replacement.renderMs)),
+          renderMs: summarize(samples.map(sample => sample.ready?.renderMs ?? sample.replacement.renderMs)),
         }];
       })),
       resume: runs

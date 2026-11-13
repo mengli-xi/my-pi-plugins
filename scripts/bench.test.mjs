@@ -1,3 +1,4 @@
+import { withThinking, thinkingBody } from "./bench/with-thinking.mjs";
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { execFileSync, spawn } from "node:child_process";
@@ -12,6 +13,44 @@ import { checkEnvironment } from "./pi-checks.mjs";
 import { cleanupMeasurement } from "./bench/cleanup.mjs";
 
 const source = (path) => fileURLToPath(new URL(path, import.meta.url));
+
+test("运行中取消 fixture 已输出正文，AbortSignal 立即结束而非等 provider timer", async () => {
+  const { activeStream } = await import("./bench/active-stream.mjs");
+  const controller = new AbortController();
+  const stream = activeStream({ id: "bench", provider: "bench-faux", api: "bench-faux" }, {}, { signal: controller.signal });
+  const types = [];
+  for await (const event of stream) {
+    types.push(event.type);
+    if (event.type === "text_delta") {
+      assert.match(event.partial.content[0].text, /in progress/);
+      controller.abort();
+    }
+  }
+  assert.deepEqual(types, ["start", "text_start", "text_delta", "error"]);
+  assert.equal((await stream.result()).stopReason, "aborted");
+});
+
+test("Thinking 轨迹保留工具消息与父子关系，每轮只增加一个推理段", () => {
+  const entries = [
+    { type: "session", id: "fixture" },
+    { type: "message", id: "u", parentId: null, message: { role: "user", content: "question" } },
+    { type: "message", id: "call", parentId: "u", message: { role: "assistant", content: [{ type: "toolCall", id: "t", name: "read", arguments: {} }] } },
+    { type: "message", id: "tool", parentId: "call", message: { role: "toolResult", content: [{ type: "text", text: "result" }] } },
+    { type: "message", id: "answer", parentId: "tool", message: { role: "assistant", content: [{ type: "text", text: "answer" }] } },
+  ];
+  const result = withThinking(entries.map(e => JSON.stringify(e)).join("\n"));
+  const actual = result.jsonl.trim().split("\n").map(JSON.parse);
+  assert.deepEqual(actual.slice(0, 4), entries.slice(0, 4));
+  assert.deepEqual(actual.map(e => [e.id, e.parentId]), entries.map(e => [e.id, e.parentId]));
+  assert.deepEqual(actual[4].message.content, [{ type: "thinking", thinking: thinkingBody }, { type: "text", text: "answer" }]);
+  assert.equal(result.users, 1); assert.equal(result.thinkingMessages, 1);
+  assert.throws(() => withThinking(result.jsonl), /已经有 Thinking/);
+  entries[4].message.content[0].text = "heading\n\nanswer";
+  const independent = withThinking(entries.map(e => JSON.stringify(e)).join("\n"), true);
+  const answer = JSON.parse(independent.jsonl.trim().split("\n").at(-1)).message.content;
+  assert.deepEqual(answer.map(part => part.type), ["text", "thinking", "text"]);
+  assert.equal(answer.filter(part => part.type === "text").map(part => part.text).join(""), "heading\n\nanswer");
+});
 
 test("统计保留慢样本并使用 nearest-rank p90", () => {
   const values = [10, 2, 4, 6];
@@ -96,6 +135,30 @@ test("handler 同步段不计入排队任务的墙钟", () => {
   }
 });
 
+test("诊断将 await 文件操作和期间的绘制归到正确 handler", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-bench-await-"));
+  try {
+    const path = join(root, "fixture");
+    writeFileSync(path, "fixture");
+    execFileSync(process.execPath, ["--import", source("./bench/instrument.mjs"), "--input-type=module", "-e", `
+      import assert from 'node:assert/strict';
+      import { readFile, stat } from 'node:fs/promises';
+      const bench = globalThis.__piBench;
+      await bench.timed('session_start', 'fixture', async () => {
+        assert.equal(await readFile(${JSON.stringify(path)}, 'utf8'), 'fixture');
+        bench.frame(3, 4);
+        await stat(${JSON.stringify(path)});
+      });
+      const sample = bench.sample();
+      assert.equal(sample.handlers['fixture:session_start'].renderMs, 3);
+      assert.equal(sample.handlers['fixture:session_start'].calls, 1);
+      assert.deepEqual(sample.io.map(row => [row.owner, row.name]),
+        [['fixture:session_start', 'readFile'], ['fixture:session_start', 'stat']]);
+      assert.equal(sample.spans[0].renderMs, 3);
+    `], { env: checkEnvironment(root, { PI_BENCH_DETAIL: "1", PI_BENCH_METRICS: join(root, "metrics.jsonl") }) });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("settled 边界等待全部异步 handler", () => {
   const root = mkdtempSync(join(tmpdir(), "pi-bench-settled-"));
   try {
@@ -166,7 +229,7 @@ test("会话切换计时等待新 runtime 和异步 UI rebind，不以 session_s
 });
 
 test("指标 socket 与原始 JSONL 内容一致", async () => {
-  const root = mkdtempSync("/tmp/pi-bench-stream-"),
+  const root = mkdtempSync(join(tmpdir(), "pi-bench-stream-")),
     lines = [];
   const server = createServer((socket) => {
     socket.setEncoding("utf8");
@@ -492,6 +555,53 @@ test("采样命令冻结统计及时间戳，后续绘制与 handler 不污染�
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("交互计时从确认键或中断键起算，排除选择器和流开始前的绘制", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-bench-arm-"));
+  try {
+    execFileSync(process.execPath, ["--import", source("./bench/instrument.mjs"), "--input-type=module", "-e", `
+      import assert from 'node:assert/strict';
+      const { default: install } = await import(${JSON.stringify(new URL("./bench/probe.mjs", import.meta.url).href)});
+      const commands = new Map(), handlers = new Map();
+      install({ registerProvider() {}, registerCommand(name, command) { commands.set(name, command); }, on(name, fn) { handlers.set(name, fn); } });
+      let input;
+      handlers.get('session_start')({}, { ui: { onTerminalInput(fn) { input = fn; return () => {}; } } });
+      const bench = globalThis.__piBench;
+      commands.get('bench-arm').handler('2');
+      bench.frame(90, 90);
+      input('/rewind\\r');
+      assert.equal(bench.sample().renderMs, 90);
+      input('BENCH_ROUND_200'); input('\\r');
+      assert.equal(bench.sample().renderMs, 0);
+      bench.frame(3, 3);
+      assert.equal(bench.sample().renderMs, 3);
+      handlers.get('input')({ text: 'BENCH_ABORT' });
+      bench.frame(50, 50); input('\\x1b');
+      assert.equal(bench.sample().renderMs, 0);
+    `], { env: checkEnvironment(root, { PI_BENCH_METRICS: join(root, "metrics.jsonl"), PI_BENCH_REPLY_BLOCKS: "24" }) });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("稳态帧采样逐次等待公开 UI 更新的实际绘制，并记录 RSS", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-bench-frames-"));
+  try {
+    execFileSync(process.execPath, ["--import", source("./bench/instrument.mjs"), "--input-type=module", "-e", `
+      import assert from 'node:assert/strict';
+      import fs from 'node:fs';
+      const { default: install } = await import(${JSON.stringify(new URL("./bench/probe.mjs", import.meta.url).href)});
+      const commands = new Map();
+      install({ registerProvider() {}, registerCommand(k,v) { commands.set(k,v); }, on() {} });
+      const bench = globalThis.__piBench; let requested = 0;
+      await commands.get('bench-frames').handler('5', { ui: { setStatus(k,value) {
+        if(value !== undefined) { requested++; queueMicrotask(() => bench.frame(2, 3, performance.now())); }
+      } } });
+      assert.equal(requested, 5); assert.equal(bench.onFrame, undefined);
+      const event = fs.readFileSync(process.env.PI_BENCH_METRICS,'utf8').trim().split('\\n').map(JSON.parse).find(e=>e.type==='frames-sampled');
+      assert.equal(event.steadyFrames.length, 5);
+      assert.ok(event.steadyFrames.every(f=>f.ms===2 && f.rss>0));
+    `], { env: checkEnvironment(root, { PI_BENCH_METRICS: join(root, "metrics.jsonl"), PI_BENCH_REPLY_BLOCKS: "24" }) });
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("清理遇到 EPERM、PTY 或日志错误仍删除目录并保留原始异常", (t) => {
