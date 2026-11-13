@@ -104,7 +104,13 @@ test("an actual Task deadline revokes a cached grant while its real Process is s
     await writeFile(gate, "release");
     await until(() => {
       try { process.kill(-pgid, 0); return false; }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return true; throw error; }
+      // Our own same-uid group can never report EPERM, so EPERM means every member
+      // has exited and another user's process reused the group id.
+      catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ESRCH" || code === "EPERM") return true;
+        throw error;
+      }
     }, "late Process really exits", diagnostics);
     await new Promise(resolve => setTimeout(resolve, 300));
     assert.equal(f.control.childProviderCalls.length, requests, "late Process completion cannot undo the Task deadline");
