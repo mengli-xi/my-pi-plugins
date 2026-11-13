@@ -27,7 +27,7 @@ import {
   markdownDefaultStyleCompat,
   retainAssistantSourceMessage,
 } from "./compat/assistant-message.ts";
-import { CodeFenceMarkerHidingComponent } from "./code-fence.ts";
+import { CodeFenceMarkerHidingComponent, type CodeFenceFrames } from "./code-fence.ts";
 import { snapshotExtensionContext } from "./extension-context.ts";
 import {
   mutedEllipsis,
@@ -152,6 +152,19 @@ function plainLine(line: string): string {
   return line.replace(ANSI_OSC_PATTERN, "").replace(ANSI_CSI_PATTERN, "");
 }
 
+interface BulletFrame {
+  width: number;
+  native: string[];
+  theme: Theme | undefined;
+  marker: string;
+  markerColor: AssistantMessagesConfig["markerColor"];
+  lines: string[];
+}
+
+interface BulletFrames {
+  frames?: WeakMap<Component, BulletFrame>;
+}
+
 /**
  * Adds one marker to a logical component while preserving the component's own
  * Markdown wrapping, ANSI styling, padding, and blank lines.
@@ -160,34 +173,53 @@ export class LogicalBulletComponent implements Component {
   private readonly child: Component;
   private readonly config: AssistantMessagesConfig;
   private readonly getTheme: () => Theme | undefined;
+  private readonly owner: BulletFrames;
+  private markerWidth = 0;
 
   constructor(
     child: Component,
     config: AssistantMessagesConfig,
     getTheme: () => Theme | undefined,
+    owner: BulletFrames = { frames: new WeakMap() },
   ) {
     this.child = child;
+    this.owner = owner;
     this.config = config;
     this.getTheme = getTheme;
   }
 
   render(width: number): string[] {
     const safeWidth = Math.max(0, Math.floor(width));
-    const markerWidth = visibleWidth(this.config.marker);
+    const theme = this.getTheme();
+    const cached = this.owner.frames?.get(this);
+    const markerWidth = cached?.marker === this.config.marker
+      ? this.markerWidth
+      : (this.markerWidth = visibleWidth(this.config.marker));
     if (markerWidth < 1 || safeWidth <= markerWidth) {
+      this.owner.frames?.delete(this);
       return this.child.render(safeWidth);
     }
-    const lines = this.child.render(safeWidth - markerWidth);
-    if (!lines.length) return lines;
+    const native = this.child.render(safeWidth - markerWidth);
+    if (cached && cached.width === safeWidth && cached.theme === theme &&
+      cached.marker === this.config.marker && cached.markerColor === this.config.markerColor &&
+      native.length === cached.native.length && native.every((line, index) => line === cached.native[index])) {
+      return cached.lines.slice();
+    }
     const continuation = " ".repeat(markerWidth);
-    const marker = colorMarker(this.getTheme(), this.config);
-    return lines.map((line, index) =>
-      `${index === 0 ? marker : continuation}${line}`
-    );
+    const marker = colorMarker(theme, this.config);
+    const lines = native.map((line, index) => `${index === 0 ? marker : continuation}${line}`);
+    this.owner.frames?.set(this, { width: safeWidth, native: native.slice(), theme,
+      marker: this.config.marker, markerColor: this.config.markerColor, lines });
+    return lines.slice();
   }
 
   invalidate(): void {
+    this.owner.frames?.delete(this);
     this.child.invalidate?.();
+  }
+
+  dispose(): void {
+    this.owner.frames?.delete(this);
   }
 }
 
@@ -1105,6 +1137,8 @@ function decorateChildren(
   requestRender: () => void,
   thinkingHandoff?: ThinkingBlockHandoff,
   projected = false,
+  bulletFrames?: BulletFrames,
+  fenceFrames?: CodeFenceFrames,
 ): void {
   const presentation = assistantPresentationState(instance);
   const children = presentation.children;
@@ -1143,10 +1177,11 @@ function decorateChildren(
     if (plan.role === "text") {
       children[plan.index] = plan.preserveWrapper(new LogicalBulletComponent(
         config.hideCodeFenceMarkers
-          ? new CodeFenceMarkerHidingComponent(plan.component)
+          ? new CodeFenceMarkerHidingComponent(plan.component, fenceFrames)
           : plan.component,
         config,
         getTheme,
+        bulletFrames,
       ));
       continue;
     }
@@ -1191,7 +1226,7 @@ function decorateChildren(
       },
     );
     const withoutFences = (component: Component): Component =>
-      config.hideCodeFenceMarkers ? new CodeFenceMarkerHidingComponent(component) : component;
+      config.hideCodeFenceMarkers ? new CodeFenceMarkerHidingComponent(component, fenceFrames) : component;
     const nativeChildren = plan.runIndex === undefined
       ? [plan.component]
       : thinkingChildren.get(plan.runIndex) ?? [plan.component];
@@ -1337,6 +1372,9 @@ export function installClaudeAssistantMessages(
   const original = previous?.version === 1
     ? previous.original
     : prototype.updateContent;
+  const bulletFrames: BulletFrames = { frames: new WeakMap() };
+  const fenceFrames: CodeFenceFrames = { frames: new WeakMap() };
+  const clearFrames = () => { bulletFrames.frames = undefined; fenceFrames.frames = undefined; };
   let activeTheme: Theme | undefined;
   let activeUI: ExtensionUIContext | undefined;
   let activeTui: TUI | undefined;
@@ -1409,6 +1447,8 @@ export function installClaudeAssistantMessages(
             () => activeTui?.requestRender(),
             thinkingHandoff,
             projectedThinking !== undefined,
+            bulletFrames,
+            fenceFrames,
           );
         }
         markOk("assistant-message.contentContainer");
@@ -1451,7 +1491,10 @@ export function installClaudeAssistantMessages(
     }
     return true;
   };
+  pi.on("session_shutdown", clearFrames);
   pi.on("session_start", (_event, ctx) => {
+    bulletFrames.frames = new WeakMap();
+    fenceFrames.frames = new WeakMap();
     captureContext(ctx);
   });
   pi.on("resources_discover", (_event, ctx) => {
@@ -1463,6 +1506,7 @@ export function installClaudeAssistantMessages(
   });
 
   return () => {
+    clearFrames();
     activeUI?.setWidget(TYPEWRITER_WIDGET_KEY, undefined);
     typewriter.dispose();
     thinkingHandoff.dispose();
