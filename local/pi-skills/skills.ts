@@ -1,7 +1,8 @@
-import { existsSync, lstatSync, readdirSync, statSync, type BigIntStats } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync, type BigIntStats } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, parse, resolve } from "node:path";
+import { basename, dirname, join, parse, resolve } from "node:path";
 import { getAgentDir, loadSkillsFromDir, type Skill, type SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 
 export const MAX_SKILL_NAME_BYTES = 256;
@@ -111,13 +112,22 @@ function statVersion(stats: BigIntStats): string {
   return [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs].join(":");
 }
 
+function contentVersion(path: string, stats: BigIntStats): string {
+  // Directory timestamps can collide too: include entries to detect additions.
+  if (stats.isDirectory()) return JSON.stringify(readdirSync(path).sort());
+  if (stats.isFile() && (path.endsWith(".md") || IGNORE_FILES.has(basename(path)))) {
+    return createHash("sha256").update(readFileSync(path)).digest("hex");
+  }
+  return "";
+}
+
 function pathMetadata(path: string): { version: string; stats?: BigIntStats } {
   try {
     const link = lstatSync(path, { bigint: true });
-    if (!link.isSymbolicLink()) return { version: statVersion(link), stats: link };
+    if (!link.isSymbolicLink()) return { version: `${statVersion(link)}:${contentVersion(path, link)}`, stats: link };
     try {
       const target = statSync(path, { bigint: true });
-      return { version: `${statVersion(link)}>${statVersion(target)}`, stats: target };
+      return { version: `${statVersion(link)}>${statVersion(target)}:${contentVersion(path, target)}`, stats: target };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       return { version: `${statVersion(link)}>missing` };
@@ -142,7 +152,7 @@ function versionsUnchanged(versions: ReadonlyMap<string, string>): boolean {
 
 /**
  * Pi 1.5 core/skills.ts skips hidden entries/node_modules, follows symlinks,
- * and reads .gitignore/.ignore/.fdignore in visited directories. This metadata
+ * and reads .gitignore/.ignore/.fdignore in visited directories. This content/version
  * superset deliberately does not interpret ignore rules or stop at SKILL.md:
  * only the official loader decides which skills exist. Unverifiable metadata
  * disables reuse; additions to this upstream discovery surface require review.
