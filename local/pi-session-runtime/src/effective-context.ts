@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { isDeepStrictEqual } from "node:util";
 import type { Message } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -95,7 +96,7 @@ export interface RequestCandidate extends Omit<ContextIdentity, "sessionId" | "g
   /** Explicitly identified persistent preambles, not arbitrary custom or bash messages. */
   knownPreamble: readonly Message[];
 }
-interface Candidate extends Omit<RequestCandidate, "auxiliaryMessages"> { ordinal: number; hash: string; revision: number; consumed: boolean; observers: Set<symbol> }
+interface Candidate extends Omit<RequestCandidate, "auxiliaryMessages"> { auxiliaryMessages?: readonly unknown[]; ordinal: number; hash: string; revision: number; consumed: boolean; observers: Set<symbol> }
 interface Binding {
   sessionId: string; generation: number; identity: object;
   owners: Map<symbol, string>; providers: Set<Provider>; candidate?: Candidate; ordinal: number;
@@ -230,14 +231,22 @@ export function acquireEffectiveCapture(input: { owner: string; sessionId: strin
     generation: current.generation,
     observe(candidate) {
       if (!active()) return;
-      const hash = contextFingerprint(candidate.auxiliaryMessages);
       const prior = current.candidate;
-      if (prior?.signal === candidate.signal && prior.leafId === candidate.leafId && prior.hash === hash && prior.revision === state.store.revision(input.sessionId) && !prior.observers.has(token)) { prior.observers.add(token); return; }
+      const sameRequest = prior?.signal === candidate.signal && prior.leafId === candidate.leafId && prior.revision === state.store.revision(input.sessionId) && !prior.observers.has(token);
+      // The snapshot never escapes or changes. Compare contents, not the mutable event's
+      // identity: a transformer between observers must still force a fresh fingerprint.
+      if (sameRequest && prior.auxiliaryMessages && isDeepStrictEqual(prior.auxiliaryMessages, candidate.auxiliaryMessages)) { prior.observers.add(token); return; }
+      // Non-cloneable extension data still uses the original hash-only path.
+      let auxiliaryMessages: readonly unknown[] | undefined;
+      try { auxiliaryMessages = structuredClone(candidate.auxiliaryMessages); }
+      catch (error) { if (!(error instanceof DOMException) || error.name !== "DataCloneError") throw error; }
+      const hash = contextFingerprint(auxiliaryMessages ?? candidate.auxiliaryMessages);
+      // Strict equality is only a fast path; retain canonical equivalence (e.g. undefined).
+      if (sameRequest && prior.hash === hash) { prior.observers.add(token); return; }
       // Once a new business request is prepared, an unobserved provider call may have a
       // different projection. Never serve an older request as the current tool turn's capture.
       state.store.invalidate(input.sessionId, "awaiting-provider-capture");
-      const { auxiliaryMessages: _auxiliary, ...snapshot } = candidate;
-      current.candidate = { ...snapshot, nativeOrigins: structuredClone(candidate.nativeOrigins), knownPreamble: structuredClone(candidate.knownPreamble), ordinal: ++current.ordinal, hash, revision: state.store.revision(input.sessionId), consumed: false, observers: new Set([token]) };
+      current.candidate = { ...candidate, auxiliaryMessages, nativeOrigins: structuredClone(candidate.nativeOrigins), knownPreamble: structuredClone(candidate.knownPreamble), ordinal: ++current.ordinal, hash, revision: state.store.revision(input.sessionId), consumed: false, observers: new Set([token]) };
     },
     confirmRequest(signal) {
       if (!active() || !signal || signal.aborted) return;

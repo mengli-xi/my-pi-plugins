@@ -69,7 +69,7 @@ extension/bundled host 复用正式 loader 注入的 namespace；原生 Node 的
 
 `fork-turns` 仅含冷 schema/parser 的共享 grammar；`effective-context` 无运行时 Pi import。`acquireEffectiveCapture` 以公开 SessionManager 对象为 binding identity 租用 session generation；同 identity 共用 capture/decorator。引用计数最后 release 清 observation/capture，Main shutdown/reload 必须 retire，即使另一个消费者仍持 lease。旧 release 不能碰新 binding。
 
-每次业务 `context_with_system` 记录 RequestCandidate：leaf、选中 model/effort、active tool/capability 指纹、原生消息 provenance 与 run 的公开 signal；同时刷新公开扩展与 catalog provider。`streamSimple` wrapper 仅复制 normalized messages 和允许元数据，保留 receiver/options、原调用与原 stream，使用 AsyncLocalStorage 对齐准确调用。
+每次业务 `context_with_system` 记录 RequestCandidate：leaf、选中 model/effort、active tool/capability 指纹、原生消息 provenance 与 run 的公开 signal；同时刷新公开扩展与 catalog provider。同一请求的后续 observer 先比对私有消息快照，内容完全相同才复用 hash；改写、新请求或 revision/generation 变化均重算。`streamSimple` wrapper 仅复制 normalized messages 和允许元数据，保留 receiver/options、原调用与原 stream，使用 AsyncLocalStorage 对齐准确调用。
 
 捕获不含 auth options、headers、callback 或编码后的 wire payload，但消息可含正文、图片、thinking/signature、工具参数/结果和 usage，不脱敏。child 继承消息后可能发送给不同 provider；`none` 不继承父对话，仍有自己的 instructions/tools。
 
