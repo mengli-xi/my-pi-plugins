@@ -32,6 +32,8 @@ test("append during read discards that read, coalesces retry and caches only sta
   try {
     await h.finish();
     const identity = { id: h.manager.getSessionId(), file: h.manager.getSessionFile()! };
+    await readDiskSession(identity); // warm a verified prefix before the raced append
+    await appendFile(identity.file, "\n");
     const race = await appending(t, identity.file, true);
     const [first, joined] = await Promise.all([readDiskSession(identity), readDiskSession(identity)]);
     assert.equal(first, joined); assert.ok(first);

@@ -18,9 +18,9 @@ Processes、Goal、Subagents、Scheduler、MCP Adapter 通过 producer 接口接
 - 每次真实请求重新检查 guard；已 recorded 但被 hold/cancel/project=false 拒绝的通知，也要从当前请求上下文过滤，不改原历史。合法 live/fulfilled key 对同一 carrier 的引用可保留。无法安全投影时调用公开 abort，并清空当前请求可见列表，不能靠抛错或告警让 Pi 沿用原消息。
 - readonly projection 只读取持久事实及当前 slot 已知的拒绝/错误，不调用 guard 或授予新权限；它不证明业务权限实时有效。正式请求仍由 delivery owner 逐次校验。
 - snapshot 由同一 writer lock 管理：首次取得锁时读取，后续复用现有内存 snapshot；自己成功落盘后更新内存。metadata 变化、重获锁或写入结果不确定时重新读盘，锁和 fsync 检查不缓存。
-- session JSONL 按 identity 只保留最新版解析结果及 entry 索引，合并并发读取；dev/inode/size/mtimeNs/ctimeNs 变化就整份重读，读取期间变化或失败不沿用旧结果。同 inode 并发增长单独报 `read-race`，`readDiskSession()` 单次调用最多尝试 3 次（含完成时版本复核），不 sleep、不定时轮询；只有稳定字节才解析和缓存。读取中替换、截断、等长改写，以及稳定的坏 JSON、身份/branch/正文/proof 不符，仍按原错误拒绝，不能借重读放宽验证。
+- session JSONL 按 identity 只保留最新版解析结果及 entry 索引，合并并发读取；dev/inode/size/mtimeNs/ctimeNs 变化仍整份回读稳定字节。同 inode 增长且旧文本以换行结束、前缀长度与 SHA-256 均匹配时，只解析新增尾部并复用已验证 entries/索引；否则全量解析，读取期间变化或失败不沿用旧结果。同 inode 并发增长单独报 `read-race`，`readDiskSession()` 单次调用最多尝试 3 次（含完成时版本复核），不 sleep、不定时轮询；只有稳定字节才解析和缓存。读取中替换、截断、等长改写，以及稳定的坏 JSON、身份/branch/正文/proof 不符，仍按原错误拒绝，不能借重读放宽验证。
 - 有界读取仍遇到 `read-race` 时，只在内存保留拒绝与诊断，不写持久 `suspended`、不自行循环调度。首次 ready 可保留已取得的 writer lock，但验证完成前不投递、不 replay ACK；后续真实 lifecycle、producer admission 或 `/mailbox resume` 边界重新验证。投影失败仍 abort 并返回空列表；只有当前请求由读取竞争触发、且 signal 尚未 aborted 的内部 abort 不写持久 aborted suspension，普通用户中断和真实错误照旧停用。readonly projection 遇到未完成的 owner 验证也拒绝，不能沿用未授权 messages。
-- 没有增量索引、后台轮询或永久全路径历史 cache，binding 退役会释放其解析结果。readonly reader 状态随 SessionManager 生命周期保留，不授予执行权限。
+- 不保留原始全文、后台轮询或永久全路径历史 cache，binding 退役会释放其解析结果和前缀摘要。readonly reader 状态随 SessionManager 生命周期保留，不授予执行权限。
 - snapshot/receipt 保存完整正文、图片与 details，不脱敏、不加密。新 snapshot 文件使用 0600，已有目录权限由 owner 管理。GC snapshot 不等于删除会话中的正文/receipt，也不按时间清理临时残留。
 - accepted、recorded、fulfilled 与业务成功不等价。cancel 不能撤回已提交原生队列或已冻结/发出的请求；关闭 producer、退出或 `/mailbox resume` 都不替代业务取消/授权。
 

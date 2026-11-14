@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext, FileEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { isReadRace, MailboxError } from "./errors.js";
 import { checkpoint } from "./checkpoint.js";
@@ -26,6 +27,7 @@ export function onBranch(mail: Mail, branchEntryId: string | null, branch: reado
 export interface DiskSession { readonly entries: readonly SessionEntry[]; readonly byId: ReadonlyMap<string, SessionEntry> }
 interface DiskRead {
   readonly file: string; readonly headerId: string; readonly version: FileVersion; readonly disk: DiskSession;
+  readonly prefix: { length: number; hash: string } | null;
 }
 interface DiskReadState { current: DiskRead | undefined; reading: Promise<DiskRead | null> | undefined }
 // A binding owns at most one parsed version, never a global path/history archive.
@@ -35,16 +37,36 @@ async function readSessionVersion(state: DiskReadState, file: string): Promise<D
   try {
     const version = await fileVersion(file);
     if (state.current?.file === file && sameFileVersion(state.current.version, version)) return state.current;
+    const previous = state.current;
     state.current = undefined;
+    // Always read stable bytes from disk. Metadata growth alone cannot prove
+    // append-only history: a writer may also have changed the old prefix.
     const source = version === null ? null : await readVersionedText(file);
     if (!source) return null;
-    const rows = source.text.split("\n").filter(line => line.trim()).map(line => JSON.parse(line) as FileEntry);
-    const header = rows[0];
-    if (!header || header.type !== "session" || typeof header.id !== "string") throw new MailboxError("unverifiable-proof", "session disk header does not match mailbox target");
-    const entries = rows.slice(1) as SessionEntry[];
-    const byId = new Map(entries.map(entry => [entry.id, entry]));
-    if (byId.size !== entries.length || entries.some(entry => typeof entry.id !== "string" || typeof entry.parentId !== "string" && entry.parentId !== null)) throw new MailboxError("unverifiable-proof", "malformed session disk history");
-    const current = { file, headerId: header.id, version: source.version, disk: { entries, byId } };
+    let digest = createHash("sha256"), reuse: DiskRead | null = null;
+    if (previous?.file === file && previous.prefix !== null
+      && previous.version.dev === source.version.dev && previous.version.ino === source.version.ino
+      && previous.version.size < source.version.size && source.text.length >= previous.prefix.length) {
+      digest.update(source.text.slice(0, previous.prefix.length));
+      if (digest.copy().digest("hex") === previous.prefix.hash) reuse = previous;
+      else digest = createHash("sha256");
+    }
+    const text = source.text.slice(reuse?.prefix?.length ?? 0);
+    digest.update(text); // reuse the verified prefix hash state, not a second full hash
+    const rows = text.split("\n").filter(line => line.trim()).map(line => JSON.parse(line) as FileEntry);
+    const header = reuse ? null : rows.shift();
+    if (!reuse && (!header || header.type !== "session" || typeof header.id !== "string")) throw new MailboxError("unverifiable-proof", "session disk header does not match mailbox target");
+    const tail = rows as SessionEntry[];
+    const byId = new Map(reuse?.disk.byId);
+    for (const entry of tail) {
+      if (typeof entry.id !== "string" || typeof entry.parentId !== "string" && entry.parentId !== null || byId.has(entry.id))
+        throw new MailboxError("unverifiable-proof", "malformed session disk history");
+      byId.set(entry.id, entry);
+    }
+    const entries = reuse ? [...reuse.disk.entries, ...tail] : tail;
+    const current = { file, headerId: reuse?.headerId ?? header!.id, version: source.version, disk: { entries, byId },
+      // A final row without a newline may be extended; parse it in full next time.
+      prefix: source.text.endsWith("\n") ? { length: source.text.length, hash: digest.digest("hex") } : null };
     state.current = current;
     return current;
   } catch (error) { state.current = undefined; throw error; }

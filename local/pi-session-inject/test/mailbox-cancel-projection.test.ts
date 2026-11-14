@@ -3,13 +3,53 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { MAILBOX_HOLDER_KEY } from "../src/mailbox-v1/light.js";
-import { readDiskSession, terminalIndex } from "../src/mailbox-v1/proof.js";
+import { readDiskSession, releaseDiskSession, terminalIndex } from "../src/mailbox-v1/proof.js";
 import { clearMailboxes, harness, until } from "./mailbox-harness.js";
 import { sharedCarrierFixture } from "./fixtures/shared-carrier.js";
 
 function slot(h: Awaited<ReturnType<typeof harness>>) {
   return [...(globalThis as any)[Symbol.for(MAILBOX_HOLDER_KEY)].slots.values()].find((value: any) => value.sessionManager === h.manager);
 }
+
+test("append reuse spans empty, pending, cancelled receipt GC, and new pending projection", async () => {
+  const h = await harness({ persist: true });
+  try {
+    await h.finish();
+    let allowed = true, checks = 0;
+    const p = h.producer("pi-processes", { checkCurrent: () => {
+      checks++;
+      return allowed ? { kind: "allow", project: true, wake: false } : { kind: "hold", reason: "source changed" };
+    } });
+    await h.emit("session_start", { reason: "startup" });
+    await h.context();
+    const identity = slot(h).session, first = (await readDiskSession(identity))!;
+    const cancelled = h.mail("pi-processes", "cancel-append", { wake: false });
+    await p.endpoint.put(cancelled);
+    await until(() => slot(h).snapshot.pending[0]?.nativeEntries.length === 1);
+    assert.ok((await h.context()).some((message: any) => message.content === cancelled.messages[0]!.content));
+    await p.endpoint.cancel(cancelled.key, "retired");
+    await until(() => slot(h).snapshot.terminal.length === 0);
+    h.manager.appendCustomEntry("fixture", { text: "append after receipt GC" });
+    assert.ok(!(await h.context()).some((message: any) => message.content === cancelled.messages[0]!.content));
+    const next = h.mail("pi-processes", "next-append", { wake: false });
+    await p.endpoint.put(next);
+    await until(() => slot(h).snapshot.pending[0]?.nativeEntries.length === 1);
+    allowed = false;
+    const before = checks;
+    assert.ok(!(await h.context()).some((message: any) => message.content === next.messages[0]!.content));
+    assert.ok(checks > before, "parsed history is not cached producer authority");
+    allowed = true;
+    assert.ok((await h.context()).some((message: any) => message.content === next.messages[0]!.content));
+    const incremental = (await readDiskSession(identity))!;
+    assert.equal(incremental.entries[0], first.entries[0]);
+    const fresh = { ...identity };
+    try {
+      const full = await readDiskSession(fresh);
+      assert.deepEqual(incremental, full);
+      assert.deepEqual(terminalIndex(incremental, identity.id), terminalIndex(full, identity.id));
+    } finally { releaseDiskSession(fresh); }
+  } finally { await h.cleanup(); }
+});
 
 for (const gc of [false, true]) test(`cancelled native body is excluded ${gc ? "after receipt-backed GC" : "while terminal ACK is pending"}`, async () => {
   const h = await harness({ persist: true });
