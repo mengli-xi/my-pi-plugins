@@ -235,6 +235,8 @@ export function acquireEffectiveCapture(input: { owner: string; sessionId: strin
       const sameRequest = prior?.signal === candidate.signal && prior.leafId === candidate.leafId && prior.revision === state.store.revision(input.sessionId) && !prior.observers.has(token);
       // The snapshot never escapes or changes. Compare contents, not the mutable event's
       // identity: a transformer between observers must still force a fresh fingerprint.
+      // This fast path requires the clone and contextFingerprint's canonical form to agree:
+      // strict equality must imply an equal hash, so revisit it when canonical changes (e.g. Date serialization).
       if (sameRequest && prior.auxiliaryMessages && isDeepStrictEqual(prior.auxiliaryMessages, candidate.auxiliaryMessages)) { prior.observers.add(token); return; }
       // Non-cloneable extension data still uses the original hash-only path.
       let auxiliaryMessages: readonly unknown[] | undefined;
