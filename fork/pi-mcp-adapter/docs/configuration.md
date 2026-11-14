@@ -125,8 +125,6 @@ Remote keep-alive 的 `tools/list` 是无 `list_changed` 或通知丢失时的 a
 
 Idle 以最近一次完成 activity 起算，每 30 秒顺序检查，所以 timeout 是最短间隔不是精确 deadline。运行/审批中的 tool、开放 UI（每 10 秒 heartbeat）、URL request 的接收与完成计入活动；Tasks 保持其连接。`idleTimeout: 0` 和 keep-alive 模式忽略 idle timer。Local stdio 会退出；HTTP/mux 只断开 client。
 
-空配置不再仅因 metadata cache 缺失而初始化 core；审批、Task 和 durable mail 恢复照旧，首次 MCP 操作重读配置。
-
 Startup discovery 缺 metadata（new/config changed/corrupt/TTL）时最多同时 10 个；普通 lazy 取到 tools 就关闭，批量保存一次 cache。`lazy-keep-alive`、idleTimeout 0 和 needs-auth 不按此立即关闭。Private/sign-in-scoped cache 的 lazy server 不在 startup discovery。Executor catalog 未缓存时有额外发现，见[Executor](prompts-and-ui.md#executor-app-tools)。
 
 Lazy discovery failed/needs-auth 每个 defining config 只试一次，之后需 command/args/env/URL 等身份变化、cache 缺失/损坏或成功连接才恢复；lifecycle/idleTimeout/requestTimeout/debug 不改变该身份。瞬时 HTTP outage 下一 session 重试；eager/keep-alive 每次启动都连。
