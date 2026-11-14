@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,12 +28,17 @@ function eagerSources(entry: string, seen = new Set<string>()): string {
 }
 
 test("production build keeps overlay cold and invalidates Jiti's disk cache after rebuild", { timeout: 120_000 }, (t) => {
-  const root = mkdtempSync(join(tmpdir(), "cc-build-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const path of ["src", "scripts", "child.ts"]) cpSync(join(packageRoot, path), join(root, path), { recursive: true });
+  const workspace = mkdtempSync(join(tmpdir(), "cc-build-"));
+  const root = join(workspace, "local", "pi-claude-style");
+  mkdirSync(root, { recursive: true });
+  mkdirSync(join(workspace, "scripts"));
+  cpSync(resolve(packageRoot, "../../scripts/retained-build.mjs"), join(workspace, "scripts/retained-build.mjs"));
+  t.after(() => rmSync(workspace, { recursive: true, force: true }));
+  for (const path of ["src", "scripts", "child.ts", "assets", "config.json"]) cpSync(join(packageRoot, path), join(root, path), { recursive: true });
   symlinkSync(resolve(packageRoot, "../../node_modules"), join(root, "node_modules"), "dir");
   writeFileSync(join(root, "package.json"), '{"type":"module"}\n');
   const build = () => execFileSync(process.execPath, [join(root, "scripts/build.mjs")], { cwd: root, stdio: "pipe" });
+  const currentDist = () => dirname(resolve(root, "dist", JSON.parse(readFileSync(join(root, "dist/.current.json"), "utf8"))));
   const runner = join(root, "load.mjs");
   writeFileSync(runner, `
 import { createJiti } from "jiti";
@@ -49,9 +54,9 @@ console.log(overlay.itemTitle({ presentation: "question", activities: [] }));
   const load = () => execFileSync(process.execPath, [runner], { cwd: root, encoding: "utf8" }).trim();
   build();
   const moduleOwners = new Map<string, string>();
-  for (const file of readdirSync(join(root, "dist/src"), { recursive: true, encoding: "utf8" })) {
+  for (const file of readdirSync(join(currentDist(), "src"), { recursive: true, encoding: "utf8" })) {
     if (!file.endsWith(".ts")) continue;
-    const source = readFileSync(join(root, "dist/src", file), "utf8");
+    const source = readFileSync(join(currentDist(), "src", file), "utf8");
     const markers = new Set([...source.matchAll(/^\/\/ (src\/[^\r\n]+)$/gm)].map((match) => match[1]!));
     for (const marker of markers) {
       assert.ok(!moduleOwners.has(marker), `${marker} appears in both ${moduleOwners.get(marker)} and ${file}`);
@@ -59,7 +64,7 @@ console.log(overlay.itemTitle({ presentation: "question", activities: [] }));
     }
   }
   assert.ok(moduleOwners.size > 0, "the build must retain source module markers");
-  const eager = eagerSources(join(root, "dist/index.ts"));
+  const eager = eagerSources(join(currentDist(), "index.ts"));
   assert.doesNotMatch(eager, /function createToolGroupOverlayClass\(/u, "the real overlay implementation must not be on the startup graph");
   assert.match(eager, /registerTranscriptCommands/u, "startup still installs transcript commands/shortcuts");
   assert.equal(load(), "Questionnaire");

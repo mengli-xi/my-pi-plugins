@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { SupervisorClient } from "../../src/host/supervisor-client.ts";
@@ -76,7 +76,8 @@ test("Host launches both Supervisor and regex matcher through the configured wra
     await Promise.race([terminalPromise, delay(5_000, undefined, { ref: false }).then(() => { throw new Error("wrapper terminal timed out"); })]);
     const page = await client.request("logPage", { id: processId, stream: "both", tailLines: 20, pattern: "^ready-[0-9]+$", mode: "regex" });
     assert.deepEqual((page.lines as Array<{ text: string }>).map((line) => line.text), ["ready-123"]);
-    assert.deepEqual((await readFile(callsPath, "utf8")).trim().split("\n"), [supervisorPath, join(root, "dist/matcher-worker.js")]);
+    const builtDirectory = dirname(join(root, "dist", JSON.parse(await readFile(join(root, "dist/.current.json"), "utf8"))));
+    assert.deepEqual((await readFile(callsPath, "utf8")).trim().split("\n"), [supervisorPath, join(builtDirectory, "matcher-worker.js")]);
     await client.cleanup("scope-ended");
     await client.waitForExit();
   } finally {

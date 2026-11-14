@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   captureEntrypointDescriptorV1,
@@ -8,20 +8,24 @@ import {
 } from "pi-runtime-contracts/child-capabilities-v1";
 
 export function installProcessChildCapability(distDirectory: string) {
+  // The stable Main proof follows the host's public tool source; child files
+  // are pinned to this runtime's immutable build, relative to the real package.
+  const main = join(distDirectory, ...(basename(dirname(distDirectory)).startsWith(".build-") ? ["../..", "index.js"] : ["index.js"]));
+  const modulePath = (name: string) => relative(dirname(dirname(main)), join(distDirectory, name));
   const registry = getOrCreateChildCapabilityRegistryV1();
   const registration = registry.register({ version: 1, manifest: {
     version: 1,
     owner_id: "pi-processes",
-    main_entrypoint: captureEntrypointDescriptorV1(join(distDirectory, "index.js")),
+    main_entrypoint: captureEntrypointDescriptorV1(main),
     targets: {
       "pi-subagents": {
-        child_factory: captureChildFactoryV1(join(distDirectory, "index.js"), { module: "dist/child-factory.js", export: "createProcessesChildFactory" }),
+        child_factory: captureChildFactoryV1(main, { module: modulePath("child-factory.js"), export: "createProcessesChildFactory" }),
         child_entrypoint: captureEntrypointDescriptorV1(join(distDirectory, "child.js")),
         activation: "required-only",
         commands: [], tools: ["process"], providers: [], hooks: ["execution/cancel-pending-v1", "execution/process-wait-v2"], requires: [],
       },
       "pi-side-chat": {
-        child_factory: captureChildFactoryV1(join(distDirectory, "index.js"), { module: "dist/index.js", export: "createProcessesSideFactory", artifacts: ["dist/child-factory.js"] }),
+        child_factory: captureChildFactoryV1(main, { module: modulePath("index.js"), export: "createProcessesSideFactory", artifacts: [modulePath("child-factory.js")] }),
         child_entrypoint: captureEntrypointDescriptorV1(join(distDirectory, "child.js")),
         activation: "required-only", commands: [], tools: ["process"], providers: [], hooks: ["execution/cancel-pending-v1"], requires: [],
       },

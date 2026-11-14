@@ -24,7 +24,7 @@ helper runtime 每次尝试从 spawn 起有 10 秒总探测预算，包含等待
 
 不缓存跨 Host 的成功探测：同一个 Host 已有 transport 或启动中的 promise 会复用，无需重复探测；fresh scope 重新验证实际 executable 和 Supervisor entry，避免 runtime 路径、符号链接目标或构建产物替换后复用过期结果。普通二进制的探测通常只需毫秒，10 秒是高负载的等待预算，不是固定延迟。
 
-普通配置下，已有 transport、启动中的任务或 record 在 reload/rebind 时沿用原 readiness 流程；managed/isolated 不 reclaim 旧 Host，执行与 cleanup 规则见[执行合同](MANAGED_EXECUTION.md#reload-与-scope-cleanup)。源码或 source-only library 依赖变更后须重建并新开 Pi process，不用 reload 替代构建验证。
+普通配置下，已有 transport、启动中的任务或 record 在 reload/rebind 时沿用原 readiness 流程；managed/isolated 不 reclaim 旧 Host，执行与 cleanup 规则见[执行合同](MANAGED_EXECUTION.md#reload-与-scope-cleanup)。源码或 source-only library 依赖变更后须重建并新开 Pi process，不用 reload 替代构建验证。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话。
 
 `/ps`、strip 与 status protocol 同步注册，管理面板和 UIKit overlay 首次打开时才 dynamic import。`verify-dist` 防止 manager view 重返首帧静态图。加载期间关闭面板或替换 session，会使旧 generation 失效，不会迟到重开旧 UI；导入失败显示错误。
 

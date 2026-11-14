@@ -1,8 +1,9 @@
+import { currentBuild } from "../../../scripts/retained-build.mjs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = dirname(dirname(fileURLToPath(import.meta.url))); const dist = join(root, "dist");
+const root = dirname(dirname(fileURLToPath(import.meta.url))); const dist = currentBuild(root);
 async function files(directory) { const result = []; for (const entry of await readdir(directory, { withFileTypes: true })) { const path = join(directory, entry.name); if (entry.isDirectory()) result.push(...await files(path)); else if (entry.isFile() && entry.name.endsWith(".js")) result.push(path); } return result; }
 const paths = (await files(dist)).sort();
 const sources = new Map();

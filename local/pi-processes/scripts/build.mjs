@@ -1,11 +1,10 @@
-import { mkdir, rm } from "node:fs/promises";
+import { retainedBuild } from "../../../scripts/retained-build.mjs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-await rm(join(root, "dist"), { recursive: true, force: true });
-await mkdir(join(root, "dist"), { recursive: true });
+const build = retainedBuild(root);
 const bun = process.env.BUN || "bun";
 const entries = [
   ["src/index.ts", "dist/index.js", true],
@@ -16,8 +15,10 @@ const entries = [
   ["src/matchers/matcher-worker-entry.ts", "dist/matcher-worker.js", false],
 ];
 for (const [entry, output, externalPackages] of entries) {
-  const args = ["build", entry, "--outfile", output, "--target", "bun", "--minify-syntax"];
+  const args = ["build", entry, "--outfile", join(build.output, output.slice("dist/".length)), "--target", "bun", "--minify-syntax"];
   if (externalPackages) args.push("--packages", "external");
   const result = spawnSync(bun, args, { cwd: root, stdio: "inherit" });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
+
+build.publish("index.js", [], ["createProcessesSideFactory"]);

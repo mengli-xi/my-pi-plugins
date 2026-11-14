@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   captureEntrypointDescriptorV1,
@@ -8,10 +8,14 @@ import {
 } from "pi-runtime-contracts/child-capabilities-v1";
 
 export function installClaudeStyleChildCapability(distDirectory: string) {
+  // The stable Main proof follows the host's public tool source; child files
+  // are pinned to this runtime's immutable build, relative to the real package.
+  const main = join(distDirectory, ...(basename(dirname(distDirectory)).startsWith(".build-") ? ["../..", "index.ts"] : ["index.ts"]));
+  const modulePath = (name: string) => relative(dirname(dirname(main)), join(distDirectory, name));
   const registry = getOrCreateChildCapabilityRegistryV1();
   const childEntrypoint = captureEntrypointDescriptorV1(join(distDirectory, "child.ts"));
   const target = {
-    child_factory: captureChildFactoryV1(join(distDirectory, "index.ts"), { kind: "presentation", module: "dist/child.ts", export: "createClaudeStyleChildExtension" }),
+    child_factory: captureChildFactoryV1(main, { kind: "presentation", module: modulePath("child.ts"), export: "createClaudeStyleChildExtension" }),
     child_entrypoint: childEntrypoint,
     activation: "mirror" as const,
     commands: [],
@@ -25,7 +29,7 @@ export function installClaudeStyleChildCapability(distDirectory: string) {
   const registration = registry.register({ version: 1, manifest: {
     version: 1,
     owner_id: "pi-claude-style",
-    main_entrypoint: captureEntrypointDescriptorV1(join(distDirectory, "index.ts")),
+    main_entrypoint: captureEntrypointDescriptorV1(main),
     targets: {
       "pi-side-chat": target,
       "pi-subagents": target,

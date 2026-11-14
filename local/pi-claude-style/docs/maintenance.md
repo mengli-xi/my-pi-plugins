@@ -77,7 +77,7 @@ Main、child、诊断和 shared/lazy chunks 全部使用 `.ts` 后缀，内容�
 
 官方编译宿主可以不含 npm 私有 `layout.js`；缺少这份可选兜底不覆盖原生帧的健康状态，真实导入或绘制错误仍须诊断。
 
-修改 TypeScript 或 source-only compiled consumer dependency 后显式 `npm run build`，新开 Pi process，不用 `/reload` 代替。`tsconfig.json` noEmit；生成 dist 不提交。`scripts/check-internals-host.mjs` 同时验证 eager probes、最终 component identity 和实际 compact patch，不能拿 source-only probe 冒充 bundle gate。
+修改 TypeScript 或 source-only compiled consumer dependency 后显式 `npm run build`，新开 Pi process，不用 `/reload` 代替。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话。`tsconfig.json` noEmit；生成 dist 不提交。`scripts/check-internals-host.mjs` 同时验证 eager probes、最终 component identity 和实际 compact patch，不能拿 source-only probe 冒充 bundle gate。
 
 `dist/child.ts` 只导出 named SDK factory，Main 登记 capability。child 在 execution assembly 安装轻量 recorder，attach 安装 view，detach await 在途 shell 并释放 view，不结束 session。不能使用 `PI_OFFLINE` 禁掉 provider 网络；child 不安装 Main control、Goal/Todo、selector、external contributor 或全局 updater。return label 属于 editor chrome，不新增 footer 行，display name 不改 native session name。
 

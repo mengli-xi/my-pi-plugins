@@ -1,11 +1,11 @@
-import { copyFile, rm, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { retainedBuild } from "../../../scripts/retained-build.mjs";
+import { copyFile, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const dist = join(root, "dist");
-await rm(dist, { recursive: true, force: true });
-await mkdir(dist, { recursive: true });
+const build = retainedBuild(root);
+const dist = build.output;
 
 const sources = (await readdir(root))
   .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && !name.endsWith(".d.ts"))
@@ -53,3 +53,5 @@ const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 await writeFile(join(dist, "package.json"), JSON.stringify({ type: "module", version: manifest.version }) + "\n");
 
 console.log(`Built ${sources.length} JavaScript modules in dist/`);
+
+build.publish("index.js", ["app-bridge.bundle.js"]);

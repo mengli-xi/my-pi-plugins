@@ -8,7 +8,7 @@
 
 ## 逐文件编译与按需加载
 
-Pi 从 `dist/index.js` 加载，runtime 逐文件 transpile、不 bundle，依赖 external，保留 Pi/TUI/native/optional dependency 的正常身份与解析。构建清理旧输出，复制 runtime assets 并生成 public declarations；dist 内最小 manifest 不注册第二份 extension。生成物不提交，源码和 source-only library 变化后必须显式 build，再开新 process。
+Pi 从 `dist/index.js` 加载，runtime 逐文件 transpile、不 bundle，依赖 external，保留 Pi/TUI/native/optional dependency 的正常身份与解析。构建保留有界版本目录，复制 runtime assets 并生成 public declarations；dist 内最小 manifest 不注册第二份 extension。生成物不提交，源码和 source-only library 变化后必须显式 build，再开新 process。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话。
 
 冷启动不应为未使用的功能加载完整实现。配置和纯 schema/settings 检查不能初始化 classifier、OAuth、Apps 或 UI runtime；词法搜索与普通调用不需要 semantic implementation。semantic、Apps、panel/setup、OAuth 的动态 import 保持独立，await 后仍检查 operation owner/signal。严格的同步 argument validation 不为冷启动优化改成异步。
 

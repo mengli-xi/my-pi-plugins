@@ -12,7 +12,7 @@
 npm run build
 ```
 
-Pi package profile 加载本包目录，extension 入口是 `dist/index.js`。构建逐文件 transpile runtime，复制 runtime assets 并生成 public declarations，**不 bundle**；依赖保持 external。`dist/` 不提交，修改源码或 source-only 共享库后必须重建，再启动新 Pi process。不能用 `/reload` 代替 rebuild/restart。
+Pi package profile 加载本包目录，extension 入口是 `dist/index.js`。构建逐文件 transpile runtime，复制 runtime assets 并生成 public declarations，**不 bundle**；依赖保持 external。`dist/` 不提交，修改源码或 source-only 共享库后必须重建，再启动新 Pi process。不能用 `/reload` 代替 rebuild/restart。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话。
 
 `pi-session-inject` 是 source-only **共享库硬依赖**，不是要额外启用的插件。Apps、后台 OAuth 和 Task 结果共用其 durable mailbox；本包不 import CC Style 或其他插件，也不需要 Pi patch。冷启动从 `pi-session-inject/mailbox-v1/light` 接入；实际投递、恢复或 mailbox 操作才加载共享 engine。semantic search、Apps、panel/setup 与 OAuth 实现仍保持首次使用的 cold import 边界。
 

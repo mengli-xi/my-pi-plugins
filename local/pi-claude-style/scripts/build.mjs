@@ -1,13 +1,14 @@
+import { retainedBuild } from "../../../scripts/retained-build.mjs";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const dist = new URL("../dist/", import.meta.url);
-rmSync(dist, { recursive: true, force: true });
+const build = retainedBuild(root, ["assets", "config.json"]);
+const dist = pathToFileURL(`${build.output}/`);
 
 execFileSync("bun", [
-  "build", "src/config/storage.ts", "--outfile", "dist/config-storage.cjs",
+  "build", "src/config/storage.ts", "--outfile", fileURLToPath(new URL("config-storage.cjs", dist)),
   "--target", "node", "--format", "cjs",
 ], { cwd: root, stdio: "inherit" });
 
@@ -31,7 +32,7 @@ const partitions = readdirSync(new URL("../src/", import.meta.url))
   .map((name) => `src/${name}`);
 execFileSync("bun", [
   "build", ...partitions,
-  "--outdir", "dist/src", "--root", "src", "--target", "node", "--format", "esm", "--splitting",
+  "--outdir", fileURLToPath(new URL("src", dist)), "--root", "src", "--target", "node", "--format", "esm", "--splitting",
   "--entry-naming", "[dir]/[name].ts", "--chunk-naming", "chunk-[hash].ts",
   "--external", "@earendil-works/*", "--external", "typebox",
   "--external", "conf", "--external", "pi-runtime-contracts",
@@ -42,7 +43,9 @@ writeFileSync(new URL("index.ts", dist), 'export { default } from "./src/bootstr
 
 // Child presentation remains an independently loadable presentation bundle.
 execFileSync("bun", [
-  "build", "child.ts", "--outfile", "dist/child.ts", "--target", "node", "--format", "esm",
+  "build", "child.ts", "--outfile", fileURLToPath(new URL("child.ts", dist)), "--target", "node", "--format", "esm",
   "--external", "@earendil-works/*", "--external", "pi-runtime-contracts",
   "--define", 'CC_STYLE_CONFIG_STORAGE_MODULE="./config-storage.cjs"',
 ], { cwd: root, stdio: "inherit" });
+
+build.publish("index.ts", [], []);
