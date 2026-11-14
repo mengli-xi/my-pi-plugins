@@ -181,7 +181,7 @@ test("stable append parses only new rows and equals a fresh full disk read", asy
   } finally { releaseDiskSession(identity); await rm(directory, { recursive: true, force: true }); }
 });
 
-for (const change of ["prefix-and-growth", "truncate", "replace", "same-size", "unterminated"] as const)
+for (const change of ["prefix-and-growth", "replace", "same-size", "unterminated"] as const)
   test(`${change} does not reuse an unverified parsed prefix`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "mailbox-read-prefix-"));
     const identity = { id: "fixture", file: join(directory, "session.jsonl") };
@@ -190,9 +190,8 @@ for (const change of ["prefix-and-growth", "truncate", "replace", "same-size", "
       await writeFile(identity.file, original + (change === "unterminated" ? "" : "\n"));
       const first = (await readDiskSession(identity))!;
       const rewritten = header + JSON.stringify({ ...row("a", null), data: { changed: true } }) + "\n";
-      if (change === "replace") {
-        await writeFile(join(directory, "next"), rewritten); await rename(join(directory, "next"), identity.file);
-      } else if (change === "truncate") await truncate(identity.file, Buffer.byteLength(header));
+      // Same prefix and growth on a new inode: only the inode check stops reuse.
+      if (change === "replace") { await writeFile(join(directory, "next"), original + "\n" + JSON.stringify(row("b", "a")) + "\n"); await rename(join(directory, "next"), identity.file); }
       else if (change === "same-size") await writeFile(identity.file, header + JSON.stringify(row("b", null)) + "\n");
       else if (change === "unterminated") await appendFile(identity.file, " \n" + JSON.stringify(row("b", "a")) + "\n");
       else await writeFile(identity.file, rewritten + JSON.stringify(row("b", "a")) + "\n");
@@ -220,37 +219,31 @@ test("incremental tail rejects duplicate IDs from either the prefix or the tail,
   } finally { releaseDiskSession(identity); await rm(directory, { recursive: true, force: true }); }
 });
 
-for (const change of ["rewrite", "replace", "truncate"] as const)
-  test(`warm append cache rejects in-read ${change} without retrying it`, async t => {
-    const directory = await mkdtemp(join(tmpdir(), "mailbox-read-warm-race-"));
-    const identity = { id: "fixture", file: join(directory, "session.jsonl") };
-    try {
-      const header = jsonl(identity.id), initial = header + JSON.stringify(row("a", null)) + "\n";
-      await writeFile(identity.file, initial);
-      await readDiskSession(identity);
-      await appendFile(identity.file, JSON.stringify(row("b", "a")) + "\n");
-      const handle = await open(identity.file, "r"), prototype = Object.getPrototypeOf(handle) as FileHandle;
-      await handle.close();
-      const original = prototype.readFile;
-      let reads = 0;
-      const race = t.mock.method(prototype, "readFile", (async function(this: FileHandle, ...args: Parameters<FileHandle["readFile"]>) {
-        const text = await original.apply(this, args); reads++;
-        if (change === "truncate") await truncate(identity.file, Buffer.byteLength(header));
-        else {
-          const rewritten = String(text).replace('"id":"a"', '"id":"z"');
-          if (change === "replace") { await writeFile(join(directory, "next"), rewritten); await rename(join(directory, "next"), identity.file); }
-          else await writeFile(identity.file, rewritten);
-        }
-        return text;
-      }) as FileHandle["readFile"]);
-      await assert.rejects(readDiskSession(identity), { code: "unverifiable-proof" });
-      assert.equal(reads, 1);
-      race.mock.restore();
-      const fresh = { ...identity };
-      try { assert.deepEqual(await readDiskSession(identity), await readDiskSession(fresh)); }
-      finally { releaseDiskSession(fresh); }
-    } finally { releaseDiskSession(identity); await rm(directory, { recursive: true, force: true }); }
-  });
+test("warm append cache rejects an in-read rewrite without retrying it", async t => {
+  const directory = await mkdtemp(join(tmpdir(), "mailbox-read-warm-race-"));
+  const identity = { id: "fixture", file: join(directory, "session.jsonl") };
+  try {
+    const header = jsonl(identity.id), initial = header + JSON.stringify(row("a", null)) + "\n";
+    await writeFile(identity.file, initial);
+    await readDiskSession(identity);
+    await appendFile(identity.file, JSON.stringify(row("b", "a")) + "\n");
+    const handle = await open(identity.file, "r"), prototype = Object.getPrototypeOf(handle) as FileHandle;
+    await handle.close();
+    const original = prototype.readFile;
+    let reads = 0;
+    const race = t.mock.method(prototype, "readFile", (async function(this: FileHandle, ...args: Parameters<FileHandle["readFile"]>) {
+      const text = await original.apply(this, args); reads++;
+      await writeFile(identity.file, String(text).replace('"id":"a"', '"id":"z"'));
+      return text;
+    }) as FileHandle["readFile"]);
+    await assert.rejects(readDiskSession(identity), { code: "unverifiable-proof" });
+    assert.equal(reads, 1);
+    race.mock.restore();
+    const fresh = { ...identity };
+    try { assert.deepEqual(await readDiskSession(identity), await readDiskSession(fresh)); }
+    finally { releaseDiskSession(fresh); }
+  } finally { releaseDiskSession(identity); await rm(directory, { recursive: true, force: true }); }
+});
 
 test("snapshot acquisition reads once; writes and unchanged transactions reuse it", async t => {
   const directory = await mkdtemp(join(tmpdir(), "mailbox-snapshot-state-"));

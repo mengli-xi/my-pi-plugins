@@ -52,7 +52,10 @@ async function readSessionVersion(state: DiskReadState, file: string): Promise<D
       else digest = createHash("sha256");
     }
     const text = source.text.slice(reuse?.prefix?.length ?? 0);
-    digest.update(text); // reuse the verified prefix hash state, not a second full hash
+    // Only newline-terminated text can become a reusable prefix, so unterminated text
+    // skips the digest entirely instead of paying one more full-text SHA-256.
+    const terminated = source.text.endsWith("\n");
+    if (terminated) digest.update(text); // reuse the verified prefix hash state, not a second full hash
     const rows = text.split("\n").filter(line => line.trim()).map(line => JSON.parse(line) as FileEntry);
     const header = reuse ? null : rows.shift();
     if (!reuse && (!header || header.type !== "session" || typeof header.id !== "string")) throw new MailboxError("unverifiable-proof", "session disk header does not match mailbox target");
@@ -66,7 +69,7 @@ async function readSessionVersion(state: DiskReadState, file: string): Promise<D
     const entries = reuse ? [...reuse.disk.entries, ...tail] : tail;
     const current = { file, headerId: reuse?.headerId ?? header!.id, version: source.version, disk: { entries, byId },
       // A final row without a newline may be extended; parse it in full next time.
-      prefix: source.text.endsWith("\n") ? { length: source.text.length, hash: digest.digest("hex") } : null };
+      prefix: terminated ? { length: source.text.length, hash: digest.digest("hex") } : null };
     state.current = current;
     return current;
   } catch (error) { state.current = undefined; throw error; }
