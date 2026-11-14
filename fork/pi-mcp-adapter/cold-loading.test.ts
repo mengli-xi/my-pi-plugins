@@ -66,6 +66,84 @@ describe("cold registration and optional client boundaries", () => {
 });
 
 describe("public exports and real startup module graph", () => {
+  it("keeps an empty session cold without a cache, then discovers and gates servers added before its first MCP request", () => {
+    const sandbox = testSandbox("mcp-empty-session-");
+    try {
+      const result = spawnSync(process.execPath, ["--import", offlineGuard, "--import", "tsx", "--input-type=module", "-e", `
+        import assert from "node:assert/strict";
+        import { registerHooks } from "node:module";
+        import { writeFileSync } from "node:fs";
+        import { join } from "node:path";
+        const modules = new Set();
+        registerHooks({ resolve(specifier, context, next) {
+          const result = next(specifier, context); modules.add(result.url); return result;
+        } });
+        const { createAgentSessionServices, createAgentSessionFromServices, SessionManager, SettingsManager, initTheme } = await import("@earendil-works/pi-coding-agent");
+        const { fauxProvider, fauxAssistantMessage, fauxToolCall } = await import("@earendil-works/pi-ai");
+        const { createMcpAdapter } = await import(${JSON.stringify(new URL("./index.ts", import.meta.url).href)});
+        const root = process.env.MCP_EMPTY_TEST_ROOT, cwd = join(root, "cwd");
+        const configPath = join(root, "empty.json");
+        writeFileSync(configPath, JSON.stringify({ mcpServers: {} }));
+        initTheme("dark");
+        const faux = fauxProvider({ provider: "empty-fixture", api: "empty-fixture", models: [{ id: "offline" }], tokensPerSecond: 100000 });
+        faux.setResponses([
+          fauxAssistantMessage(fauxToolCall("mcp", { search: "later" }), { stopReason: "toolUse" }),
+          fauxAssistantMessage("done"),
+        ]);
+        const snapshots = [], errors = [];
+        const services = await createAgentSessionServices({ cwd, agentDir: join(root, "agent"),
+          settingsManager: SettingsManager.inMemory({ retry: { enabled: false }, compaction: { enabled: false } }),
+          resourceLoaderOptions: { noExtensions: true, noSkills: true, noPromptTemplates: true, noContextFiles: true, noThemes: true,
+            extensionFactories: [createMcpAdapter({ configPath }), pi => {
+              pi.registerProvider(faux.provider);
+              pi.events.on("pi-mcp-adapter/status/v1", snapshot => snapshots.push(snapshot));
+            }] },
+        });
+        const { session } = await createAgentSessionFromServices({ services, sessionManager: SessionManager.inMemory(cwd),
+          model: services.modelRuntime.getModel("empty-fixture", "offline"), tools: ["mcp"] });
+        try {
+          await session.bindExtensions({ mode: "rpc", onError: error => errors.push(error) });
+          assert.ok(session.getActiveToolNames().includes("mcp"));
+          for (const name of ["init", "mcp-auth-flow", "lifecycle"]) {
+            assert.equal([...modules].some(url => url.endsWith("/" + name + ".ts")), false, name + " must stay cold for an empty session without a metadata cache");
+          }
+          // Empty server configuration must not suppress held Task recovery.
+          session.sessionManager.appendCustomEntry("mcp-task-v1", {
+            version: 1, kind: "pending", sessionId: session.sessionManager.getSessionId(),
+            key: "removed/t1", server: "removed", tool: "build",
+            reference: { endpointId: "old-endpoint", generation: "v2", taskId: "t1", originalOperation: "tools/call" },
+            deliveryId: "task:held", anchorEntryId: "original-leaf", scope: "origin-leaf",
+          });
+          let recovered;
+          const recovery = new Promise(resolve => { recovered = resolve; });
+          await session.bindExtensions({ mode: "tui", uiContext: {
+            notify(message) { if (message.includes("held for their original branch")) recovered(); },
+            setStatus() {}, theme: { fg: (_color, text) => text },
+          } });
+          let timer;
+          try {
+            await Promise.race([recovery, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("empty configuration suppressed held Task recovery")), 10000); })]);
+          } finally { clearTimeout(timer); }
+          // Return to the empty/deferred state before adding new configuration.
+          await session.bindExtensions({ mode: "rpc" });
+          // This command would fail the test if approval were bypassed. A project
+          // server added after startup must be discovered by the first operation.
+          writeFileSync(join(cwd, ".mcp.json"), JSON.stringify({ mcpServers: {
+            later: { command: process.execPath, args: ["-e", "throw new Error('unapproved server ran')"] },
+          } }));
+          await session.prompt("Search MCP without approving project servers.");
+          assert.ok([...modules].some(url => url.endsWith("/init.ts")), "the first operation initializes the runtime");
+          assert.ok(snapshots.some(snapshot => snapshot.servers.some(server => server.name === "later" && server.status === "blocked")), "new configuration and project trust are resolved before the tool completes");
+          assert.equal(session.messages.filter(message => message.role === "toolResult").length, 1);
+          assert.equal(session.getLastAssistantText(), "done");
+          assert.deepEqual(errors, []);
+        } finally { session.dispose(); }
+      `], { cwd: new URL(".", import.meta.url), env: { ...sandbox.env, MCP_EMPTY_TEST_ROOT: sandbox.root }, encoding: "utf8", timeout: 30_000 });
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+    } finally { sandbox.cleanup(); }
+  }, 35_000);
+
   it("keeps every public runtime identity and Apps schema export", async () => {
     const publicTypes = await import("./types.ts");
     const runtime = await import("./runtime-types.ts");

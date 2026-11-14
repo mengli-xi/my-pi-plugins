@@ -1182,7 +1182,7 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
     if (envRaw !== undefined && envRaw !== "__none__"
       && getMissingConfiguredDirectToolServers(config, cache, envDirectToolOverride).length > 0) return undefined;
     if (config.settings?.deferWithMissingMetadata !== true
-      && (cache === null || hasEnabledServerWithoutValidMetadata(config, cache))) return undefined;
+      && hasEnabledServerWithoutValidMetadata(config, cache)) return undefined;
     if (envRaw !== "__none__" && hasExecutorWithoutCatalog(config, cache)) return undefined;
     return { config, cache, enabledServerCount: enabledServers.length, scriptToolIssues: programmaticConfig ? sessionScriptToolIssues : loadedScriptToolIssues(config) };
   }

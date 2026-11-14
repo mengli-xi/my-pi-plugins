@@ -14,6 +14,8 @@ Pi 从 `dist/index.js` 加载，runtime 逐文件 transpile、不 bundle，依�
 
 冷启动不应为未使用的功能加载完整实现。配置和纯 schema/settings 检查不能初始化 classifier、OAuth、Apps 或 UI runtime；词法搜索与普通调用不需要 semantic implementation。semantic、Apps、panel/setup、OAuth 的动态 import 保持独立，await 后仍检查 operation owner/signal。严格的同步 argument validation 不为冷启动优化改成异步。
 
+空配置不能仅因 metadata cache 缺失就加载 core：只有 enabled server 缺 metadata 才需要 discovery；待恢复 Task、durable mail 和首次操作仍走原初始化与审批路径，首次操作重读配置。
+
 Mailbox 使用 `pi-session-inject/mailbox-v1/light`，实际 mail/recovery 才加载共享 engine。这不是“首次启动绝不连接”：metadata 缺失时的默认 discovery、eager/keep-alive 和 Executor catalog 初始化仍按功能合同执行。不把旧 host 的 import 或 TUI benchmark 当当前 host 测量。
 
 ## 路径与 metadata 的身份
