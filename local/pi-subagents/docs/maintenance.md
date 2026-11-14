@@ -2,6 +2,8 @@
 
 ## 构建与目录
 
+`dist` 顶层仅留 Pi 入口 `index.js` 和版本指针 `.current.json`；内部模块与技能快照随版本保留，仓库检查用 `currentBuild()` 定位。
+
 Pi 从 `dist/index.js` 加载插件，从 `skills/subagents` 加载技能。`scripts/build.mjs` 用 tsc 逐文件输出 Main/SDK 到不可变版本目录；Bun 仅内联共享 fork grammar，`typebox` 保持外部依赖。生成物不提交。
 
 | 目录 | 职责 |
@@ -19,7 +21,7 @@ Pi 从 `dist/index.js` 加载插件，从 `skills/subagents` 加载技能。`scr
 | `test/unit`、`test/contract` | 本包离线测试 |
 | `test/real` | 仅加载本包和 faux provider 的宿主测试 |
 
-共享库通过根 workspace 解析，没有各自的安装步骤。修改共享库或编译源码后，重建直接消费者，再启动新 Pi 进程；`/reload` 只验证生命周期，不代替构建。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话。统一 transport build 为 `mailbox-v1.0.6`，不能混用旧 bundle。
+共享库通过根 workspace 解析，没有各自的安装步骤。修改共享库或编译源码后，重建直接消费者，再启动新 Pi 进程；`/reload` 只验证生命周期，不代替构建。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话；从旧的扁平 dist 首次升级时，已运行会话仍须重启一次。统一 transport build 为 `mailbox-v1.0.6`，不能混用旧 bundle。
 
 ## 排障
 

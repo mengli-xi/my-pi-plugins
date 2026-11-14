@@ -1,3 +1,4 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -9,7 +10,7 @@ import { resolveHelperRuntime } from "../../src/supervisor/runtime-resolver.ts";
 import { ProcessToolExecutor } from "../../src/tool/executor.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
-const supervisorPath = join(root, "dist/supervisor.js");
+const supervisorPath = join(currentBuild(root), "supervisor.js");
 
 function deferredEvent(predicate: (event: SupervisorEvent) => boolean): {
   readonly promise: Promise<SupervisorEvent>;

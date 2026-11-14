@@ -45,8 +45,7 @@
     "pi-mcp-adapter": "cli.js"
   },
   "scripts": {
-    "build": "bun scripts/build.mjs && npm run build:public",
-    "build:public": "tsc -p tsconfig.public.json",
+    "build": "bun scripts/build.mjs",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:vitest && npm run test:node && npm run test:public-exports",

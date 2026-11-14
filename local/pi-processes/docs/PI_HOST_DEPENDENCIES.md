@@ -14,6 +14,8 @@ Processes 使用 producer 的真实 beforeRun/afterRun/settled callback：可信
 
 ## 按需 runtime 与构建边界
 
+`dist` 顶层仅留 Pi/Side 公共入口 `index.js` 和版本指针 `.current.json`；下文的其他 `dist/` 路径均相对当前版本目录，仓库测试用 `currentBuild()` 定位。
+
 Pi 加载 `dist/index.js`。构建还生成 `dist/supervisor.js`、`dist/matcher-worker.js`、独立 child/factory entry 和 `dist/manager-view.js`。空会话只建立 Host/binding，不启动 Supervisor；首次 process tool 操作等待 runtime selection 和完整握手。并发首次操作共用一次启动，失败不发送请求，后续操作可以重试。
 
 helper runtime 每次尝试从 spawn 起有 10 秒总探测预算，包含等待输出管道关闭。运行时已退出时，stdout/stderr 最多再等 2 秒，且不延长这 10 秒预算：仅有 exit=0 或有效版本行不足以成功，后台子进程保持管道打开也属于 `timeout`。这样既不漏读迟到的 stderr，也不会为了已退出的运行时等满 10 秒。正常 close 到达后才验证完整 nonce、stdout/stderr 和版本；管道被强制关闭时绝不把截断输出当成功。
@@ -24,7 +26,7 @@ helper runtime 每次尝试从 spawn 起有 10 秒总探测预算，包含等待
 
 不缓存跨 Host 的成功探测：同一个 Host 已有 transport 或启动中的 promise 会复用，无需重复探测；fresh scope 重新验证实际 executable 和 Supervisor entry，避免 runtime 路径、符号链接目标或构建产物替换后复用过期结果。普通二进制的探测通常只需毫秒，10 秒是高负载的等待预算，不是固定延迟。
 
-普通配置下，已有 transport、启动中的任务或 record 在 reload/rebind 时沿用原 readiness 流程；managed/isolated 不 reclaim 旧 Host，执行与 cleanup 规则见[执行合同](MANAGED_EXECUTION.md#reload-与-scope-cleanup)。源码或 source-only library 依赖变更后须重建并新开 Pi process，不用 reload 替代构建验证。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话。
+普通配置下，已有 transport、启动中的任务或 record 在 reload/rebind 时沿用原 readiness 流程；managed/isolated 不 reclaim 旧 Host，执行与 cleanup 规则见[执行合同](MANAGED_EXECUTION.md#reload-与-scope-cleanup)。源码或 source-only library 依赖变更后须重建并新开 Pi process，不用 reload 替代构建验证。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话；从旧的扁平 dist 首次升级时，已运行会话仍须重启一次。
 
 `/ps`、strip 与 status protocol 同步注册，管理面板和 UIKit overlay 首次打开时才 dynamic import。`verify-dist` 防止 manager view 重返首帧静态图。加载期间关闭面板或替换 session，会使旧 generation 失效，不会迟到重开旧 UI；导入失败显示错误。
 

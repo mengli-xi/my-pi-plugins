@@ -1,73 +1,70 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
-// Package-shaped snapshots preserve dist/src, child factory proofs and resources.
-// The public entry forwards directly into one immutable tree, never moving aliases.
+function lockBuild(dist) {
+  const lock = join(dist, ".lock"), owner = String(process.pid), pending = mkdtempSync(join(dist, ".lock-"));
+  writeFileSync(join(pending, owner), "");
+  const release = pid => {
+    try { unlinkSync(join(lock, pid)); rmdirSync(lock); }
+    catch (error) { if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(error.code)) throw error; }
+  };
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      // A nonempty directory cannot be replaced by rename: ownership is atomic.
+      try { renameSync(pending, lock); return () => release(owner); }
+      catch (error) { if (!["EEXIST", "ENOTEMPTY"].includes(error.code)) throw error; }
+      let pid;
+      try { [pid] = readdirSync(lock); } catch (error) { if (error.code !== "ENOENT") throw error; }
+      if (!pid) continue; // An interrupted release left an empty directory.
+      try { process.kill(Number(pid), 0); }
+      catch (error) { if (error.code !== "ESRCH") throw error; release(pid); continue; }
+      throw new Error(`Build already running (pid ${pid}): ${dist}`);
+    }
+    throw new Error(`Build lock changed; retry: ${dist}`);
+  } finally { rmSync(pending, { recursive: true, force: true }); }
+}
+
+function readCurrent(dist) {
+  try {
+    const target = JSON.parse(readFileSync(join(dist, ".current.json"), "utf8"));
+    return typeof target === "string" && /^\.\/\.build-[\w-]+\/dist\/[^/]+$/.test(target) ? target : undefined;
+  } catch (error) { if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error; }
+}
+
 export function retainedBuild(root, resources = []) {
   const dist = join(root, "dist");
   mkdirSync(dist, { recursive: true });
-  const name = `.build-${Date.now()}-${randomUUID()}`;
-  const snapshot = join(dist, name);
-  const output = join(snapshot, "dist");
-  const discard = () => rmSync(snapshot, { recursive: true, force: true });
-  process.once("exit", discard);
+  const unlock = lockBuild(dist), name = `.build-${randomUUID()}`, snapshot = join(dist, name), output = join(snapshot, "dist");
+  let published = false;
+  process.once("exit", () => { try { if (!published) rmSync(snapshot, { recursive: true, force: true }); } finally { unlock(); } });
+  process.once("SIGINT", () => process.exit(130));
+  process.once("SIGTERM", () => process.exit(143));
   mkdirSync(output, { recursive: true });
   for (const path of resources) cpSync(join(root, path), join(snapshot, path), { recursive: true });
   return {
     output,
-    publish(entry = "index.js", assets = [], stableExports) {
-      function forward(directory) {
-        for (const file of readdirSync(directory, { withFileTypes: true })) {
-          const source = join(directory, file.name);
-          const path = relative(output, source);
-          if (path === entry) continue;
-          const destination = join(dist, path);
-          if (file.isDirectory()) { forward(source); continue; }
-          mkdirSync(dirname(destination), { recursive: true });
-          const temporary = `${destination}.publish`;
-          if (/\.(?:js|ts)$/.test(path) && !assets.includes(path)) {
-            const target = `./${relative(dirname(destination), source)}`;
-            const code = readFileSync(source, "utf8");
-            const hasDefault = /export\s+default\b|\bas\s+default\b/.test(code);
-            writeFileSync(temporary, `export * from ${JSON.stringify(target)};\n` +
-              (hasDefault ? `export { default } from ${JSON.stringify(target)};\n` : ""));
-          } else cpSync(source, temporary);
-          renameSync(temporary, destination);
-        }
-      }
-      // Keep the previous *published* build, not an abandoned partial output.
-      const pointer = join(dist, ".current.json");
-      const previous = existsSync(pointer) ? JSON.parse(readFileSync(pointer, "utf8")).split("/")[1] : undefined;
-      // Publish the Pi entry last; a failed compilation never changes it.
-      for (const file of readdirSync(dist)) {
-        if (!file.startsWith(".build-") && file !== entry && file !== ".current.json") rmSync(join(dist, file), { recursive: true, force: true });
-      }
-      forward(output);
-      // All production Pi entries have a default export (including Bun aliases).
-      const temporary = join(dist, ".publish-entry");
+    publish(entry = "index.js", stableExports, publicModules = []) {
+      const previous = readCurrent(dist)?.split("/")[1];
+      const write = (file, code) => { writeFileSync(join(dist, ".publish-entry"), code); renameSync(join(dist, ".publish-entry"), join(dist, file)); };
+      for (const module of publicModules) for (const ext of [".js", ".d.ts"]) write(module + ext, `export * from "./${name}/dist/${module}.js";\n`);
       const code = stableExports ?
         'import { readFileSync } from "node:fs";\nconst implementation = await import(JSON.parse(readFileSync(new URL("./.current.json", import.meta.url), "utf8")));\nexport default implementation.default;\n' +
           stableExports.map(key => `export const ${key} = implementation.${key};\n`).join("") :
         `export * from "./${name}/dist/${entry}";\nexport { default } from "./${name}/dist/${entry}";\n`;
-      // Capability main-entry proofs must remain byte/inode-stable across builds.
-      if (!stableExports || !existsSync(join(dist, entry)) || readFileSync(join(dist, entry), "utf8") !== code) {
-        writeFileSync(temporary, code);
-        renameSync(temporary, join(dist, entry));
-      }
-      writeFileSync(temporary, JSON.stringify(`./${name}/dist/${entry}`));
-      renameSync(temporary, join(dist, ".current.json"));
-      process.removeListener("exit", discard);
-      for (const old of readdirSync(dist).filter(file => file.startsWith(".build-") && file !== name && file !== previous)) {
-        rmSync(join(dist, old), { recursive: true, force: true });
-      }
+      // Preserve Main proof bytes/inode; its implementation is captured once.
+      if (!existsSync(join(dist, entry)) || readFileSync(join(dist, entry), "utf8") !== code) write(entry, code);
+      write(".current.json", JSON.stringify(`./${name}/dist/${entry}`));
+      published = true;
+      const keep = new Set([name, previous, ".lock", entry, ".current.json", ...publicModules.flatMap(module => [module + ".js", module + ".d.ts"])]);
+      for (const file of readdirSync(dist)) if (!keep.has(file) && !file.startsWith(".lock-")) rmSync(join(dist, file), { recursive: true, force: true });
     },
   };
 }
 
-// Graph checks inspect the immutable implementation, not the forwarding module.
 export function currentBuild(root) {
-  const dist = join(root, "dist");
-  if (existsSync(join(dist, ".current.json"))) return dirname(join(dist, JSON.parse(readFileSync(join(dist, ".current.json"), "utf8"))));
-  return dist;
+  const dist = join(root instanceof URL ? fileURLToPath(root) : root, "dist");
+  const target = readCurrent(dist);
+  return target ? dirname(join(dist, target)) : dist;
 }

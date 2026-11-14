@@ -1,10 +1,11 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
+import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { TerminalEvidence } from "pi-session-inject/mailbox-v1";
-// @ts-expect-error The real compiled extension intentionally emits no declarations.
-import { SubagentMailboxTransport } from "../../dist/mailbox/transport.js";
+const { SubagentMailboxTransport } = await import(pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "mailbox/transport.js")).href);
 export default function coldSource(pi: ExtensionAPI) {
   const source = new SubagentMailboxTransport(pi, process.env.PI_CODING_AGENT_DIR!, {
     checkCurrent: () => ({ kind: "allow", project: true, wake: true }),

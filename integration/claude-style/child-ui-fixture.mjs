@@ -1,7 +1,8 @@
+import { currentBuild } from "../../scripts/retained-build.mjs";
 // Public SDK two-session harness. Only this fixture owns terminal handoff.
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../local/pi-claude-style");
 import { AssistantMessageComponent, CustomMessageComponent, UserMessageComponent, ToolExecutionComponent, InteractiveMode, createAgentSessionServices, createAgentSessionFromServices,
@@ -9,8 +10,8 @@ import { AssistantMessageComponent, CustomMessageComponent, UserMessageComponent
 import { Container, setKeybindings } from "@earendil-works/pi-tui";
 import { fauxProvider, fauxAssistantMessage, fauxThinking, fauxToolCall } from "@earendil-works/pi-ai";
 import claudeMain from "../../local/pi-claude-style/dist/index.ts";
-import { createClaudeStyleChildExtension } from "../../local/pi-claude-style/dist/child.ts";
-import { auditInternals as auditCc } from "../../local/pi-claude-style/dist/src/internals.ts";
+const { createClaudeStyleChildExtension } = await import(pathToFileURL(join(currentBuild(new URL("../../local/pi-claude-style/", import.meta.url)), "child.ts")).href);
+const { auditInternals: auditCc } = await import(pathToFileURL(join(currentBuild(new URL("../../local/pi-claude-style/", import.meta.url)), "src/internals.ts")).href);
 // This reader resolves the production bundles' global Symbol.for registry;
 // it does not need their module instance (Main and child are separate bundles).
 import { resolvePublishedEditorSlotGeometry } from "../../local/pi-claude-style/src/host/fullscreen/editor-slot.ts";

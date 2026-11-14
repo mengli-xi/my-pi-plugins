@@ -1,3 +1,4 @@
+import { currentBuild } from "../../scripts/retained-build.mjs";
 import { piBin, installedPiVersion } from "../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -23,7 +24,7 @@ test("Pi 1.5 loads production per-file dist and validates proxy arguments withou
   assert.equal(realpathSync(resolve(hostRoot, hostManifest.bin.pi)), actualBinary);
   const hostEntry = pathToFileURL(resolve(hostRoot, hostManifest.exports["."].import)).href;
   for (const asset of ["index.js", "index.d.ts", "types.d.ts", "oauth.d.ts", "host-managed.d.ts", "config.d.ts", "metadata-cache.d.ts", "app-bridge.bundle.js", "mcp-keyring-helper.cjs", "semantic-search.js", "ui-session.js"]) {
-    assert.ok(existsSync(new URL(`./dist/${asset}`, import.meta.url)), `missing production asset: ${asset}`);
+    assert.ok(existsSync(join(currentBuild(new URL("./", import.meta.url)), asset)), `missing production asset: ${asset}`);
   }
   const sandbox = testSandbox("pi-mcp-dist-host-");
   const root = sandbox.root;

@@ -1,4 +1,4 @@
-import { basename, dirname, join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   captureEntrypointDescriptorV1,
@@ -7,10 +7,12 @@ import {
   type ChildCapabilityBindingHandleV1,
 } from "pi-runtime-contracts/child-capabilities-v1";
 
+declare const CC_STYLE_MAIN_ENTRYPOINT: string;
+
 export function installClaudeStyleChildCapability(distDirectory: string) {
   // The stable Main proof follows the host's public tool source; child files
   // are pinned to this runtime's immutable build, relative to the real package.
-  const main = join(distDirectory, ...(basename(dirname(distDirectory)).startsWith(".build-") ? ["../..", "index.ts"] : ["index.ts"]));
+  const main = join(distDirectory, typeof CC_STYLE_MAIN_ENTRYPOINT === "undefined" ? "index.ts" : CC_STYLE_MAIN_ENTRYPOINT);
   const modulePath = (name: string) => relative(dirname(dirname(main)), join(distDirectory, name));
   const registry = getOrCreateChildCapabilityRegistryV1();
   const childEntrypoint = captureEntrypointDescriptorV1(join(distDirectory, "child.ts"));

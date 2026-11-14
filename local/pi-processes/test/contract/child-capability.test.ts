@@ -1,3 +1,5 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
+import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,4 +38,10 @@ test("declares and releases the Processes Subagent child capability", (t) => {
   capability.release(ctx);
   capability.dispose();
   assert.equal(registry.snapshot("process-child-capability-test").registrations.some((entry) => entry.owner_id === "pi-processes"), false);
+});
+
+test("stable Processes entry exports exactly the snapshot implementation's API", async () => {
+  const main = await import(new URL("../../dist/index.js", import.meta.url).href);
+  const implementation = await import(pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "index.js")).href);
+  assert.deepEqual(Object.keys(main).sort(), Object.keys(implementation).sort());
 });

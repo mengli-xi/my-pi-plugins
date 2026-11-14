@@ -1,3 +1,4 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
@@ -13,7 +14,7 @@ import { SupervisorClient } from "../../src/host/supervisor-client.ts";
 import { ProcessHost, type HostTransport } from "../../src/host/process-host.ts";
 import { isolationFixture } from "../isolation-fixture.ts";
 
-const distDirectory = new URL("../../dist/", import.meta.url).pathname;
+const distDirectory = currentBuild(new URL("../../", import.meta.url));
 const managed = { requireTimeout: true, maxTimeoutSeconds: 7200, terminalWake: "required" };
 const identity = { version: 1, owner: isolationFixture.owner, revision: isolationFixture.revision };
 

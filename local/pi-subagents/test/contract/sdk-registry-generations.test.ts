@@ -1,3 +1,6 @@
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
@@ -6,8 +9,8 @@ const legacy = new URL("../../../pi-runtime-contracts/test/fixtures/child-regist
 const current = import.meta.resolve("pi-runtime-contracts/child-capabilities-v1");
 const proofApi = import.meta.resolve("pi-session-runtime/sdk-provider");
 const assembly = import.meta.resolve("pi-session-runtime/session-assembly");
-const catalog = new URL("../../dist/runtime/factory-catalog.js", import.meta.url).href;
-const closure = new URL("../../dist/capabilities/closure.js", import.meta.url).href;
+const catalog = pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "runtime/factory-catalog.js")).href;
+const closure = pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "capabilities/closure.js")).href;
 const faux = import.meta.resolve("@earendil-works/pi-ai/providers/faux");
 for (const order of ["old-first", "new-first"]) test(`old physical provider registry + new supplemental proof executes an actual faux SDK request: ${order}`, () => {
   const script = `

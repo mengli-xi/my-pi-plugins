@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +28,7 @@ test("SDK child factories isolate scopes, notifications and shutdown from siblin
   process.env.PI_CODING_AGENT_DIR = join(root, "main", "agent");
   const previousTmp = process.env.TMPDIR;
   process.env.TMPDIR = root;
-  const child = await import(new URL("../../dist/child-factory.js", import.meta.url).href);
+  const child = await import(pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "child-factory.js")).href);
   const main = await import(new URL("../../dist/index.js", import.meta.url).href);
   const runtimes: Awaited<ReturnType<typeof make>>[] = [];
   async function make(name: string, kind: "main" | "child" | "side") {

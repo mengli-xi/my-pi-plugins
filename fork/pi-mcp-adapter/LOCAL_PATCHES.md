@@ -8,7 +8,9 @@
 
 ## 逐文件编译与按需加载
 
-Pi 从 `dist/index.js` 加载，runtime 逐文件 transpile、不 bundle，依赖 external，保留 Pi/TUI/native/optional dependency 的正常身份与解析。构建保留有界版本目录，复制 runtime assets 并生成 public declarations；dist 内最小 manifest 不注册第二份 extension。生成物不提交，源码和 source-only library 变化后必须显式 build，再开新 process。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话。
+`dist` 顶层只保留 Pi 入口 `index.js`、版本指针 `.current.json` 和三个公开子路径的 JS/声明入口：`types` 提供公共 schema，`config` 提供配置 API，`metadata-cache` 提供缓存 API。CLI 首次使用时从 `.current.json` 固定本次调用的实现路径，不经插件入口加载 SDK。其他模块、Apps bundle 与 keyring helper 只在版本目录；runtime 与声明一起构建完成后才发布。
+
+Pi 从 `dist/index.js` 加载，runtime 逐文件 transpile、不 bundle，依赖 external，保留 Pi/TUI/native/optional dependency 的正常身份与解析。构建保留有界版本目录，复制 runtime assets 并生成 public declarations；dist 内最小 manifest 不注册第二份 extension。生成物不提交，源码和 source-only library 变化后必须显式 build，再开新 process。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话；从旧的扁平 dist 首次升级时，已运行会话仍须重启一次。
 
 冷启动不应为未使用的功能加载完整实现。配置和纯 schema/settings 检查不能初始化 classifier、OAuth、Apps 或 UI runtime；词法搜索与普通调用不需要 semantic implementation。semantic、Apps、panel/setup、OAuth 的动态 import 保持独立，await 后仍检查 operation owner/signal。严格的同步 argument validation 不为冷启动优化改成异步。
 

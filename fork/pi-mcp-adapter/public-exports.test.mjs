@@ -1,9 +1,10 @@
+import { currentBuild } from "../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { access, mkdir, readFile, realpath, symlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import { offlineGuard, sourceResolver, testSandbox } from "./scripts/test-env.mjs";
 
@@ -47,8 +48,8 @@ test("every public export resolves to its advertised source or compiled runtime 
 
 test("compiled types export the shared runtime helpers and Apps schemas", async () => {
   const types = await import("pi-mcp-adapter/types");
-  const runtime = await import("./dist/runtime-types.js");
-  const streams = await import("./dist/ui-stream-types.js");
+  const runtime = await import(pathToFileURL(join(currentBuild(packageRoot), "runtime-types.js")).href);
+  const streams = await import(pathToFileURL(join(currentBuild(packageRoot), "ui-stream-types.js")).href);
   for (const [name, value] of Object.entries(runtime)) assert.equal(types[name], value, name);
   assert.equal(types.uiStreamModeSchema, streams.uiStreamModeSchema);
   assert.equal(types.uiStreamModeSchema.safeParse("stream-first").success, true);
@@ -77,7 +78,7 @@ test("npm pack includes working runtime and declaration entries for every public
     for (const entry of Object.values(manifest.exports)) {
       for (const path of [entry.import, entry.types]) assert.ok(files.has(path.slice(2)), `not packed: ${path}`);
     }
-    for (const asset of ["dist/app-bridge.bundle.js", "dist/mcp-keyring-helper.cjs", "cli.js"]) assert.ok(files.has(asset), asset);
+    assert.ok(files.has("cli.js"));
     assert.equal([...files].some(path => path.endsWith(".test.ts") || path === "bun.lock"), false);
     const consumer = join(sandbox.root, "consumer");
     const unpacked = join(consumer, "node_modules", manifest.name);
@@ -85,6 +86,8 @@ test("npm pack includes working runtime and declaration entries for every public
     const extraction = spawnSync("tar", ["-xzf", join(sandbox.root, pack.filename), "--strip-components=1", "-C", unpacked], { encoding: "utf8" });
     assert.ifError(extraction.error);
     assert.equal(extraction.status, 0, extraction.stderr);
+    // npm's JSON log redacts UUIDs; inspect the extracted snapshot itself.
+    for (const asset of ["app-bridge.bundle.js", "mcp-keyring-helper.cjs"]) await access(join(currentBuild(unpacked), asset));
     const dependencies = join(unpacked, "node_modules");
     await mkdir(dependencies);
     // npm can place just one version-conflicting package in the nearest
@@ -103,6 +106,8 @@ test("npm pack includes working runtime and declaration entries for every public
     run(["--import", sourceResolver, "--import", offlineGuard, "--import", import.meta.resolve("tsx"), "--input-type=module", "-e", imports], { cwd: consumer, env: sandbox.env });
     const help = run(["--import", sourceResolver, "--import", offlineGuard, join(unpacked, "cli.js"), "--help"], { cwd: consumer, env: sandbox.env });
     assert.match(help.stdout, /pi-mcp-adapter/);
+    const doctor = run(["--import", sourceResolver, "--import", offlineGuard, join(unpacked, "cli.js"), "doctor", "--json"], { cwd: consumer, env: sandbox.env });
+    assert.deepEqual(JSON.parse(doctor.stdout), []);
     // Resolve every advertised type entry as a real consumer, including the upstream source entries.
     const { writeFile } = await import("node:fs/promises");
     await writeFile(join(consumer, "package.json"), '{"type":"module"}\n');

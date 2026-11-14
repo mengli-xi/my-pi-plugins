@@ -1,3 +1,4 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,8 +8,8 @@ import { MatcherClient } from "../../src/matchers/client.ts";
 import { resolveHelperRuntime } from "../../src/supervisor/runtime-resolver.ts";
 
 const packageRoot = new URL("../..", import.meta.url).pathname;
-const workerPath = join(packageRoot, "dist/matcher-worker.js");
-const supervisorPath = join(packageRoot, "dist/supervisor.js");
+const workerPath = join(currentBuild(packageRoot), "matcher-worker.js");
+const supervisorPath = join(currentBuild(packageRoot), "supervisor.js");
 
 async function helperRuntime(): Promise<string> {
   const resolved = await resolveHelperRuntime({ helperRuntime: "auto", supervisorPath, processExecPath: process.execPath });

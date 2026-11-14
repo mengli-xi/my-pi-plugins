@@ -1,3 +1,4 @@
+import { currentBuild } from "../../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -38,17 +39,20 @@ test("production build keeps overlay cold and invalidates Jiti's disk cache afte
   symlinkSync(resolve(packageRoot, "../../node_modules"), join(root, "node_modules"), "dir");
   writeFileSync(join(root, "package.json"), '{"type":"module"}\n');
   const build = () => execFileSync(process.execPath, [join(root, "scripts/build.mjs")], { cwd: root, stdio: "pipe" });
-  const currentDist = () => dirname(resolve(root, "dist", JSON.parse(readFileSync(join(root, "dist/.current.json"), "utf8"))));
+  const currentDist = () => currentBuild(root);
   const runner = join(root, "load.mjs");
   writeFileSync(runner, `
 import { createJiti } from "jiti";
+import { currentBuild } from ${JSON.stringify(new URL("../../../scripts/retained-build.mjs", import.meta.url).href)};
+import { pathToFileURL } from "node:url";
+import { join } from "node:path";
 import * as host from "@earendil-works/pi-coding-agent";
 import * as tui from "@earendil-works/pi-tui";
 const jiti = createJiti(import.meta.url, {
   fsCache: ${JSON.stringify(join(root, "cache"))}, tryNative: false,
   virtualModules: { "@earendil-works/pi-coding-agent": host, "@earendil-works/pi-tui": tui },
 });
-const overlay = await jiti.import(${JSON.stringify(join(root, "dist/src/overlay.ts"))});
+const overlay = await jiti.import(pathToFileURL(join(currentBuild(${JSON.stringify(root)}), "src/overlay.ts")).href);
 console.log(overlay.itemTitle({ presentation: "question", activities: [] }));
 `);
   const load = () => execFileSync(process.execPath, [runner], { cwd: root, encoding: "utf8" }).trim();

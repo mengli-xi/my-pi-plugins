@@ -1,3 +1,4 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -12,7 +13,7 @@ import { startSupervisor } from "./harness.ts";
 import { SUPERVISOR_EXECUTION_ISOLATION_ENV } from "../../src/execution-isolation.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
-const supervisorPath = join(root, "dist/supervisor.js");
+const supervisorPath = join(currentBuild(root), "supervisor.js");
 const shell = process.env.SHELL && process.env.SHELL.startsWith("/") ? process.env.SHELL : "/bin/sh";
 const op = (): string => crypto.randomUUID();
 const id = (suffix: string): string => `proc_${suffix.padStart(12, "0").slice(-12)}`;
@@ -76,8 +77,7 @@ test("Host launches both Supervisor and regex matcher through the configured wra
     await Promise.race([terminalPromise, delay(5_000, undefined, { ref: false }).then(() => { throw new Error("wrapper terminal timed out"); })]);
     const page = await client.request("logPage", { id: processId, stream: "both", tailLines: 20, pattern: "^ready-[0-9]+$", mode: "regex" });
     assert.deepEqual((page.lines as Array<{ text: string }>).map((line) => line.text), ["ready-123"]);
-    const builtDirectory = dirname(join(root, "dist", JSON.parse(await readFile(join(root, "dist/.current.json"), "utf8"))));
-    assert.deepEqual((await readFile(callsPath, "utf8")).trim().split("\n"), [supervisorPath, join(builtDirectory, "matcher-worker.js")]);
+    assert.deepEqual((await readFile(callsPath, "utf8")).trim().split("\n"), [supervisorPath, join(dirname(supervisorPath), "matcher-worker.js")]);
     await client.cleanup("scope-ended");
     await client.waitForExit();
   } finally {

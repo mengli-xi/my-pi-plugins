@@ -1,3 +1,4 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -5,7 +6,7 @@ import { resolveHelperRuntime } from "../../src/supervisor/runtime-resolver.ts";
 import { startSupervisor } from "./harness.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
-const supervisorPath = join(root, "dist/supervisor.js");
+const supervisorPath = join(currentBuild(root), "supervisor.js");
 const shell = process.env.SHELL && process.env.SHELL.startsWith("/") ? process.env.SHELL : "/bin/sh";
 const op = (): string => crypto.randomUUID();
 const id = (suffix: string): string => `proc_${suffix.padStart(12, "0").slice(-12)}`;

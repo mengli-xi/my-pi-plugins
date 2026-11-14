@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { retainedBuild } from "../../../scripts/retained-build.mjs";
 import { copyFile, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -54,4 +56,6 @@ await writeFile(join(dist, "package.json"), JSON.stringify({ type: "module", ver
 
 console.log(`Built ${sources.length} JavaScript modules in dist/`);
 
-build.publish("index.js", ["app-bridge.bundle.js"]);
+execFileSync("node", [createRequire(import.meta.url).resolve("typescript/bin/tsc"), "-p", "tsconfig.public.json", "--outDir", dist], { cwd: root, stdio: "inherit" });
+// Public package subpaths (also used by cli.js), including their type entries.
+build.publish("index.js", undefined, ["types", "config", "metadata-cache"]);

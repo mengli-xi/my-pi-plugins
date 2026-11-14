@@ -6,6 +6,13 @@ import os from "node:os";
 import { pathToFileURL } from "node:url";
 import stripJsonComments from "strip-json-comments";
 
+// Resolve once per CLI invocation, without eagerly loading the extension/SDK.
+let builtEntry;
+function importBuilt(name) {
+  builtEntry ??= new URL(JSON.parse(fs.readFileSync(new URL("./dist/.current.json", import.meta.url), "utf8")), new URL("./dist/", import.meta.url));
+  return import(new URL(name, builtEntry).href);
+}
+
 const HOME = os.homedir();
 
 function expandHome(input) {
@@ -208,9 +215,9 @@ async function runInit(argv, log = console.log) {
 async function importTokenModules(error) {
   try {
     const [store, config, utils] = await Promise.all([
-      import("./dist/mcp-bearer-store.js"),
-      import("./dist/config.js"),
-      import("./dist/utils.js"),
+      importBuilt("./mcp-bearer-store.js"),
+      importBuilt("./config.js"),
+      importBuilt("./utils.js"),
     ]);
     return { store, config, utils };
   } catch (err) {
@@ -455,13 +462,13 @@ async function runDoctor(argv, log, error) {
   let config, trust, manager, auth, utils, agentDir, types;
   try {
     [config, trust, manager, auth, utils, agentDir, types] = await Promise.all([
-      import("./dist/config.js"),
-      import("./dist/project-server-trust.js"),
-      import("./dist/server-manager.js"),
-      import("./dist/mcp-auth.js"),
-      import("./dist/utils.js"),
-      import("./dist/agent-dir.js"),
-      import("./dist/types.js"),
+      importBuilt("./config.js"),
+      importBuilt("./project-server-trust.js"),
+      importBuilt("./server-manager.js"),
+      importBuilt("./mcp-auth.js"),
+      importBuilt("./utils.js"),
+      importBuilt("./agent-dir.js"),
+      importBuilt("./types.js"),
     ]);
   } catch (err) {
     error("Unable to load doctor command modules.");

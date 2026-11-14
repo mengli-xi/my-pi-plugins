@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -10,7 +12,7 @@ const [root, scenario, phase] = process.argv.slice(2) as [string, "changed" | "s
 const agentDir = join(root, "agent"), cwd = join(root, "cwd"), errors: string[] = [];
 for (const path of [agentDir, cwd]) mkdirSync(path, { recursive: true });
 const previous = phase === "1" ? undefined : JSON.parse(readFileSync(join(root, "sessions.json"), "utf8"));
-const { createProcessesChildFactory } = await import(new URL("../../dist/child-factory.js", import.meta.url).href);
+const { createProcessesChildFactory } = await import(pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "child-factory.js")).href);
 const { default: mainFactory } = await import(new URL("../../dist/index.js", import.meta.url).href);
 const late = scenario.startsWith("late-"), oldOwner = "task-1-generation-1", owner = ["same", "late-same"].includes(scenario) ? oldOwner : "task-2-generation-2";
 let ownerKnown = !late;

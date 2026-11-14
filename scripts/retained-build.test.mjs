@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
+import { once } from "node:events";
 import { currentBuild } from "./retained-build.mjs";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
@@ -48,7 +49,11 @@ for (const pkg of packages) test(`${pkg}: old lazy/child files survive rebuild, 
       put("src/supervisor/supervisor-entry.ts", `import { execFileSync } from "node:child_process";\nimport { fileURLToPath } from "node:url";\nconsole.log(execFileSync(process.execPath, [fileURLToPath(new URL("./matcher-worker.js", import.meta.url))], { encoding: "utf8" }).trim());\n`);
       put("src/matchers/matcher-worker-entry.ts", worker);
     } else if (!cc) put(mcp ? "worker.ts" : "src/worker.ts", worker);
-    if (mcp) { put("app-bridge.bundle.js", worker); put("mcp-keyring-helper.cjs", worker); }
+    if (mcp) {
+      put("app-bridge.bundle.js", worker); put("mcp-keyring-helper.cjs", worker);
+      for (const name of ["types", "config", "metadata-cache"]) put(`${name}.ts`, "export const value = 1;");
+      put("tsconfig.public.json", JSON.stringify({ compilerOptions: { declaration: true, emitDeclarationOnly: true, allowImportingTsExtensions: true, target: "es2022", module: "esnext", moduleResolution: "bundler", types: ["node"], skipLibCheck: true }, include: ["*.ts"], exclude: ["scripts", "dist"] }));
+    }
   }
   function build() {
     execFileSync(mcp ? "bun" : process.execPath, ["scripts/build.mjs"], { cwd: root, stdio: "pipe", timeout: 60_000 });
@@ -61,12 +66,10 @@ for (const pkg of packages) test(`${pkg}: old lazy/child files survive rebuild, 
   const inodeBefore = statSync(publicEntry).ino;
   // Keep the old module alive across the build, but don't touch its cold paths.
   const driver = join(root, "driver.mjs");
-  writeFileSync(driver, `import { createInterface } from "node:readline";\nconst { default: old } = await import(${JSON.stringify(pathToFileURL(join(root, "dist", entry)).href)});\nimport assert from "node:assert/strict";\nimport { validateChildCapabilityManifestV1, getOrCreateChildCapabilityRegistryV1 } from "pi-runtime-contracts/child-capabilities-v1";\nconst capability = old.capability?.();\ncapability?.bind({ mode: "rpc", sessionManager: { getSessionId: () => "fixture" } });\nconst manifest = getOrCreateChildCapabilityRegistryV1().snapshot("fixture").registrations[0]?.manifest;\nif (manifest) assert.equal(manifest.main_entrypoint.canonical_path, ${JSON.stringify(realpathSync(publicEntry))});\nconsole.log("loaded");\nfor await (const line of createInterface({ input: process.stdin })) {\n if (manifest) validateChildCapabilityManifestV1(manifest);\n const lazy = await old.lazy();\n console.log(JSON.stringify({ version: old.version, lazy: lazy.version, child: old.child?.(), writer: old.writer?.() }));\n break;\n}\n`);
+  writeFileSync(driver, `import { createInterface } from "node:readline";\nconst { default: old } = await import(${JSON.stringify(pathToFileURL(join(root, "dist", entry)).href)});\nimport assert from "node:assert/strict";\nimport { validateChildCapabilityManifestV1, getOrCreateChildCapabilityRegistryV1 } from "pi-runtime-contracts/child-capabilities-v1";\nconst capability = old.capability?.();\ncapability?.bind({ mode: "rpc", sessionManager: { getSessionId: () => "fixture" } });\nconst manifest = getOrCreateChildCapabilityRegistryV1().snapshot("fixture").registrations[0]?.manifest;\nif (manifest) assert.equal(manifest.main_entrypoint.canonical_path, ${JSON.stringify(realpathSync(publicEntry))});\nconsole.log("loaded");\nfor await (const line of createInterface({ input: process.stdin })) {\n const lazy = await old.lazy();\n if (manifest) validateChildCapabilityManifestV1(manifest);\n console.log(JSON.stringify({ version: old.version, lazy: lazy.version, child: old.child?.(), writer: old.writer?.() }));\n break;\n}\n`);
   // The child pauses after importing the old entry; the test rebuilds while it
   // waits. A fresh process separately imports the unchanged public entry path.
   return (async () => {
-    const { spawn } = await import("node:child_process");
-    const { once } = await import("node:events");
     const childProcess = spawn(process.execPath, [driver], { cwd: root, stdio: ["pipe", "pipe", "pipe"] });
     t.after(() => childProcess.kill("SIGKILL"));
     let stdout = "", stderr = "";
@@ -77,13 +80,13 @@ for (const pkg of packages) test(`${pkg}: old lazy/child files survive rebuild, 
     assert.equal(stdout, "loaded\n");
     inputs("2.0.0");
     const second = build();
+    assert.ok(existsSync(first), "previous build must remain on disk");
+    childProcess.stdin.end("load\n");
+    assert.deepEqual(await closed, [0, null], stderr);
     if (cc || processes) {
       assert.equal(readFileSync(publicEntry, "utf8"), mainBefore, "capability Main proof bytes must remain stable");
       assert.equal(statSync(publicEntry).ino, inodeBefore, "capability Main proof inode must remain stable");
     }
-    assert.ok(existsSync(first), "previous build must remain on disk");
-    childProcess.stdin.end("load\n");
-    assert.deepEqual(await closed, [0, null], stderr);
     const old = JSON.parse(stdout.trim().split("\n").at(-1));
     assert.equal(old.version, "1.0.0"); assert.equal(old.lazy, "1.0.0");
     assert.equal(old.child, "1.0.0");
@@ -97,9 +100,56 @@ for (const pkg of packages) test(`${pkg}: old lazy/child files survive rebuild, 
     assert.ok(existsSync(first));
     put("dist/.build-abandoned/dist/partial", "incomplete");
     inputs("3.0.0"); build();
+    assert.deepEqual(readdirSync(join(root, "dist")).filter(name => !name.startsWith(".build-")),
+      mcp ? [".current.json", "config.d.ts", "config.js", "index.js", "metadata-cache.d.ts", "metadata-cache.js", "types.d.ts", "types.js"] : [".current.json", entry]);
     assert.equal(existsSync(first), false, "build beyond retention must be deleted");
     assert.ok(existsSync(second));
     assert.equal(readdirSync(join(root, "dist")).filter(name => name.startsWith(".build-")).length, 2);
     if (subagents) assert.equal(readFileSync(join(dirname(second), "skills/subagents/SKILL.md"), "utf8"), "2.0.0");
   })();
+});
+
+test("build mutex rejects a competitor, survives interruption and reclaims stale locks/corrupt pointers", async t => {
+  const root = mkdtempSync(join(tmpdir(), "pi-build-lock-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const script = `import { retainedBuild } from ${JSON.stringify(new URL("./retained-build.mjs", import.meta.url).href)};
+import { writeFileSync } from "node:fs";
+import { createInterface } from "node:readline";
+const build = retainedBuild(process.argv[1]);
+writeFileSync(build.output + "/index.js", "export default " + process.argv[2] + ";");
+console.log("ready");
+for await (const line of createInterface({ input: process.stdin })) { build.publish(); break; }
+`;
+  writeFileSync(join(root, "package.json"), '{"type":"module"}');
+  const args = version => ["--input-type=module", "-e", script, root, String(version)];
+  const build = version => execFileSync(process.execPath, args(version), { input: "publish\n", encoding: "utf8", stdio: "pipe" });
+  const pause = async version => {
+    const child = spawn(process.execPath, args(version), { stdio: ["pipe", "pipe", "pipe"] });
+    t.after(() => child.kill("SIGKILL"));
+    const closed = once(child, "close");
+    const ready = once(child.stdout, "data");
+    await Promise.race([ready, closed.then(result => { throw new Error(`builder exited: ${result}`); })]);
+    return { child, closed };
+  };
+  build(0);
+  const first = await pause(1);
+  assert.throws(() => build(2), /Build already running/);
+  first.child.stdin.end("publish\n");
+  assert.deepEqual(await first.closed, [0, null]);
+  const entry = join(root, "dist/index.js"), pointer = join(root, "dist/.current.json");
+  assert.equal(execFileSync(process.execPath, ["--input-type=module", "-e", `console.log((await import(${JSON.stringify(pathToFileURL(entry).href)})).default)`], { encoding: "utf8" }).trim(), "1");
+  const before = [readFileSync(entry, "utf8"), readFileSync(pointer, "utf8")];
+  const interrupted = await pause(3);
+  interrupted.child.kill("SIGTERM");
+  assert.deepEqual(await interrupted.closed, [143, null]);
+  assert.deepEqual([readFileSync(entry, "utf8"), readFileSync(pointer, "utf8")], before);
+  assert.equal(existsSync(join(root, "dist/.lock")), false);
+  const crashed = await pause(4);
+  crashed.child.kill("SIGKILL");
+  await crashed.closed;
+  assert.ok(existsSync(join(root, "dist/.lock")));
+  build(5);
+  for (const corrupt of ["{", "null"]) { writeFileSync(pointer, corrupt); build(6); }
+  assert.ok(existsSync(join(currentBuild(root), "index.js")));
+  assert.equal(existsSync(join(root, "dist/.lock")), false);
 });

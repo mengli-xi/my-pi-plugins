@@ -498,7 +498,7 @@ Probe 状态变化以内存为先。持久化通过异步 atomic writer 合并�
 
 主入口由 Bun `--splitting` 按 `src/` 顶层模块分区（为打包器提供拆分作用域的入口）打包，避免巨型作用域放大 Jiti 转译成本。UIKit 内联，Activity/tool overlay 实现与命令面板按首次使用加载；命令、快捷键、事件和首屏展示仍在启动时安装。
 Pi API、`typebox`、`conf` 和 `pi-runtime-contracts` 保持 external；UIKit 的跨包 geometry 通过已有 `globalThis`/`Symbol.for()` registry 协作，不依赖共享模块实例。
-产物入口为 `dist/index.ts`、独立的 `dist/child.ts` 和诊断入口 `dist/src/internals.ts`、`dist/src/probes.ts`；构建先运行 source typecheck，不提交 `dist/`。
+Pi 固定入口为 `dist/index.ts`；child、writer 和诊断文件都在不可变版本的 `dist/` 内，仓库消费者用 `currentBuild()` 定位。构建先运行 source typecheck，不提交 `dist/`。
 
 ### Pi 1.5 loader 与产物契约
 
@@ -519,7 +519,7 @@ import 边界不变；`dist/config-storage.cjs` 不导入任何 Pi class，刻�
 - `package.json` 的 `pi.extensions` 指向 `dist/index.ts`；`src/child-capability.ts` 登记的 Main/child descriptor
   分别指向 `index.ts` / `child.ts`，继续校验 canonical path 和 hash。
 - Subagents/Side 的生产 catalog 若校验固定 basename，必须同步为 `child.ts`；SDK fixture 和诊断 consumer
-  必须同步引用 `dist/index.ts`、`dist/child.ts`、`dist/src/internals.ts`、`dist/src/probes.ts`。不能放宽校验或添加旧 `.js` shim。
+  必须从同一版本读取 `child.ts`、`src/internals.ts`、`src/probes.ts`（仓库工具用 `currentBuild()`），Main proof 仍指向固定 `dist/index.ts`。不能放宽校验或添加旧 `.js` shim。
 - 真实 CLI fixture 同样用 `.mts` / `.ts` 入口保持 host 绑定，例如 `host-fixtures-extension.mts`、`full-history-extension.mts` 和临时 child wrapper。
 
 `scripts/check-internals-host.mjs` 同时断言最终 CLI 的 component identity 与 compact patch 安装状态，不能仅凭 prototype probe 判断 realm 正确。
@@ -538,7 +538,7 @@ PI_BIN=/path/to/final/pi npm run check:host # 依次运行下面的构建和全�
 验证原始错误、retry 事件、fresh-process session 恢复及 TUI 聚合行，使用通用 `provider_log_id`，不访问真实 provider。
 该验证使用通用 fixture，不依赖专用 provider 命令别名。
 
-`check` 运行 typecheck、build 和全部单元测试。Host fixture 只从稳定的 bundle 入口加载运行时与诊断；
+`check` 运行 typecheck、build 和全部单元测试。Host fixture 从 Pi 入口加载 Main，从当前版本目录加载 child 与诊断；
 history anchor predicate 和 editor-slot geometry reader 从源码加载，分别通过 `Symbol.for()` 标记与全局 registry
 识别真实 bundle 的对象，不依赖模块实例相同。Child UI harness 在启动前写入隔离的 v6 配置，Main/child 各自读取。
 

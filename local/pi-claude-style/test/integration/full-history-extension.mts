@@ -1,9 +1,12 @@
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 // Synthetic-session host fixture: private reads here are test instrumentation.
 import { appendFileSync } from "node:fs";
 import { InteractiveMode, CompactionSummaryMessageComponent } from "@earendil-works/pi-coding-agent";
 import { fauxProvider, fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
-import { auditInternals } from "../../dist/src/internals.ts";
+const { auditInternals } = await import(pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "src/internals.ts")).href);
 // The predicate reads a Symbol.for marker, not the bundle's class/WeakMap identity.
 import { isHistoryAnchor } from "../../src/history-batches.ts";
 

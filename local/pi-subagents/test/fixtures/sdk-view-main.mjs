@@ -1,10 +1,11 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import { grantTemporarySdkFixture } from "./sdk-grant.ts";
 import { appendFileSync, readFileSync, existsSync, writeFileSync, statSync } from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { captureEntrypointDescriptorV1, getOrCreateChildCapabilityRegistryV1 } from "pi-runtime-contracts/child-capabilities-v1";
-import { getProcessServiceCellV1 } from "../../dist/host/service-cell.js";
+const { getProcessServiceCellV1 } = await import(pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "host/service-cell.js")).href);
 import { createFixtureChildFactory } from "./sdk-view-provider/src/child-factory.ts";
 import { Theme } from "@earendil-works/pi-coding-agent";
 
@@ -218,7 +219,7 @@ export default function fixture(pi) {
           settlementKind: outbox.settlement_kind, settlementProof: outbox.settlement_proof_id }))) };
     }
     if (command.op === "internals") {
-      const { auditInternals: cc } = await import("../../../pi-claude-style/dist/src/internals.ts");
+      const { auditInternals: cc } = await import(pathToFileURL(join(currentBuild(new URL("../../../pi-claude-style/", import.meta.url)), "src/internals.ts")).href);
       const result = { cc: cc() };
       writeFileSync(join(root, `${command.label}-internals.json`), JSON.stringify(result, null, 2));
       return Object.fromEntries(Object.entries(result).map(([name, rows]) => [name, rows.filter(row => ["broken", "missing"].includes(row.state))]));

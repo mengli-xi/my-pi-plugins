@@ -11,7 +11,7 @@ npm run build -w pi-processes
 pi -e "$PWD/local/pi-processes"
 ```
 
-Pi 加载 `dist/index.js`；构建还生成独立的 `dist/supervisor.js`、`dist/matcher-worker.js`、child factory 与按需加载的 manager view。源码或 source-only library 依赖变更后，重建并新开 Pi process，不用 `/reload` 代替 rebuild/restart。
+Pi 加载 `dist/index.js`；每版构建目录内还包含独立的 `supervisor.js`、`matcher-worker.js`、child factory 与按需加载的 manager view。源码或 source-only library 依赖变更后，重建并新开 Pi process，不用 `/reload` 代替 rebuild/restart。
 
 空会话只建立 Host/binding，不启动 Supervisor；首次 process 操作才选择 helper runtime 并握手。普通配置下，命令可在同一 session 内跨 extension `/reload` 存活；managed/isolated scope 不 reclaim 旧 Host。session scope 结束、package 被移除或未被 reclaim、Pi 退出时会清理对应进程，具体边界见[执行合同](docs/MANAGED_EXECUTION.md)。
 

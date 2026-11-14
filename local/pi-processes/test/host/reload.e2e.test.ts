@@ -1,3 +1,4 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -6,7 +7,7 @@ import { SupervisorClient } from "../../src/host/supervisor-client.ts";
 import { resolveHelperRuntime } from "../../src/supervisor/runtime-resolver.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
-const supervisorPath = join(root, "dist/supervisor.js");
+const supervisorPath = join(currentBuild(root), "supervisor.js");
 const shell = process.env.SHELL?.startsWith("/") ? process.env.SHELL : "/bin/sh";
 
 function isAlive(pid: number): boolean {

@@ -7,7 +7,8 @@ import {
   ModelSelectorComponent,
   type SessionShutdownEvent,
 } from "@earendil-works/pi-coding-agent";
-import claudeStyleExtension, { teardownLifecycleForEvent } from "../src/bootstrap.ts";
+import { teardownLifecycleForEvent } from "../src/bootstrap.ts";
+const { default: claudeStyleExtension } = await import(new URL("../dist/index.ts", import.meta.url).href);
 import { PROVIDER_ACTIVITY_CHANNEL } from "pi-runtime-contracts/provider-activity-v1";
 import { ConfigService } from "../src/config/service.ts";
 import { LifecycleManager } from "../src/lifecycle.ts";

@@ -37,6 +37,7 @@ execFileSync("bun", [
   "--external", "@earendil-works/*", "--external", "typebox",
   "--external", "conf", "--external", "pi-runtime-contracts",
   "--define", 'CC_STYLE_CONFIG_STORAGE_MODULE="../config-storage.cjs"',
+  "--define", 'CC_STYLE_MAIN_ENTRYPOINT="../../index.ts"',
 ], { cwd: root, stdio: "inherit" });
 mkdirSync(dist, { recursive: true });
 writeFileSync(new URL("index.ts", dist), 'export { default } from "./src/bootstrap.ts";\n');
@@ -48,4 +49,4 @@ execFileSync("bun", [
   "--define", 'CC_STYLE_CONFIG_STORAGE_MODULE="./config-storage.cjs"',
 ], { cwd: root, stdio: "inherit" });
 
-build.publish("index.ts", [], []);
+build.publish("index.ts", []);

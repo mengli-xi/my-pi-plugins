@@ -67,6 +67,8 @@ Pi API 基线是 1.5，catalog 保留历史文件名 `src/compat/pi-1.3.ts`。25
 
 ## Build 与 native child
 
+`dist` 顶层仅留 Pi 入口 `index.ts` 和版本指针 `.current.json`；child、CJS writer 与诊断模块都在版本目录，仓库探针用 `currentBuild()` 定位。
+
 Bun splitting 以 `src/` 顶层模块作为构建分区（供打包器拆分作用域的入口），避免把启动依赖压成少数巨型作用域，降低 Jiti 转译成本。`src/*.ts` 顶层文件自动成为构建入口，但额外产物不是插件入口。共享 chunk 使用 `chunk-<hash>.ts` 命名。
 
 Activity/tool overlay 实现随详情首次打开加载，复用 runtime 的并发去重、失败重试和过期检查。
@@ -77,7 +79,7 @@ Main、child、诊断和 shared/lazy chunks 全部使用 `.ts` 后缀，内容�
 
 官方编译宿主可以不含 npm 私有 `layout.js`；缺少这份可选兜底不覆盖原生帧的健康状态，真实导入或绘制错误仍须诊断。
 
-修改 TypeScript 或 source-only compiled consumer dependency 后显式 `npm run build`，新开 Pi process，不用 `/reload` 代替。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话。`tsconfig.json` noEmit；生成 dist 不提交。`scripts/check-internals-host.mjs` 同时验证 eager probes、最终 component identity 和实际 compact patch，不能拿 source-only probe 冒充 bundle gate。
+修改 TypeScript 或 source-only compiled consumer dependency 后显式 `npm run build`，新开 Pi process，不用 `/reload` 代替。重新 build 保留最近两版，已运行会话沿用原版，新会话才用新版；连续重建前须重启更早的会话；从旧的扁平 dist 首次升级时，已运行会话仍须重启一次。`tsconfig.json` noEmit；生成 dist 不提交。`scripts/check-internals-host.mjs` 同时验证 eager probes、最终 component identity 和实际 compact patch，不能拿 source-only probe 冒充 bundle gate。
 
 `dist/child.ts` 只导出 named SDK factory，Main 登记 capability。child 在 execution assembly 安装轻量 recorder，attach 安装 view，detach await 在途 shell 并释放 view，不结束 session。不能使用 `PI_OFFLINE` 禁掉 provider 网络；child 不安装 Main control、Goal/Todo、selector、external contributor 或全局 updater。return label 属于 editor chrome，不新增 footer 行，display name 不改 native session name。
 

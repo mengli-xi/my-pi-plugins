@@ -1,3 +1,5 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
+import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -52,12 +54,12 @@ export default function control(pi: ExtensionAPI): void {
           const agent = binding.host.snapshot().agents.find(item => item.agent.task_name === command.target)!;
           await (await binding.runtime.childForView(agent.agent.agent_id))!.runtime.dispose(); result = { disposed: true };
         } else if (command.op === "retirement") {
-          const { readMainMailboxRetirement } = await import(new URL("../../dist/mailbox/retirement-main.js", import.meta.url).href);
+          const { readMainMailboxRetirement } = await import(pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "mailbox/retirement-main.js")).href);
           const state = binding.host.snapshot(), facts = await readMainMailboxRetirement(binding.host.mainMailboxReadContext);
           result = state.agents.flatMap(item => item.outbox.map(outbox => ({ outboxId: outbox.outbox_id, kind: facts.outbox(state, outbox).kind })));
         } else if (command.op === "delete") {
           const agent = binding.host.snapshot().agents.find(item => item.agent.task_name === command.target)!;
-          const { runAgentActionV1 } = await import(new URL("../../dist/ui/manager.js", import.meta.url).href);
+          const { runAgentActionV1 } = await import(pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "ui/manager.js")).href);
           const before = binding.runtime.residency(agent.agent.agent_id);
           const message = await runAgentActionV1({ ui: { ...ctx.ui, confirm: async () => true } }, binding, agent.agent.agent_id, "delete");
           result = { message, before, after: binding.runtime.residency(agent.agent.agent_id) ?? null,

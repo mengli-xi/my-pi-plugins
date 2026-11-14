@@ -15,10 +15,10 @@ const entries = [
   ["src/matchers/matcher-worker-entry.ts", "dist/matcher-worker.js", false],
 ];
 for (const [entry, output, externalPackages] of entries) {
-  const args = ["build", entry, "--outfile", join(build.output, output.slice("dist/".length)), "--target", "bun", "--minify-syntax"];
+  const args = ["build", entry, "--outfile", join(build.output, output.slice("dist/".length)), "--target", "bun", "--minify-syntax", "--define", 'PROCESSES_MAIN_ENTRYPOINT="../../index.js"'];
   if (externalPackages) args.push("--packages", "external");
   const result = spawnSync(bun, args, { cwd: root, stdio: "inherit" });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-build.publish("index.js", [], ["createProcessesSideFactory"]);
+build.publish("index.js", ["createProcessesSideFactory"]);

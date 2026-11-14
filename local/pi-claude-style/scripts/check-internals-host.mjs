@@ -1,3 +1,4 @@
+import { currentBuild } from "../../../scripts/retained-build.mjs";
 import { piBin } from "../../../scripts/pi-checks.mjs";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -9,8 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const extensionPath = join(packageRoot, "dist", "index.ts");
-const probesUrl = pathToFileURL(join(packageRoot, "dist", "src", "probes.ts")).href;
-const internalsUrl = pathToFileURL(join(packageRoot, "dist", "src", "internals.ts")).href;
+const probesUrl = pathToFileURL(join(currentBuild(packageRoot), "src", "probes.ts")).href;
+const internalsUrl = pathToFileURL(join(currentBuild(packageRoot), "src", "internals.ts")).href;
 const binary = piBin();
 const layoutFileProbe = process.argv.includes("--layout-file");
 if (!existsSync(extensionPath)) {

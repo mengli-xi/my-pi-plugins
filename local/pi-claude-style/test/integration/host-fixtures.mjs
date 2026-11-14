@@ -1,3 +1,4 @@
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 import { piBin, installedPiVersion } from "../../../../scripts/pi-checks.mjs";
 // Real Pi 1.5 TUI fixtures for pi-claude-style, driven by a faux provider.
 //
@@ -107,7 +108,7 @@ class PiTerminal {
     let presentationPath = extensions[0];
     if (presentation !== "main") {
       presentationPath = join(root, "presentation.ts");
-      writeFileSync(presentationPath, `import { createClaudeStyleChildExtension } from ${JSON.stringify(pathToFileURL(join(packageRoot, "dist/child.ts")).href)};
+      writeFileSync(presentationPath, `import { createClaudeStyleChildExtension } from ${JSON.stringify(pathToFileURL(join(currentBuild(packageRoot), "child.ts")).href)};
 export default createClaudeStyleChildExtension({ target: ${JSON.stringify(presentation)}, taskName: "spacing fixture", returnLabel: "Alt+/ Main", readOnlyStatusline: true });`);
     }
     this.child = Bun.spawn({

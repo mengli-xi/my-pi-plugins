@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+import { currentBuild } from "../../../../scripts/retained-build.mjs";
 // Stock-host SDK lifecycle regression. Memory terminals isolate Main and child;
 // only faux responses run, and no shared production terminal owner is simulated.
 import assert from "node:assert/strict";
@@ -7,7 +9,7 @@ import { createAgentSessionServices, createAgentSessionFromServices, createAgent
 import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import xterm from "@xterm/headless";
 import claudeMain from "../../dist/index.ts";
-import { createClaudeStyleChildExtension } from "../../dist/child.ts";
+const { createClaudeStyleChildExtension } = await import(pathToFileURL(join(currentBuild(new URL("../../", import.meta.url)), "child.ts")).href);
 
 const root = process.env.CC_RETRY_CHILD_ROOT, target = process.env.CC_RETRY_CHILD_TARGET;
 const firstEntry = process.env.CC_RETRY_CHILD_ENTRY === "first";
