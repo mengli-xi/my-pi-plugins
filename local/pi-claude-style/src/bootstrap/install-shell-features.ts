@@ -26,7 +26,7 @@ export function installShellFeatures(
   lifecycle.install({
     id: "fullscreen-host",
     install: () => {
-      fullscreen = installFullscreenHost(pi, layout);
+      fullscreen = installFullscreenHost(pi, layout, { warmClipboard: true });
       return { dispose: () => { fullscreen?.dispose(); fullscreen = undefined; } };
     },
     health: () => fullscreen?.health() ?? { status: "inactive" as const },

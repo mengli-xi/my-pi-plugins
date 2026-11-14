@@ -230,7 +230,8 @@ function installStickySelectionPatch(finish: SelectionFinish): () => void {
   };
 }
 
-function isFullscreen(tui: TUI): tui is FullscreenTuiLike {
+/** Whether this view is Pi's alt-screen renderer; the gate for every adaptation here. */
+export function isFullscreen(tui: TUI): tui is FullscreenTuiLike {
   return tui.mode === "fullscreen";
 }
 

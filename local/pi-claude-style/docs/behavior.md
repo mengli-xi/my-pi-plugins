@@ -676,7 +676,7 @@ managed child factory 必须在 execution 装配时安装，不等首次 view。
 
 `PI_BIN=/path/to/pi bun test/integration/full-history.mjs` 用合成会话和 faux provider 检查完整历史、补载选区/视口、两类现场压缩、reload、settings rebuild、tree、fork、new、resume、输入历史与运行中回退；另用 2800 余条记录检验卸载、双向重载、折叠状态、选区保护和多次压缩。
 
-`src/host/fullscreen/` 提供精确 editor geometry、面板外部点击关闭、每帧钩子、浮动补全、置顶问题与主题选区色。置顶问题直接合入帧，不建立 Pi overlay，所以滚动中的 transcript 选区仍跟随内容。深路径 layout import 失败时几何退回 UIKit 估算；选区 probe 失配退回原生反色。Main 与 child view 共用实现，detach 释放各自 owner。
+`src/host/fullscreen/` 提供精确 editor geometry、面板外部点击关闭、每帧钩子、浮动补全、置顶问题与主题选区色。置顶问题直接合入帧，不建立 Pi overlay，所以滚动中的 transcript 选区仍跟随内容。深路径 layout import 失败时几何退回 UIKit 估算；选区 probe 失配退回原生反色。Main 与 child view 共用实现，detach 释放各自 owner。全屏会话空闲后由 Main 一次性预加载系统剪贴板模块（仅 macOS/Windows，不读写剪贴板），首次复制不再多等。
 
 从 settings.packages 删除 pi-pinned-layout 后重启。CC schema v6 首次启动将 `<agent-dir>/extensions/pi-pinned-layout/config.json`（优先，overrides）或 `pi-pinned-layout.json` 的 enabled、stickyUserMessage、floatAutocomplete、popupGap、minViewportRows 导入 `layout.*`。已有 CC 值不覆盖、非法值跳过，源文件保留并写 `.cc-style-v6.bak`；CC v5 store 留 `.schema-v5.bak`。备份失败则诊断只读，不写迁移结果。以后用 `/cc-style config get|set|reset layout.*`，补全来自同一 catalog；重启生效。若 settings 仍加载 Pinned，CC fullscreen host 不安装并在 doctor 报 degraded。
 

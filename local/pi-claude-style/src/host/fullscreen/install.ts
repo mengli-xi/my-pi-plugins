@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import type { FeatureHealth } from "../../lifecycle.ts";
 import { installFullscreenBridge, type FullscreenBridge, type FullscreenLayoutConfig } from "./bridge.ts";
+import { warmNativeClipboardOnIdle } from "./clipboard-warmup.ts";
 import { installFullHistory } from "../../compat/full-history.ts";
 
 /**
@@ -28,6 +29,11 @@ export interface FullscreenHost {
   dispose(): void;
 }
 
+export interface FullscreenHostOptions {
+  /** Main's interactive view preloads the host clipboard module; child views never do. */
+  warmClipboard?: boolean;
+}
+
 /**
  * Install the fullscreen bridge for one Pi view (Main, Side or a Subagent).
  * `config` is read when the anchor mounts; `layout.*` changes apply on reload.
@@ -35,6 +41,7 @@ export interface FullscreenHost {
 export function installFullscreenHost(
   pi: ExtensionAPI,
   config: () => FullscreenLayoutConfig,
+  options: FullscreenHostOptions = {},
 ): FullscreenHost {
   if (pinnedLayoutStillLoaded(pi)) {
     return {
@@ -49,6 +56,7 @@ export function installFullscreenHost(
   const history = installFullHistory(pi);
   let marker: Component | undefined;
   let markerTui: TUI | undefined;
+  let stopClipboardWarmup: (() => void) | undefined;
 
   const mounted = (): boolean => !!markerTui && !!marker && markerTui.children.some((child) => {
     const kids = (child as { children?: readonly Component[] }).children;
@@ -73,6 +81,11 @@ export function installFullscreenHost(
       markerTui = tui;
       history.attach(tui);
       bridge?.prepare(tui, current, () => ui.theme);
+      // Main only: the first alt-screen copy should not wait for the host to
+      // require its native clipboard module.
+      if (options.warmClipboard) {
+        stopClipboardWarmup ??= warmNativeClipboardOnIdle(tui, () => ctx.isIdle());
+      }
       return component;
     }, { placement: "aboveEditor" });
   };
@@ -86,6 +99,8 @@ export function installFullscreenHost(
     health: () => ({ status: config().enabled ? "ok" : "inactive" }),
     dispose() {
       history.dispose();
+      stopClipboardWarmup?.();
+      stopClipboardWarmup = undefined;
       bridge?.release();
       bridge = undefined;
       marker = undefined;
