@@ -69,7 +69,7 @@ OAuth success 的投影 guard 使用**当前 effective server URL**和实时 sec
 
 Windows 超 1000 UTF-16 code units 用 manifest + chunks；macOS/Linux 普通 entry 为一个 item，真实 native size error 直接上报。旧 chunk entry 的普通读取可校验并 compact 成单 item 后清旧 chunks；**status inspection 只读，不 compact**。生产运行不接受 fake-keyring/memory-test-store 开关；替身只能在测试侧注入。
 
-OS store 不可用 fail closed，不 fallback plaintext。Headless Linux 需 unlocked Secret Service；Windows OpenSSH network logon 可能报 `ERROR_NO_SUCH_LOGON_SESSION` (1312)。Linux revoked inherited keyring 可在 native operation 的 KeyRevoked 时 best-effort retry 一次 `keyctl session - <runtime> <packaged helper>`（OAuth recovery helper 使用 node），10 秒 timeout；须 PATH 有 keyctl/所需 runtime 且新 session store 可用。缺失/locked/其他错误仍 fail closed；`PI_MCP_ADAPTER_DISABLE_KEYRING_RECOVERY=1` 可禁用 recovery。此机制不生成替代 plaintext store。
+OS store 不可用 fail closed，不 fallback plaintext。Linux 上 `@napi-rs/keyring` 找不到 Secret Service 时会自动改用内核 keyutils keyring：凭据只在内存里，重启后需重新认证；要持久保存，需提供已解锁的 Secret Service。Windows OpenSSH network logon 可能报 `ERROR_NO_SUCH_LOGON_SESSION` (1312)。Linux revoked inherited keyring 可在 native operation 的 KeyRevoked 时 best-effort retry 一次 `keyctl session - <runtime> <packaged helper>`（OAuth recovery helper 使用 node），10 秒 timeout；须 PATH 有 keyctl/所需 runtime 且新 session store 可用。缺失/locked/其他错误仍 fail closed；`PI_MCP_ADAPTER_DISABLE_KEYRING_RECOVERY=1` 可禁用 recovery。此机制不生成替代 plaintext store。
 
 ### 显式 encrypted-file
 
