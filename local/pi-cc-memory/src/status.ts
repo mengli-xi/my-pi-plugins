@@ -1,4 +1,4 @@
-/** Owned by pi-claude-style (src/integration-contracts.ts); copied per 根 README.md 的能力协议表, no package import. */
+/** Owned by pi-claude-style (src/integration-contracts.ts); copied per 根 AGENTS.md 的能力协议表, no package import. */
 export const STATUS_LINE_ROW_CHANNEL = "statusline:row";
 export const MEMORY_STATUS_KEY = "memory";
 export interface StatusLineRowPayload {

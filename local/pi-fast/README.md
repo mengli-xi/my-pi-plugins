@@ -6,7 +6,7 @@
 
 ## 加载
 
-Pi 版本见[根支持说明](../../README.md#支持说明)；按[根安装说明](../../README.md#安装与加载)安装依赖后直接加载 TypeScript，无 build/dist：
+Pi 版本见[根要求](../../README.md#要求)；按[根安装说明](../../README.md#安装与加载)安装依赖后直接加载 TypeScript，无 build/dist：
 
 ```sh
 pi -e "$PWD/local/pi-fast"

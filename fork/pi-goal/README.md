@@ -14,7 +14,7 @@ Goal 为当前 Pi session 提供 `/goal`、`goal_complete` 和 `goal_blocked`。
 
 ## 📦 加载与构建
 
-本 Fork 的 stock Pi 版本见[根支持说明](../../README.md#支持说明)，使用根 workspace 和唯一根 `bun.lock`；bun 同时用于安装和构建。只安装信任的 extension，它与宿主具有同等进程权限。
+本 Fork 的 stock Pi 版本见[根要求](../../README.md#要求)，使用根 workspace 和唯一根 `bun.lock`；bun 同时用于安装和构建。只安装信任的 extension，它与宿主具有同等进程权限。
 
 按[根安装说明](../../README.md#安装与加载)在仓库根安装依赖，再构建并加载本包：
 

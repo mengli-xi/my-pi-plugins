@@ -1,6 +1,6 @@
 # 可选协作协议
 
-[返回包入口](../README.md)。不 import 或硬依赖别的 extension，不读对方私有 session entry/目录。共享库是正常硬依赖；可选 consumer/producer 缺席不影响 Goal 的基本行为。根 [能力协议表](../../../README.md#能力协议表) 链接 owner，本页定义 Goal 提供的字段和降级。
+[返回包入口](../README.md)。不 import 或硬依赖别的 extension，不读对方私有 session entry/目录。共享库是正常硬依赖；可选 consumer/producer 缺席不影响 Goal 的基本行为。根 [能力协议表](../../../AGENTS.md#能力协议表) 链接 owner，本页定义 Goal 提供的字段和降级。
 
 ## Goal snapshot v1
 

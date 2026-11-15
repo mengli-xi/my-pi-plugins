@@ -34,14 +34,14 @@ export function validateQuick(version, from) {
 }
 
 export function supportedPiVersion(readme) {
-  const versions = [...readme.matchAll(/^当前验证目标为 \*\*stock Pi ([^*\s]+)\*\*/gm)];
-  if (versions.length !== 1) throw new Error("README 必须有唯一的 stock Pi 支持版本声明");
+  const versions = [...readme.matchAll(/^支持 \*\*Pi ([^*\s]+)\*\*/gm)];
+  if (versions.length !== 1) throw new Error("README 必须有唯一的 Pi 支持版本声明");
   return versions[0][1];
 }
 
 export function updateSupportedVersion(readme, version) {
   supportedPiVersion(readme);
-  return readme.replace(/^(当前验证目标为 \*\*stock Pi )[^*\s]+(\*\*)/m, (_match, prefix, suffix) => `${prefix}${version}${suffix}`);
+  return readme.replace(/^(支持 \*\*Pi )[^*\s]+(\*\*)/m, (_match, prefix, suffix) => `${prefix}${version}${suffix}`);
 }
 
 // 根开发依赖是精确 pin，公开 peer 范围不随升级改写。

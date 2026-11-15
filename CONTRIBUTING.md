@@ -19,7 +19,7 @@
 - 跨插件协作只走能力协议（事件名或能力名带版本号，如 `xxx:yyy-v1`）。协议由提供方的 README 定义，使用方必须处理「没人提供」的情况。
 - 不读别的插件的私有存储（目录布局、文件格式、session entry 的内部字段）。要用它的数据，就让它通过协议主动提供。
 - 共享库和协议里不写死具体插件名。需要区分参与方时，由参与方自己注册身份。现有 ABI key 保持不变（如 `pi.subagents.process-wait-bridge.v1`/`v2`、`pi.goal.continuation-obligation.v1`），新协议用中性命名。
-- 新增或修改协议时，同步更新根 [README](README.md) 的能力协议表：协议名、提供方、使用方、缺失时怎么降级。
+- 新增或修改协议时，同步更新[AGENTS.md](AGENTS.md#能力协议表) 的能力协议表：协议名、提供方、使用方、缺失时怎么降级。
 
 支持 macOS，以及 Ubuntu 24.04 x86_64 glibc、Node 24、Bun 1.3+、本地 ext4 的 Linux 基线。
 
@@ -80,14 +80,14 @@ node scripts/pi-upgrade-check.mjs <补丁版本> --quick      # 快速验收
 - `npm test` 逐文件跑工具离线单测，限制嵌套进程并发，再检查文档并跑各包单测。
 - 真实 provider、人工终端/IME、无探针私有行为不在自动保证范围。
 
-peer 只检查是否覆盖目标版本，不验证最低 API。用到新 API 时，手动抬 peer 下限。fork 改范围还须更新 `LOCAL_PATCHES.md`。当前版本只在[根支持说明](README.md#支持说明)维护，自检将它传给同一命令。
+peer 只检查是否覆盖目标版本，不验证最低 API。用到新 API 时，手动抬 peer 下限。fork 改范围还须更新 `LOCAL_PATCHES.md`。当前版本只在[根要求](README.md#要求)维护，自检将它传给同一命令。
 
 stock 和 patched 分开交付。普通升级不要求重新 pin/构建补丁，原版子视图沿用主题热更新降级逻辑。旧补丁只适用于固定版本；选择新版 patched 时才按[补丁说明](host-patches/pi/v1.5.0/README.md#回滚升级与边界)重新 pin、构建和双侧联验，不纳入 stock 验收。
 
 ## 文档
 
 - 三层，逐层链接，agent 从上往下只读需要的那层：
-  1. 根 [README](README.md)：包索引（每包一行）、插件与共享库的区别、能力协议表。
+  1. 根 [README](README.md)：面向使用者的包索引、安装与使用；[AGENTS.md](AGENTS.md)：面向 AI 与维护者的协议、兼容边界和验证入口。
   2. `local/<pkg>/README.md`：用途、加载与构建、配置与命令、可选协作与降级、验证；末尾列出本包 `docs/` 里每份文档讲什么。
   3. `local/<pkg>/docs/*.md`：完整合同，如持久化格式、投递协议。
 - 每份文档都要被上一层链接到；不能有断链。根目录的链接检查会在测试里跑。

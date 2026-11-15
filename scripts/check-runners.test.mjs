@@ -187,7 +187,7 @@ test("升级 main 在步骤间收到两次中断仍清理、写报告且不写�
   writeFileSync(join(f.root, "package.json"), JSON.stringify({ workspaces: ["local/*"], devDependencies: { "@earendil-works/pi-ai": "1.5.0" } }));
   writeFileSync(join(f.root, "local/owner/package.json"), JSON.stringify({ name: "owner", scripts: { test: "unit" } }));
   writeFileSync(join(f.root, "bun.lock"), "ORIGINAL");
-  writeFileSync(join(f.root, "README.md"), "当前验证目标为 **stock Pi 1.5.0**。\n");
+  writeFileSync(join(f.root, "README.md"), "支持 **Pi 1.5.0**。\n");
   writeFileSync(join(f.root, ".git/info/exclude"), "bin/\ntrace\n");
   execFileSync("git", ["-C", f.root, "add", "."]);
   execFileSync("git", ["-C", f.root, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture"]);

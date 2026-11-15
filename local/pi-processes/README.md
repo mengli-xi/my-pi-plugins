@@ -4,7 +4,7 @@
 
 ## 加载与构建
 
-stock Pi 版本见[根支持说明](../../README.md#支持说明)。按[根安装说明](../../README.md#安装与加载)安装依赖，再构建本包：
+stock Pi 版本见[根要求](../../README.md#要求)。按[根安装说明](../../README.md#安装与加载)安装依赖，再构建本包：
 
 ```sh
 npm run build -w pi-processes

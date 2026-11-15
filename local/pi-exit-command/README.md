@@ -8,7 +8,7 @@
 
 按[根安装说明](../../README.md#安装与加载)加载本包。TypeScript 直接加载，没有 build/dist。
 
-Pi 版本见[根支持说明](../../README.md#支持说明)。
+Pi 版本见[根要求](../../README.md#要求)。
 
 ## 用法
 

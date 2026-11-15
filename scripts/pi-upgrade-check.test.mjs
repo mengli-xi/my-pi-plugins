@@ -38,7 +38,7 @@ test("README 声明与根所有 Pi devDeps 一致，更新只触碰该声明", (
   for (const [name, pinned] of deps) assert.equal(pinned, version, name);
   const changed = updateSupportedVersion(readme, "1.5.9");
   assert.equal(supportedPiVersion(changed), "1.5.9");
-  assert.equal(changed.replace("stock Pi 1.5.9", `stock Pi ${version}`), readme, "固定补丁信息与其他文案不能改写");
+  assert.equal(changed.replace("Pi 1.5.9", `Pi ${version}`), readme, "固定补丁信息与其他文案不能改写");
   assert.equal(updateSupportedVersion(changed, version), readme);
   assert.throws(() => updateSupportedVersion("missing declaration", "1.5.9"));
 });
@@ -248,7 +248,7 @@ for (const scenario of ["只报告", "保留副本", "失败后继续", "应用"
       json(join(f.root, "local/new-owner/package.json"), { name: "new-owner", scripts: { build: "build", test: "unit", "check:internals": "probe", "check:host": "host", "check:smoke": "smoke", "check:upgrade": "runner", "check:upgrade:first": "first", "check:upgrade:second": "second", "test:patched-host": "excluded" }, peerDependencies: { "@earendil-works/pi-ai": "^1.5.0" } });
       json(join(f.root, "local/union-owner/package.json"), { name: "union-owner", scripts: { test: "unit", "check:internals": "probe" }, peerDependencies: { "@earendil-works/pi-ai": "*" } });
       json(join(f.root, "fork/forks/package.json"), { name: "forked", scripts: { test: "unit" }, peerDependencies: { "@earendil-works/pi-ai": scenario === "peer未覆盖" ? "<1.0.0" : "^1.5.0" } });
-      writeFileSync(join(f.root, "README.md"), scenario === "README声明缺失" ? "missing declaration\n" : "当前验证目标为 **stock Pi 1.5.0**，fixture。\n");
+      writeFileSync(join(f.root, "README.md"), scenario === "README声明缺失" ? "missing declaration\n" : "支持 **Pi 1.5.0**，fixture。\n");
       writeFileSync(join(f.root, "bun.lock"), "original lock\n");
       writeFileSync(join(f.root, "guard.txt"), "original\n");
       if (scenario === "失败后继续") writeFileSync(join(f.root, "FAIL_TYPECHECK"), "");

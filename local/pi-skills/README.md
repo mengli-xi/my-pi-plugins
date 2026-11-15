@@ -4,7 +4,7 @@
 
 ## 加载与构建
 
-Pi 版本见[根支持说明](../../README.md#支持说明)。按[根安装说明](../../README.md#安装与加载)安装依赖，将本包绝对路径加入实际 agent directory 的 `settings.json`，或用 `pi -e /absolute/path/to/local/pi-skills` 临时加载。TypeScript 直接加载，无 build、工具注册或本包配置文件；不自动启用其他插件。
+Pi 版本见[根要求](../../README.md#要求)。按[根安装说明](../../README.md#安装与加载)安装依赖，将本包绝对路径加入实际 agent directory 的 `settings.json`，或用 `pi -e /absolute/path/to/local/pi-skills` 临时加载。TypeScript 直接加载，无 build、工具注册或本包配置文件；不自动启用其他插件。
 
 ## 使用
 
@@ -58,7 +58,7 @@ Loaded 行通过 `pi.claude-style.custom-entry-presentations.v1` 委托 CC Style
 
 ## 压缩材料与恢复协议
 
-本包独占自身加载记录的解析，不要求 Compact 读取 Skills 私有格式或登记插件白名单。协议索引见[根能力表](../../README.md#能力协议表)。
+本包独占自身加载记录的解析，不要求 Compact 读取 Skills 私有格式或登记插件白名单。协议索引见[根能力表](../../AGENTS.md#能力协议表)。
 
 ### 同步材料与嵌入恢复
 
