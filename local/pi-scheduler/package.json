@@ -1,5 +1,6 @@
 {
   "name": "pi-scheduler",
+  "license": "MIT",
   "version": "0.1.0",
   "description": "Persistent scheduled tasks for Pi: an agent-facing tool creates tasks that run as isolated Agents or into a target session, executed by a standalone daemon that survives Pi exit.",
   "type": "module",

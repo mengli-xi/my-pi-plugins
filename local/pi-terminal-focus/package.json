@@ -1,5 +1,6 @@
 {
   "name": "pi-terminal-focus",
+  "license": "MIT",
   "version": "0.1.0",
   "description": "Hide Pi's main editor cursor when the terminal loses focus.",
   "type": "module",

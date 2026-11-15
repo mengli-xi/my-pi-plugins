@@ -1,5 +1,6 @@
 {
   "name": "pi-claude-style",
+  "license": "MIT",
   "version": "0.1.0",
   "description": "Claude Code-style transcript, working row, and status presentation for pi",
   "type": "module",

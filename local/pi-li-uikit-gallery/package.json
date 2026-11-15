@@ -1,5 +1,6 @@
 {
   "name": "pi-li-uikit-gallery",
+  "license": "MIT",
   "version": "0.1.0",
   "description": "Interactive /uikit gallery for pi-li-uikit components",
   "type": "module",

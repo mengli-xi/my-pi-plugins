@@ -1,5 +1,6 @@
 {
   "name": "pi-runtime-contracts",
+  "license": "MIT",
   "version": "0.1.0",
   "description": "Pi-free runtime coordination contracts for local Pi packages.",
   "type": "module",

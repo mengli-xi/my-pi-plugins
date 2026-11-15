@@ -150,6 +150,10 @@ bun install --frozen-lockfile
 
 扩展在 Pi 宿主进程里运行，拥有与宿主相同的权限。安装前请查看源码。
 
+## 许可证
+
+采用 [MIT 许可证](LICENSE)。`fork/` 下的包保留各自上游的 MIT 许可和版权声明。
+
 ## 贡献
 
 请先读 [CONTRIBUTING.md](CONTRIBUTING.md)。AI 与维护者从 [AGENTS.md](AGENTS.md) 进入协议、宿主补丁和验证说明。

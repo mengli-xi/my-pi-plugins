@@ -1,5 +1,6 @@
 {
   "name": "pi-session-naming",
+  "license": "MIT",
   "version": "0.1.0",
   "description": "Lazy, configurable session naming for the Pi coding agent",
   "type": "module",

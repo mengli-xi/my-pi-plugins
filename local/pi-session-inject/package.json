@@ -1,5 +1,6 @@
 {
   "name": "pi-session-inject",
+  "license": "MIT",
   "version": "0.1.0",
   "description": "Pi-aware live session prompt injection primitives shared by pi-scheduler and pi-subagents.",
   "type": "module",

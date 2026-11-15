@@ -1,5 +1,6 @@
 {
   "name": "pi-rewind",
+  "license": "MIT",
   "version": "0.1.0",
   "description": "Destructive single-path rewind for Pi sessions with a linear conversation picker.",
   "type": "module",

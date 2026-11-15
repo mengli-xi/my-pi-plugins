@@ -1,5 +1,6 @@
 {
 	"name": "pi-todo",
+  "license": "MIT",
 	"version": "0.1.0",
 	"description": "Minimal replace-on-write todo tool for the Pi coding agent (Claude Code / Codex style)",
 	"type": "module",

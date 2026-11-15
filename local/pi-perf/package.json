@@ -1,5 +1,6 @@
 {
   "name": "pi-perf",
+  "license": "MIT",
   "version": "0.3.0",
   "description": "Measure pi action-to-paint latency, frame stalls, event-loop health, and memory",
   "type": "module",

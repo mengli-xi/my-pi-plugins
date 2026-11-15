@@ -1,5 +1,6 @@
 {
   "name": "pi-exit-command",
+  "license": "MIT",
   "version": "0.1.0",
   "description": "Copy a restart command for the current session to the clipboard, then exit Pi.",
   "type": "module",

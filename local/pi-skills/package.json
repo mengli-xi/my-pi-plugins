@@ -1,5 +1,6 @@
 {
   "name": "pi-skills",
+  "license": "MIT",
   "version": "0.1.0",
   "description": "Codex-style explicit $skill mentions for Pi",
   "type": "module",
