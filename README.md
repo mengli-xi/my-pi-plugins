@@ -78,11 +78,11 @@
 
 ## 安装与加载
 
-把 `<仓库地址>` 换成实际地址，在仓库根安装依赖：
+克隆仓库，在仓库根安装依赖：
 
 ```sh
-git clone <仓库地址> pi-packages
-cd pi-packages
+git clone https://github.com/mengli-xi/my-pi-plugins.git
+cd my-pi-plugins
 bun install --frozen-lockfile
 ```
 
@@ -112,8 +112,8 @@ pi
 ```json
 {
   "packages": [
-    "/path/to/pi-packages/local/pi-todo",
-    "/path/to/pi-packages/fork/pi-goal"
+    "/path/to/my-pi-plugins/local/pi-todo",
+    "/path/to/my-pi-plugins/fork/pi-goal"
   ]
 }
 ```
