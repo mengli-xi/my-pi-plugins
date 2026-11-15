@@ -10,8 +10,7 @@ import { piBin, installedPiVersion } from "../../../../scripts/pi-checks.mjs";
 // contacted: the fixture extension answers every turn from a fixed script.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
@@ -36,9 +35,15 @@ for (const path of extensions) assert.ok(existsSync(path), `missing ${path}; run
 
 const COLS = 120;
 const ROWS = 40;
-// Scenarios run under a short temporary root so Pi's footer never truncates
-// the cwd; a requested artifact directory receives a copy at the end.
-const runRoot = mkdtempSync(join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), "cchf-"));
+// Scenarios run under a short /tmp root on every platform: a long inherited
+// TMPDIR/XDG_RUNTIME_DIR would wrap the footer cwd and break normalization.
+// This script removes it; a requested artifact directory gets a copy at the end.
+// A run killed by a timeout skips that, so roots older than a day are swept.
+for (const name of readdirSync("/tmp")) {
+  if (!name.startsWith("cchf-")) continue;
+  try { if (Date.now() - statSync(join("/tmp", name)).mtimeMs > 86_400_000) rmSync(join("/tmp", name), { recursive: true, force: true }); } catch {}
+}
+const runRoot = mkdtempSync("/tmp/cchf-");
 try {
 // Pi looks up `fd` and `rg` on PATH and, offline, prints a startup warning into
 // the transcript when one is missing. Whether this machine happens to have them
