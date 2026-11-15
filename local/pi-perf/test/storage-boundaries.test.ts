@@ -32,7 +32,7 @@ test("JSONL and HTML use private directories/files, including existing permissiv
 test("startup cleanup reclaims stale temporaries without unlinking live writers", async () => {
   const root = await mkdtemp(join(tmpdir(), "perf-temp-")), now = Date.now();
   try {
-    const dir = join(root, "daily/2026-11-12"); await mkdir(dir, { recursive: true });
+    const dir = join(root, "daily", new Date(now).toISOString().slice(0, 10)); await mkdir(dir, { recursive: true });
     for (const name of ["dead.2147483647.tmp", `live.${process.pid}.tmp`, "legacy.tmp", "recent.tmp"]) await writeFile(join(dir, name), "partial");
     await utimes(join(dir, "legacy.tmp"), new Date(now - 2 * DAY_MS), new Date(now - 2 * DAY_MS));
     await writeFile(join(root, "ui.jsonl"), "old", { mode: 0o644 });
