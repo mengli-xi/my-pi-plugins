@@ -1,7 +1,23 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+
+function alive(pid) {
+  try { process.kill(Number(pid), 0); return true; }
+  catch (error) { if (error.code === "ESRCH") return false; if (error.code === "EPERM") return true; throw error; }
+}
+
+// A pending lock dir holds its creator's PID. An unstamped one may belong to a
+// creator still between mkdtemp and writeFile, so it goes only once it is old.
+// Cleanup is best effort: a publish that already succeeded must not fail here.
+function stalePending(dir) {
+  try {
+    const [pid] = readdirSync(dir);
+    if (pid === undefined) return Date.now() - statSync(dir).mtimeMs > 60_000;
+    return /^\d+$/.test(pid) && !alive(pid);
+  } catch { return false; }
+}
 
 function lockBuild(dist) {
   const lock = join(dist, ".lock"), owner = String(process.pid), pending = mkdtempSync(join(dist, ".lock-"));
@@ -18,9 +34,8 @@ function lockBuild(dist) {
       let pid;
       try { [pid] = readdirSync(lock); } catch (error) { if (error.code !== "ENOENT") throw error; }
       if (!pid) continue; // An interrupted release left an empty directory.
-      try { process.kill(Number(pid), 0); }
-      catch (error) { if (error.code !== "ESRCH") throw error; release(pid); continue; }
-      throw new Error(`Build already running (pid ${pid}): ${dist}`);
+      if (!alive(pid)) { release(pid); continue; }
+      throw new Error(`Build already running (pid ${pid}): ${dist}. If that process is not a build, delete ${lock} and retry.`);
     }
     throw new Error(`Build lock changed; retry: ${dist}`);
   } finally { rmSync(pending, { recursive: true, force: true }); }
@@ -58,7 +73,7 @@ export function retainedBuild(root, resources = []) {
       write(".current.json", JSON.stringify(`./${name}/dist/${entry}`));
       published = true;
       const keep = new Set([name, previous, ".lock", entry, ".current.json", ...publicModules.flatMap(module => [module + ".js", module + ".d.ts"])]);
-      for (const file of readdirSync(dist)) if (!keep.has(file) && !file.startsWith(".lock-")) rmSync(join(dist, file), { recursive: true, force: true });
+      for (const file of readdirSync(dist)) if (!keep.has(file) && (!file.startsWith(".lock-") || stalePending(join(dist, file)))) rmSync(join(dist, file), { recursive: true, force: true });
     },
   };
 }

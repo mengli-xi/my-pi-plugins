@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -133,7 +133,7 @@ for await (const line of createInterface({ input: process.stdin })) { build.publ
   };
   build(0);
   const first = await pause(1);
-  assert.throws(() => build(2), /Build already running/);
+  assert.throws(() => build(2), /Build already running.*not a build, delete .*dist\/\.lock and retry/s);
   first.child.stdin.end("publish\n");
   assert.deepEqual(await first.closed, [0, null]);
   const entry = join(root, "dist/index.js"), pointer = join(root, "dist/.current.json");
@@ -148,7 +148,18 @@ for await (const line of createInterface({ input: process.stdin })) { build.publ
   crashed.child.kill("SIGKILL");
   await crashed.closed;
   assert.ok(existsSync(join(root, "dist/.lock")));
+  // Pending lock dirs left by a SIGKILL between mkdtemp and rename.
+  const pending = (name, pid) => { mkdirSync(join(root, "dist", name)); if (pid) writeFileSync(join(root, "dist", name, String(pid)), ""); };
+  pending(".lock-dead", spawnSync(process.execPath, ["-e", ""]).pid); pending(".lock-live", process.pid); pending(".lock-fresh"); pending(".lock-old");
+  utimesSync(join(root, "dist/.lock-old"), new Date(Date.now() - 120_000), new Date(Date.now() - 120_000));
   build(5);
+  assert.deepEqual(readdirSync(join(root, "dist")).filter(name => name.startsWith(".lock-")).sort(), [".lock-fresh", ".lock-live"]);
+  // PID 1 exists but belongs to another user: EPERM means a live holder.
+  if (process.getuid?.() !== 0) {
+    mkdirSync(join(root, "dist/.lock")); writeFileSync(join(root, "dist/.lock/1"), "");
+    assert.throws(() => build(5), /Build already running \(pid 1\)/);
+    rmSync(join(root, "dist/.lock"), { recursive: true });
+  }
   for (const corrupt of ["{", "null"]) { writeFileSync(pointer, corrupt); build(6); }
   assert.ok(existsSync(join(currentBuild(root), "index.js")));
   assert.equal(existsSync(join(root, "dist/.lock")), false);
