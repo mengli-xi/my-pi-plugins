@@ -12,7 +12,13 @@ const timestamp = "2026-10-19T00:00:00.000Z";
 function message(id: number, role: "user" | "assistant", content: unknown): SessionEntry {
   return { type: "message", id: String(id), parentId: null, timestamp, message: { role, content, timestamp: id } } as SessionEntry;
 }
-const settle = async () => { await new Promise(done => setTimeout(done, 15)); };
+async function waitFor(condition: () => boolean) {
+  const deadline = performance.now() + 2_000;
+  while (!condition()) {
+    assert.ok(performance.now() < deadline, "history update did not complete within 2s");
+    await new Promise(done => setTimeout(done, 5));
+  }
+}
 
 /** Real native entry conversion/editor history and public layout, with only
  * component construction stubbed. No Pi process, provider or request is used. */
@@ -76,7 +82,13 @@ function fixture() {
   emit("session_start"); emit("resources_discover"); history.attach(renderer);
   receiver.renderSessionEntries(context, { populateHistory: true }); layout();
   const header = () => chat.children.find(component => component.render(120).join("").startsWith("↑ 加载更早的"));
-  const load = async () => { header()?.handleMouse?.({ type: "click", button: "left", x: 0, y: 0 } as any); await settle(); layout(); };
+  const load = async () => {
+    const before = selections.length;
+    header()?.handleMouse?.({ type: "click", button: "left", x: 0, y: 0 } as any);
+    // A geometry failure falls back one timer later, so wait past the first load.
+    await waitFor(() => selections.length > before && renderer.resetTextSelection === nativeReset);
+    layout();
+  };
   return { pi, entries, editor, renderer, chat, receiver, nativeReset, projections, selections, header, load, emit,
     text: () => chat.render(120).join("\n"), setContext(value: SessionEntry[]) { context = value; },
     setIdle(value: boolean) { idle = value; }, failProjection() { failProjection = true; },
@@ -88,7 +100,7 @@ function fixture() {
 test("input history retains the last 100 inputs independently of assistant-heavy transcript batches", async () => {
   const f = fixture();
   try {
-    await settle();
+    await waitFor(() => f.editor.history.length === 100);
     assert.equal(f.text().match(/input-/gu)?.length, 19);
     const expected = Array.from({ length: 100 }, (_, index) => `input-${149 - index}`);
     assert.deepEqual(f.editor.history, expected);
@@ -135,11 +147,16 @@ test("runtime fallback waits for idle and then rebuilds on the settled boundary"
   const f = fixture();
   try {
     f.setIdle(false);
+    const before = f.selections.length;
     delete (f.renderer as any).selectionInitialRange;
     f.receiver.renderSessionEntries(f.entries);
-    await settle();
+    // The fallback is a 0ms timer queued before this one, so it has run once
+    // while busy by the time this resolves; it must not rebuild. A longer
+    // fallback delay would make this check vacuous.
+    await new Promise(done => setTimeout(done, 0));
     assert.equal(f.text().match(/input-/gu)?.length, 19);
-    f.setIdle(true); f.emit("agent_settled"); await settle();
+    f.setIdle(true); f.emit("agent_settled");
+    await waitFor(() => f.selections.length > before);
     assert.equal(f.text().match(/input-/gu)?.length, 150);
     assert.equal(f.header(), undefined);
     assert.deepEqual(f.projections.at(-1), f.entries);
@@ -174,7 +191,7 @@ test("live conditional compaction drift is detected and restores one native summ
     const context = [entry, ...f.entries.slice(-12, -1)];
     f.setContext(context); defer = true;
     await f.receiver.handleEvent({ type: "compaction_end", result: entry });
-    await settle();
+    await waitFor(() => f.projections.at(-1)?.[0] === entry);
     assert.equal(f.text().match(/summary/gu)?.length, 1);
     assert.equal(f.header(), undefined);
     assert.deepEqual(f.projections.at(-1), context);
