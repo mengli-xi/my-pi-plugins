@@ -47,27 +47,7 @@ name 在 live process 中必须唯一，最多 16 个 terminal column。kind 为
 
 ## 配置
 
-配置来自实际 `getAgentDir()/pi-processes/config.json`；`getAgentDir()` 遵守 `PI_CODING_AGENT_DIR`，不猜测其他进程的 agent directory。
-
-```json
-{
-  "schemaVersion": 1,
-  "execution": {
-    "helperRuntime": "<verified-runtime>/helpers/bun",
-    "isolation": {
-      "version": 1,
-      "owner": "example-owner",
-      "revision": 1,
-      "removeEnv": ["EXAMPLE_BROKER_ID", "EXAMPLE_REPLY_FD"]
-    }
-  },
-  "managed": {"requireTimeout":true,"maxTimeoutSeconds":7200,"terminalWake":"required"}
-}
-```
-
-shell 接受绝对路径的 sh、dash、bash、zsh（Linux `/bin/sh` 可指向 dash），仍校验可执行性及 isolation authority。
-
-这是受管配置示例，不是日常运行的必填设置。`managed` 和 `execution.isolation` 只允许出现在 agentDir 配置。可信 launcher 可在 Pi 启动前声明 `PI_PROCESSES_REQUIRED_ISOLATION`，Core 随后核实 owner/revision 与冻结配置；未声明的 launcher 不会被自动识别或剥离外部专用 env key。声明格式、removeEnv、authority 漂移、timeout 与清理规则见[执行合同](docs/MANAGED_EXECUTION.md)。本包不写入或自动迁移日常配置。
+普通与受管配置、来源和生效边界见 [配置](docs/configuration.md)。
 
 ## 可选协作与降级
 
@@ -113,6 +93,7 @@ npm run test:integration
 
 ## 合同文档
 
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
 - [MAILBOX.md](docs/MAILBOX.md)：notification 的身份、持久 entries、admission、Goal/Task 协作、branch/reload、取消与压缩恢复。
 - [MANAGED_EXECUTION.md](docs/MANAGED_EXECUTION.md)：配置 authority、required isolation/removeEnv、deadline、受管 snapshot、Supervisor containment 与遗留 root 清理。
 - [PI_HOST_DEPENDENCIES.md](docs/PI_HOST_DEPENDENCIES.md)：公开 Pi API 基线、Main/Side/child factory、按需启动、界面行为与故障展示。

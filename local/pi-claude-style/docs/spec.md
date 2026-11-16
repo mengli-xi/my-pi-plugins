@@ -35,15 +35,7 @@ Tier-0 的 pre-history renderer hooks 同步安装。命令、overlay 和长报�
 
 ## 配置与持久化
 
-`ConfigService` 是运行时唯一配置入口；`<agent-dir>` 由 Pi 公开 `getAgentDir()` 解析，遵守 `PI_CODING_AGENT_DIR`。私有 store 是 `<agent-dir>/extensions/pi-claude-style/config.json`，只保存 schema version、revision、overrides 和 migration receipt；Pi package/theme/model/statusLine 设置仍归 Pi。
-
-- 优先级为受支持的环境逃生开关、用户 override、默认值。命令区分 active/stored/pending/source；除已实现的性能开关外，展示变更需 reload/restart，不因能写配置就声称实时生效。
-- 默认值/schema/catalog/范围与补全保持同一来源。未知字段保留但不激活；错误不打印敏感值。
-- 已有 v6 store 启动时轻量读取并完整校验，Conf writer 首次写入才加载；创建、迁移、恢复通过完整文档原子写入，不逐字段写中间状态。canonical 内容已相同则不写。
-- mutation 通过 revision/mtime 拒绝外部修改冲突，不承诺跨进程锁或自动合并。渲染、输入和流更新热路径不做同步文件 I/O。
-- 损坏 store 保留原始字节并只读诊断；显式 `/cc-style config reset-all --force` 先移动到带时间戳同级备份再恢复。headless 普通 reset-all 需 `--yes`。
-- 迁移幂等且保留原始字节备份/回执：schema v2 删除 integrations；v3 移除 session naming（v2 backup 供独立 owner 只读导入）；v4 的旧布局移交已被 v6 fullscreen 接管取代；v5 迁移加载时序；v6 导入 Pinned 的五个合法 fullscreen 键，已有 CC 值优先，源不改，备份失败进入只读诊断。
-- package 根 `config.json` **仍是运行资源**：`src/config.ts` 在旧 `CONFIG_PATH` 不存在时 fallback 读取它。旧 `integrations` 例子不是当前 schema 默认，也不会恢复 hosted factory；不能按“旧字段”误删整个文件。
+ConfigService 的优先级、读写、恢复和迁移合同见 [配置](configuration.md#配置与持久化)。
 
 ## 语义协议与展示 owner
 

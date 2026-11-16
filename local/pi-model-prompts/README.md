@@ -12,6 +12,8 @@ Pi 版本见[根要求](../../README.md#要求)；编译消费者改源码或共
 
 ## 配置与命令
 
+完整配置说明见 [配置](docs/configuration.md)。
+
 `/model-prompt` 查看，`/model-prompt settings` 选择命名提示词及模型绑定。配置位于 `<agent-dir>/model-prompts/`：`<model-id>.md`、`prompts/<name>.md` 和 `bindings.json`；下次 run 读取文件变化，不改写用户提示词。
 
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。
@@ -33,4 +35,5 @@ npm test -w pi-model-prompts
 
 ## 文档
 
-- [docs/prompts.md](docs/prompts.md)：文件匹配、片段汇总、热更新与绑定写入。
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
+- [docs/prompts.md](docs/prompts.md)：提示片段汇总、公开协议与查看验证。

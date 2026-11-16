@@ -12,6 +12,8 @@ Pi 版本见[根要求](../../README.md#要求)；编译消费者改源码或共
 
 ## 配置与命令
 
+完整配置说明见 [配置](docs/configuration.md)。
+
 `/cc-style status|doctor|config|cache|perf`、`/tool-transcript [show|config]`、`/internals`；Alt+O 打开详情，Alt+T 折叠 Todo。私有配置位于 `<agent-dir>/extensions/pi-claude-style/config.json`，优先用 `/cc-style config get|set|reset <path>`。默认状态栏随包提供；在 Pi settings 的 `statusLine.command` 中覆盖，显式空值关闭。完整命令、字段和 loader 约束见界面行为合同。
 
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。
@@ -41,7 +43,8 @@ npm run check:host -w pi-claude-style
 
 ## 文档
 
-- [docs/behavior.md](docs/behavior.md)：界面行为、配置字段、loader 和宿主适配。
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
+- [docs/behavior.md](docs/behavior.md)：界面行为、loader 和宿主适配。
 - [docs/important-tool-presentation-spec.md](docs/important-tool-presentation-spec.md)：工具、Activity、Thinking、图片与鼠标呈现。
 - [docs/maintenance.md](docs/maintenance.md)：维护取舍、排障和验证入口。
 - [docs/spec.md](docs/spec.md)：运行时、配置、协议与资源所有权。

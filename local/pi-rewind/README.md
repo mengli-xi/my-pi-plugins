@@ -12,7 +12,7 @@ Pi 版本见[根要求](../../README.md#要求)；编译消费者改源码或共
 
 ## 配置与命令
 
-空且 idle 编辑器双 Escape 或 `/rewind`；`/rewind undo` 恢复最近裁剪，`/rewind history` 查看归档。归档位于 `<agent-dir>/rewind-trash/`，恢复须 session/leaf/文件摘要均匹配；保留 7 天、100 条、500 MiB，先到为限。`PI_REWIND_TRACE_LOG` 可记录分段耗时。
+空且 idle 编辑器双 Escape 或 `/rewind`；`/rewind undo` 恢复最近裁剪，`/rewind history` 查看归档。归档位于 `<agent-dir>/rewind-trash/`，恢复须 session/leaf/文件摘要均匹配；保留 7 天、100 条、500 MiB，先到为限。诊断日志开关见 [配置](docs/configuration.md)。
 
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。
 
@@ -37,4 +37,5 @@ npm run check:host -w pi-rewind
 
 ## 文档
 
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
 - [docs/rewind.md](docs/rewind.md)：裁剪、归档、恢复、并发保护与图片回退。

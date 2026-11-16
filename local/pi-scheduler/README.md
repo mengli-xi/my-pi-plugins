@@ -44,15 +44,7 @@ pi -e "$PWD/local/pi-scheduler"
 
 首次工具/命令使用会经服务管理器启动已有服务，失败则直接启动独立 daemon；未安装服务的直接进程不保证重启后恢复。安装写入 `~/Library/LaunchAgents/` 或 `$XDG_CONFIG_HOME/systemd/user/`（默认 `~/.config/systemd/user/`）。用户服务依赖登录环境；Linux 注销后持续运行需系统的 user lingering 策略，安装器不修改它。
 
-运行环境：
-
-| 变量 | 用途 |
-| --- | --- |
-| `PI_CODING_AGENT_DIR` | profile 根目录；extension 使用公开 `getAgentDir()`，独立 daemon 必填 |
-| `PI_SCHEDULER_BINARY` | 任务执行用的 Pi 绝对路径；独立 daemon 必填 |
-| `PI_SCHEDULER_CONCURRENCY` | daemon 并发上限，默认 5 |
-
-extension 默认解析当前 Pi package 的公开 CLI bin；编译版保留实际 Pi executable。证据缺失时明确报错，可显式指定 `PI_SCHEDULER_BINARY`，不猜 PATH 上的日常 Pi。daemon 由真实 Node/Bun 运行，不由编译 Pi executable 充当 runtime。
+运行路径、并发和服务环境配置见 [配置](docs/configuration.md)。
 
 ## 存储与生命周期
 
@@ -95,6 +87,7 @@ PI_BIN=/absolute/path/to/pi npm run check:host -w pi-scheduler
 
 ## 文档
 
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
 - [docs/mailbox.md](docs/mailbox.md)：source 事务、legacy 导入、branch fencing、离线回滚和宿主矩阵。
 - [docs/design.md](docs/design.md)：当前设计取舍与执行保护。
 - [docs/glossary.md](docs/glossary.md)：任务、计划时间、投递和 ACK 术语。

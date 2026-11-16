@@ -55,5 +55,4 @@ PI_BIN=/path/to/pi npm run check:host
 - 导航被否决、重绑/回滚失败时检查具体错误及恢复文件，不继续盲目提交。回退期间按 Enter 只在成功且文本未改时发送一次；失败、取消或编辑后均保留文本不自动发送。
 - 启用 CC Style 后，人工检查图片 marker、Enter/Alt+Enter、换行与 IME；缺 owner 或图片失效时应退回无路径的 `[Image]` 并提示重贴。人工完整 TUI 尚需单独验收。
 
-设置 `PI_REWIND_TRACE_LOG=<file>` 可以让一次 rewind 把分段耗时写成 JSONL（abort 等待、tree 导航、JSONL 裁剪、
-SessionManager 重绑、Trash）。不设这个变量时不碰文件系统。
+诊断日志开关见 [配置](configuration.md)。

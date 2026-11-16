@@ -3,6 +3,7 @@
 - 改代码前先读 [CONTRIBUTING.md](CONTRIBUTING.md)，里面是本仓库的硬规则。
 - 包索引在 [README.md](README.md#插件)，能力协议表见[下文](#能力协议表)。
 - 安装与批量安装见 [README.md](README.md#安装与加载)，统一入口为 `npm run plugins:install -- --all`，可加 `--dry-run` 预览。
+- 配置说明见 [配置索引](README.md#配置索引)，各包统一从 `docs/configuration.md` 进入。
 - 改哪个包，就先读 `local/<pkg>/README.md`，需要细节再读它链接的 `docs/`；Fork 包从 `fork/<pkg>/README.md` 进入。
 
 ## 仓库结构

@@ -12,7 +12,9 @@ Pi 版本见[根要求](../../README.md#要求)；编译消费者改源码或共
 
 ## 配置与命令
 
-`/effort [档位|无歧义前缀|序号]`；档位只取当前模型支持的集合。`ultra` 固定最高真实档位，不向 Pi 传入虚构档位。配置为 `<agent-dir>/pi-effort.json`，提示覆盖为 `<agent-dir>/ultra-prompt.md`；缺文件使用默认值，坏文件禁用贡献而不改写。
+完整配置说明见 [配置](docs/configuration.md)。
+
+`/effort [档位|无歧义前缀|序号]`；档位只取当前模型支持的集合。`ultra` 固定最高真实档位，不向 Pi 传入虚构档位。ultra 配置、提示覆盖与生效方式见 [配置](docs/configuration.md)。
 
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。
 
@@ -33,4 +35,5 @@ npm test -w pi-effort
 
 ## 文档
 
-- [docs/effort.md](docs/effort.md)：档位、ultra 配置、门控与滑杆动画。
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
+- [docs/effort.md](docs/effort.md)：档位、ultra 门控与滑杆动画。

@@ -24,11 +24,7 @@ Activity phase 只由可见非空 assistant 正文切分。Thinking 与工具共
 
 ## 配置与加载
 
-私有配置只由 `ConfigService` 写入 `<agent-dir>/extensions/pi-claude-style/config.json`；agent directory 取公开 `getAgentDir()`，遵守运行环境，不固定 HOME。Pi settings/statusLine 仍归 Pi。损坏内容保留原字节，只读诊断；唯一强制恢复入口先备份再写新默认。revision/mtime 检测冲突而非自动覆盖，canonical 内容不变不写。
-
-已有 schema v6 document 启动时轻量读取、完整校验；Conf writer 首次 mutation 才同步 require `dist/config-storage.cjs`。创建/迁移/恢复的原子写时机不延后。root `config.json` 仍用于旧 `CONFIG_PATH` 缺失时的 legacy fallback，不能因 integrations 字段退役删掉文件；不把该示例当现行 schema 默认。
-
-配置升级保留原始备份与回执，session naming 由独立插件拥有。旧 Pinned 配置导入规则见[界面行为合同](behavior.md#fullscreen-host-与-pinned-配置迁移)。layout mutation 按命令提示重启/重载，除性能开关外不假称 live。
+ConfigService 的文件、优先级、恢复和冲突处理见 [配置](configuration.md#配置与持久化)，旧 Pinned 的导入和备份见 [配置迁移](configuration.md#pinned-配置迁移)。
 
 `balanced/eager/minimal` 控制冷模块时序，不创建第二套 installer engine；Tier-0 pre-history hook 同步存在。lazy import 并发去重、失败后可重试、generation-safe，已加载 ES module 不承诺卸载。statusline capacity 详情是有意保留的静态 panel 依赖：真实 compiled continuation 的 loader 可用性优先于消除这一个启动依赖。
 

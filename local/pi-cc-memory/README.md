@@ -12,6 +12,8 @@ Pi 版本见[根要求](../../README.md#要求)；编译消费者改源码或共
 
 ## 配置与命令
 
+本包没有专属配置项。
+
 `/memory [主题]` 只读查看。数据位于 `<agent-dir>/pi-cc-memory/projects/<identity-hash>/memory/`；索引为 `MEMORY.md`，单次注入最多 200 行或 25,000 UTF-8 字节。身份、刷新和公开材料接口见下方记忆合同。
 
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。

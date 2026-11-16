@@ -1,6 +1,6 @@
 # Goal 设置开发约束
 
-本页约束设置实现；当前字段与行为见 [Settings 合同](settings.md)，公共开发规则见 [开发约束](extension-conventions.md)。
+本页约束设置实现；当前字段与行为见 [Settings 合同](configuration.md)，公共开发规则见 [开发约束](extension-conventions.md)。
 
 ## 文件、作用域与兼容
 

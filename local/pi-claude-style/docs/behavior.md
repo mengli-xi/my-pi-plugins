@@ -22,7 +22,6 @@
 - 第三方 Pi extension 的执行和 lifecycle 仍归 Pi 所有；
 - 通过 `presentation/claude-style-v1` capability 向 `pi-subagents` 和 `pi-side-chat` 提供专用 `dist/child.ts`：读取同一用户配置，安装 transcript、working row、editor chrome 与只读 statusline，不注册任何 execution tool（descriptor `tools: []`）；不安装 Main `/cc-style` control plane、Goal/Todo ownership、notification presenter、model selector或外部 statusline contributor。child 不修改 Pi 全局 package-update presenter；原生 child host 只初始化 view，不启动 package updater。
 
-
 ## 重试 Working 行
 
 Fullscreen 的 Main、Side 和子 agent 共用 Working 行：Pi 原始 `auto_retry_start` 的
@@ -67,20 +66,9 @@ load、retry 和 queue 仍由本包绘制，provider owner 只提供语义数据
 
 ## 配置
 
-Plugin 设置由 `<agent-dir>/extensions/pi-claude-style/config.json` 中的 `conf` store 管理。`<agent-dir>` 由 Pi 公开 `getAgentDir()` 解析，并遵守 `PI_CODING_AGENT_DIR`；不要假定固定 HOME 路径。应优先使用 `/cc-style config
-get|set|reset <path>`，而不是手动编辑 JSON。重新加载 extension 后 renderer 设置才会生效；验证编译后的改动时请重启 Pi，因为运行中的进程会保留已加载的 extension module。
+配置文件、加载策略、缓存限制与 Working 设置见 [配置](configuration.md)。
 
-package 根目录的 `config.json` 是仍被 `src/config.ts` 消费的 legacy fallback：旧 `CONFIG_PATH` 不存在时会读取它。它不是现行 schema v6 的默认值清单，其中旧 `integrations` 不代表恢复 hosted loader；不要仅因字段已退役而删除该运行资源。
-
-已有 schema v6 store 在启动时直接读取并经过完整的 document/字段校验，首次写配置时才同步加载 Conf 和它的依赖。
-缺失 store 的首次创建、旧 schema 迁移和显式损坏恢复仍在原时机经 Conf 原子写入；损坏内容仍保留原字节并进入只读诊断状态。
-Conf writer 单独打包为 `dist/config-storage.cjs`，通过同步 require 首次加载，兼容 stock Pi 的 compiled Bun host；主入口不静态导入该文件。
-
-冷启动 UI 加载也在同一个 store 中配置。`loading.mode=balanced`（默认）让命令面板和 overlay 在首次使用时加载；`eager` 会在首个 context 和 `loading.idleDelayMs` 之后预热；`minimal` 禁止空闲预热。`loading.preloadOverlays` 和 `loading.preloadDiagnostics` 可将单独类别加入 balanced 预热。`/cc-style status|doctor` 显示 module 状态；`/cc-style perf` 报告 import 成本和用户可见的等待成本。
-
-`maxGroups` 分别限制保留完整 payload 的工具分组数量和 completed Activity phase 数量，而不是现有行数；`maxCapturedBytes` 也分别限制工具参数/结果与 Thinking 正文的 UTF-8 bytes。payload 裁剪不能改变历史行几何；fullscreen history window 另按批次卸载、保留高度锚点，并在需要时重建组件。较旧的工具分组只释放参数/结果；较旧的 completed Activity phase 只释放完整 Thinking 正文并保留时间线骨架与明确的 `details released` 提示。active phase 永不裁剪。
-
-`working.style` 可选择 `"cyber"`（动画彩色显示）或 `"plain"`。`working.spinnerIntervalMs` 控制 Claude 配色 spinner 的节奏，`working.refreshMs` 控制指标/shimmer 的刷新率，`working.messageWidth` 则是 spinner 两个固定行各自的宽度上限；实时终端宽度可以进一步降低该上限。第一行始终包含 headline。第二行始终包含状态：如有 provider activity 则先显示它，随后是必需的已用时间，再后是空间不足时按重要性丢弃的可选指标。headline 独立截断，两行绝不合并，即使所有内容能放进一行也是如此。安装后的默认值为 `"cyber"`、`180`、`120` 和 `100`。
+## 展示行为
 
 每项指标显示为 `glyph value`，速率显示为一个词，任何分隔符两侧都不会出现超过一个空格。标签、glyph、标点和分隔符使用柔和灰色。值保持正常字重，并使用独立的暗色分类 palette：已用时间、输入、输出、首 token、thinking 和 turn 计数各有一种克制的色调，而不继承 spinner 的赤陶色。TPS 低于 20t/s 时为暗红色，从 20t/s 到低于 50t/s 时为暗赭色，达到 50t/s 时为暗绿色。turn 计数位于该行末尾：
 
@@ -557,7 +545,6 @@ faux provider 用固定较慢的 token 速率并逐 token 分块，让 done 行�
 运行中 Ctrl+T 断言 transcript 里的工具和 assistant 组件身份不变、工具进度照常到达。定向维护可直接运行 `PI_BIN=/path/to/pi bun test/integration/host-fixtures.mjs --only a,b`；子脚本的 `--update` 重写或新建快照，
 没有 `--update` 时缺快照算失败；`--only a,b` 只跑指定场景。改变可见行为的提交要同时更新快照。
 
-
 鼠标动作只由组件的 `handleMouse` 定义，且只响应 Pi 判定完成的左键 `click`；press、drag、release、wheel 和 capture 继续归 fullscreen 宿主。custom-entry provider 组件也只实现 `handleMouse`，Magic Context、Skills、Processes、Subagents 的 v1 delegate 转发 `handleMouse`。详情面板继续由 UIKit 绘制。
 
 ## 同进程 child presentation
@@ -678,7 +665,7 @@ managed child factory 必须在 execution 装配时安装，不等首次 view。
 
 `src/host/fullscreen/` 提供精确 editor geometry、面板外部点击关闭、每帧钩子、浮动补全、置顶问题与主题选区色。置顶问题直接合入帧，不建立 Pi overlay，所以滚动中的 transcript 选区仍跟随内容。深路径 layout import 失败时几何退回 UIKit 估算；选区 probe 失配退回原生反色。Main 与 child view 共用实现，detach 释放各自 owner。全屏会话空闲后由 Main 一次性预加载系统剪贴板模块（仅 macOS/Windows，不读写剪贴板），首次复制不再多等。
 
-从 settings.packages 删除 pi-pinned-layout 后重启。CC schema v6 首次启动将 `<agent-dir>/extensions/pi-pinned-layout/config.json`（优先，overrides）或 `pi-pinned-layout.json` 的 enabled、stickyUserMessage、floatAutocomplete、popupGap、minViewportRows 导入 `layout.*`。已有 CC 值不覆盖、非法值跳过，源文件保留并写 `.cc-style-v6.bak`；CC v5 store 留 `.schema-v5.bak`。备份失败则诊断只读，不写迁移结果。以后用 `/cc-style config get|set|reset layout.*`，补全来自同一 catalog；重启生效。若 settings 仍加载 Pinned，CC fullscreen host 不安装并在 doctor 报 degraded。
+旧 Pinned 配置的导入、备份和失败处理见 [配置](configuration.md#pinned-配置迁移)。
 
 Above-editor widget 非空时，CC 用一个受 probe 保护的 `renderWidgetContainer` 包装去掉 Pi 的 leading Spacer(1)，让 Working、工具行与 Todo 连在一起；空容器和 below-editor 行保持原生行为。Main、Side、子 agent 共享该窄补丁；宿主形状变化时跳过安装、原生空行恢复。
 

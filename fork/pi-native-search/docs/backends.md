@@ -1,6 +1,6 @@
 # 可选搜索 backend 合同
 
-本页由 `pi-native-search` 定义。工具入口与数据外传说明见 [README](../README.md)，配置和 child snapshot 见[配置与运行合同](runtime-contract.md)。本协议只扩展搜索，不扩展 `web_fetch`。
+本页由 `pi-native-search` 定义。工具入口与数据外传说明见 [README](../README.md)，字段与文件读写见 [配置](configuration.md)，child snapshot 见 [运行合同](runtime-contract.md)。本协议只扩展搜索，不扩展 `web_fetch`。
 
 ## 发现与描述符
 

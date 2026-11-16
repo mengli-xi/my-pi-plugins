@@ -12,6 +12,8 @@ Pi 版本见[根要求](../../README.md#要求)；编译消费者改源码或共
 
 ## 配置与命令
 
+完整配置说明见 [配置](docs/configuration.md)。
+
 `/subagents [Agent ID|task path]` 打开管理器或目标视图。模型工具为 `spawn_agent`、`send_input`、`resume_agent`、`close_agent`、`wait_agents`、`list_agents`、`list_subagent_models`、`list_subagent_roles`；完整名称与状态矩阵见使用合同。配置为用户 `<agent-dir>/pi-subagents/config.json`、受信项目 `.pi/pi-subagents.json`，schemaVersion 2；默认 depth 1、open 32、Main/process active 各 10、Task timeout 30 分钟。数据位于独立 store-v2，不读、不转换、不删除 store-v1。
 
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。
@@ -35,6 +37,7 @@ npm test -w pi-subagents
 
 ## 文档
 
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
 - [docs/architecture.md](docs/architecture.md)：架构、Host 权限、运行模型、能力冻结与上下文选择。
 - [docs/delivery.md](docs/delivery.md)：完整 Completion、Barrier、Wake、receipt 和 ACK 合同。
 - [docs/mailbox-v1.md](docs/mailbox-v1.md)：信箱格式、稳定身份、投递与恢复合同。
@@ -42,5 +45,5 @@ npm test -w pi-subagents
 - [docs/persistence.md](docs/persistence.md)：完整持久化 schema、journal、事务、升级和恢复合同。
 - [docs/sdk-providers.md](docs/sdk-providers.md)：外部 SDK provider 声明、独立 grant 和生命周期。
 - [docs/ui.md](docs/ui.md)：列表、输入、已读、主题与终端交接。
-- [docs/usage.md](docs/usage.md)：配置来源、范围、工具参数与状态矩阵。
+- [docs/usage.md](docs/usage.md)：模型工具参数、权限与状态矩阵。
 - [subagents 技能](skills/subagents/SKILL.md)：模型侧委派、等待和关闭指引。

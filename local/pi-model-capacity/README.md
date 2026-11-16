@@ -12,6 +12,8 @@ Pi 版本见[根要求](../../README.md#要求)；编译消费者改源码或共
 
 ## 配置与命令
 
+本包没有专属配置项。
+
 `/usage` 显式刷新并查看所有已注册 adapter；TUI 用信息面板，RPC/headless 输出文本。内置 Codex、Grok、DeepSeek 观测；外部 adapter 通过注册协议接入。Codex 已结算使用量保存在 `<agent-dir>/codex-usage.jsonl`。
 
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。

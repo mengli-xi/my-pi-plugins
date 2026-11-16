@@ -12,7 +12,9 @@ Pi 版本见[根要求](../../README.md#要求)；编译消费者改源码或共
 
 ## 配置与命令
 
-不注册命令，手动命名用 Pi `/name`。配置在 `<agent-dir>/extensions/pi-session-naming/config.json` 的 `overrides`：`enabled`、`model`（session 或 provider/model-id）、`effort`、`maxChars`、`timeoutMs`、`maxOutputTokens`。初始化时读取，手改后重载或重启。命名是额外模型请求，可能收费，内容与隐私边界见命名合同。
+完整配置说明见 [配置](docs/configuration.md)。
+
+不注册命令，手动命名用 Pi `/name`。自动命名的开关、模型与限制见 [配置](docs/configuration.md)。命名是额外模型请求，可能收费，内容与隐私边界见命名合同。
 
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。
 
@@ -33,5 +35,6 @@ npm test -w pi-session-naming
 
 ## 文档
 
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
 - [docs/maintenance.md](docs/maintenance.md)：维护取舍、排障和验证入口。
-- [docs/naming.md](docs/naming.md)：自动命名配置、请求内容、隐私与过期结果。
+- [docs/naming.md](docs/naming.md)：自动命名请求、隐私与过期结果。

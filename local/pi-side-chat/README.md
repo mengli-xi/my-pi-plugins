@@ -42,13 +42,7 @@ Side 共享 Main 的文件系统、网络与 credentials，没有 sandbox 或跨
 
 ## 配置
 
-从实际 `getAgentDir()`（遵守 `PI_CODING_AGENT_DIR`）下的 `extensions/pi-side-chat/config.json` 读取：
-
-```json
-{ "shortcut": "alt+/" }
-```
-
-唯一后端是同进程 SDK。已设置的 `PI_SIDE_BACKEND`（包括空值）、`defaultBackend`、`extensionCommands` 会禁用 Side/BTW 并明确报错；其他未知字段沿用忽略行为。无效配置不阻止 Main 启动。修改配置后重启 Pi。
+快捷键设置、兼容限制和生效方式见 [配置](docs/configuration.md)。
 
 ## 验证与使用回归
 
@@ -75,6 +69,7 @@ PI_BIN=/path/to/pi npm run test:integration:side-chat
 
 ## 合同文档
 
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
 - [SDK_SESSION.md](docs/SDK_SESSION.md)：capture、模型/工具授权、Main/Side/view ownership 与销毁顺序。
 - [BTW.md](docs/BTW.md)：pending 面板、前台仲裁、取消、历史与请求边界。
 - [PI_HOST_DEPENDENCIES.md](docs/PI_HOST_DEPENDENCIES.md)：Pi 1.5 公开接口、两项 instance-only probe 与 stock host 降级。

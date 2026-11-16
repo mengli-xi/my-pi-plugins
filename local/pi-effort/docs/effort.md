@@ -102,13 +102,7 @@ Model Prompts 必须显式加载。缺席只改真实档位，不向请求追加
 
 委派工具须在该 run 确认的 selectedTools 中；缺失、坏值、未知工具集不贡献，保持 ultra 并在每次激活只提示一次（换 session 重置）。启用时还尽力检查配置包是否启用。
 
-配置在 <agent-dir>/pi-effort.json：
-
-```json
-{ "ultra": { "subagentTool": "spawn_agent", "subagentPackage": "local/pi-subagents" } }
-```
-
-<agent-dir>/ultra-prompt.md 覆盖文字；缺失/空文件用随包默认。每次按 inode/size/mtime/ctime 缓存正文、解析及失败，编辑/替换/删除下次使用可见。缺配置用默认；坏配置或不可读文件禁用贡献并按失败版本诊断一次，只含路径/原因不含正文，真实档位保持。模式开关由片段贡献，委派规则留在 subagents 技能；自定义覆盖仍须遵守权限。
+ultra 的配置文件、提示覆盖、默认值和热更新见 [配置](configuration.md)。
 
 ## 紫色波纹
 

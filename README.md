@@ -70,6 +70,31 @@
 | [pi-session-runtime](local/pi-session-runtime/README.md) | 共享库 | 装配子会话、传递上下文并打开子会话视图。 |
 | [pi-li-uikit-gallery](local/pi-li-uikit-gallery/README.md) | 开发插件 | 交互式预览界面组件。 |
 
+## 配置索引
+
+配置说明统一位于各包的 `docs/configuration.md`。下表只提供入口；实际配置文件位置、字段、优先级与生效方式以各包说明为准。`<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`；Ask 的配置沿用 XDG/legacy 查找规则。
+
+| 插件 | 配置说明 |
+| --- | --- |
+| pi-claude-style | [界面与加载](local/pi-claude-style/docs/configuration.md) |
+| pi-perf | [采样与环境变量](local/pi-perf/docs/configuration.md) |
+| pi-session-compact | [压缩策略与模型](local/pi-session-compact/docs/configuration.md) |
+| pi-session-naming | [自动命名](local/pi-session-naming/docs/configuration.md) |
+| pi-side-chat | [快捷键](local/pi-side-chat/docs/configuration.md) |
+| pi-subagents | [并发、深度与存储](local/pi-subagents/docs/configuration.md) |
+| pi-processes | [进程执行与受管策略](local/pi-processes/docs/configuration.md) |
+| pi-effort | [ultra 与提示覆盖](local/pi-effort/docs/configuration.md) |
+| pi-fast | [全局默认与会话覆盖](local/pi-fast/docs/configuration.md) |
+| pi-model-prompts | [规则文件与模型绑定](local/pi-model-prompts/docs/configuration.md) |
+| pi-goal | [目标推进与保护限制](fork/pi-goal/docs/configuration.md) |
+| pi-ask-user-question | [问卷快捷键与 guidance](fork/pi-ask-user-question/docs/configuration.md) |
+| pi-native-search | [搜索开关与 provider 路由](fork/pi-native-search/docs/configuration.md) |
+| pi-mcp-adapter | [服务器、认证与工具设置](fork/pi-mcp-adapter/docs/configuration.md) |
+| pi-scheduler | [调度器运行环境](local/pi-scheduler/docs/configuration.md) |
+| pi-rewind | [诊断日志开关](local/pi-rewind/docs/configuration.md) |
+
+以下插件没有专属配置项：[pi-bash-timeout](local/pi-bash-timeout/README.md)、[pi-cc-memory](local/pi-cc-memory/README.md)、[pi-exit-command](local/pi-exit-command/README.md)、[pi-li-uikit-gallery](local/pi-li-uikit-gallery/README.md)、[pi-model-capacity](local/pi-model-capacity/README.md)、[pi-package-manager](local/pi-package-manager/README.md)、[pi-skills](local/pi-skills/README.md)、[pi-terminal-focus](local/pi-terminal-focus/README.md)、[pi-todo](local/pi-todo/README.md)。工具参数、业务数据、Pi 原生设置和共享库 API 不作为插件偏好配置。
+
 ## 要求
 
 支持 **Pi 1.5.2**。需要 Node.js 22.19+；安装仓库依赖和构建需要 Bun 1.3+。

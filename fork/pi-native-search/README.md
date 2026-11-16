@@ -17,6 +17,10 @@
 
 原生或可选 backend 执行失败后可回退 DuckDuckGo：回退成功会附上原生失败提示，两边都失败则保留两边的错误。发现协议无效或有冲突会直接报错，不偷偷选一个 backend。调用已取消时不再发起 fallback。降级不保证没有额外请求或费用，原生请求可能已被服务方处理。
 
+## 配置
+
+配置路径、字段和生效方式见 [配置](docs/configuration.md)。
+
 ## 加载与构建
 
 当前基线是stock Pi 1.5。把本包目录的绝对路径加入 Pi `settings.json` 的 `packages`，由 manifest 加载 `extensions/index.ts`。`extensions/child.ts` 只供 Host 显式组装 SDK child，不作为普通 extension 加载。
@@ -40,12 +44,12 @@ Main 注册以下命令；参数补全和 parser 使用同一组公开子命令�
 
 没有交互 UI 时不打开面板，命令降级为文本反馈；工具本身不依赖设置面板。状态栏只是路由能力提示，凭据和实际路由仍以每次执行为准。
 
-配置文件是 `<agentDir>/search-config.json`。默认入口通过 Pi `getAgentDir()` 取目录；显式 Main 安装由 Host 传入目录，不猜用户 home。文件不存在时默认开启搜索和抓取；损坏配置或读取失败不会被当作“配置不存在”而默认启用。字段、版本缓存、写入和 SDK snapshot 规则见[配置与运行合同](docs/runtime-contract.md)。
+配置文件是 `<agentDir>/search-config.json`。默认入口通过 Pi `getAgentDir()` 取目录；显式 Main 安装由 Host 传入目录，不猜用户 home。文件不存在时默认开启搜索和抓取；损坏配置或读取失败不会被当作“配置不存在”而默认启用。字段、版本缓存和写入规则见 [配置](docs/configuration.md)；SDK snapshot 规则见 [运行合同](docs/runtime-contract.md)。
 
 ## 可选协作与降级
 
 - 其他 extension 可通过 `native-search:backends-request-v1` 注册搜索 backend。没人响应时保留公共原生搜索与 DuckDuckGo，不探测陌生 provider 的配置、凭据或模块。backend 的协议、选择规则与撤销语义见 [backend 合同](docs/backends.md)。
-- Main 可通过共享 child capability registry 声明 `web_search`、`web_fetch`。没有 child Host 消费该能力也不影响 Main；SDK child 由 Host 显式传入配置 snapshot 和可选的 Main discovery emitter。child 不注册命令、写配置、呈现状态或修改 Host active-tool allowlist。详见[配置与运行合同](docs/runtime-contract.md)。
+- Main 可通过共享 child capability registry 声明 `web_search`、`web_fetch`。没有 child Host 消费该能力也不影响 Main；SDK child 由 Host 显式传入配置 snapshot 和可选的 Main discovery emitter。child 不注册命令、写配置、呈现状态或修改 Host active-tool allowlist。详见[运行合同](docs/runtime-contract.md)。
 - 本包不依赖、import 或自动安装另一个插件。私有服务和默认 provider 映射由独立集成负责。
 
 ## 数据与信任边界
@@ -80,7 +84,8 @@ npm test
 
 ## 文档
 
-- [配置与运行合同](docs/runtime-contract.md)：配置格式、读取与写入、Main/SDK child 生命周期。
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
+- [运行合同](docs/runtime-contract.md)：Main/SDK child 安装、snapshot 与生命周期。
 - [backend 合同](docs/backends.md)：版本化发现协议、路由、校验、生命周期和 SDK emitter。
 - [LOCAL_PATCHES.md](LOCAL_PATCHES.md)：Fork 保留这些差异的原因与当前兼容边界。
 - [LICENSE](LICENSE)：MIT。

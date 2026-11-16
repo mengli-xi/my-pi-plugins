@@ -49,23 +49,9 @@ Pi 加载 `dist/index.js`，不会自动构建。改 Goal 源码或 source-only 
 
 完整语法、模式限制、兼容 alias、替换确认和失败回滚见 [命令合同](docs/commands.md)。
 
-## ⚙️ Settings
+## 配置
 
-文件为 `<getAgentDir()>/pi-goal.json`，不支持项目级覆盖。缺文件不创建文件；默认值如下：
-
-```json
-{
-  "toolVisibility": "always",
-  "experimental": { "goals": false },
-  "rpc": { "enabled": false },
-  "continuationLimits": { "automaticTurns": 25, "noProgressTurns": 3 },
-  "backgroundWaitCheckInMs": 1200000
-}
-```
-
-TUI 的 `/goal` → Settings 可修改前五项控制；后台巡检用 `idle-checkin` 或 JSON。`automaticTurns: null` 是 Unlimited，`noProgressTurns: null` 关闭重复检测，不代表关闭 token budget。Unlimited 会继续消耗 token 与 provider 费用，菜单选择时需要确认。
-
-菜单保存立即生效，外部编辑在 session_start（含 session replacement、`/reload`）后生效。无效文件会警告、回退整套默认值并禁止覆盖，先修复再 reload。有效值、工具可见性与保存顺序见 [Settings 合同](docs/settings.md)。
+设置路径、默认值、菜单与命令保存、生效时间见 [配置](docs/configuration.md)。
 
 ## 🤝 可选协作与降级
 
@@ -93,7 +79,7 @@ TUI 的 `/goal` → Settings 可修改前五项控制；后台巡检用 `idle-ch
 ## 完整合同
 
 - [命令](docs/commands.md)：全部语法、TUI/RPC/print/JSON 边界、队列与回滚。
-- [Settings](docs/settings.md)：默认值、路径、兼容字段、工具可见性、保存与失败。
+- [配置](docs/configuration.md)：默认值、路径、兼容字段、工具可见性、保存与失败。
 - [生命周期与安全](docs/lifecycle.md)：25+3、token/时间、完成审计、暂停、重试、branch 与旧记录。
 - [Mailbox](docs/mailbox.md)：durable 投递、owed receipt、恢复 hold、lineage、取消和离线恢复。
 - [协议](docs/protocols.md)：snapshot、continuation/obligation 和旧 managed RPC。

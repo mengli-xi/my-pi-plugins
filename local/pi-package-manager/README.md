@@ -12,6 +12,8 @@ Pi 版本见[根要求](../../README.md#要求)；编译消费者改源码或共
 
 ## 配置与命令
 
+本包没有专属配置项。
+
 `/plugins` 无参数，仅交互 TUI。↑/↓ 选择，/ 或 Ctrl+F 搜索，Tab 切过滤，Space 启停，U 查更新，u 更新选中项，r 重载，Esc/q 关闭。不提供安装、移除或自动更新；使用 Pi 的 `pi install`、`pi remove`、`pi config`。备份与原子性边界见管理合同。
 
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。

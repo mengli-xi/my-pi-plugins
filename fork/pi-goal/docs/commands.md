@@ -1,6 +1,6 @@
 # 命令合同
 
-[返回包入口](../README.md)。设置、安全与持久化分别由 [Settings](settings.md)、[生命周期](lifecycle.md) 和 [Mailbox](mailbox.md) 定义。
+[返回包入口](../README.md)。设置、安全与持久化分别由 [Settings](configuration.md)、[生命周期](lifecycle.md) 和 [Mailbox](mailbox.md) 定义。
 
 ## 语法
 

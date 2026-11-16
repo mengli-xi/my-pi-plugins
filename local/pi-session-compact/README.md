@@ -12,6 +12,8 @@ Pi 版本见[根要求](../../README.md#要求)；编译消费者改源码或共
 
 ## 配置与命令
 
+完整配置说明见 [配置](docs/configuration.md)。
+
 `/compact [instructions]`；`/compaction now [auto|main|small] [focus…]`、`window [tokens|off]`、`show`、`reserve [write]`。工具为 `session_search`、`session_expand`。配置在 `<agent-dir>/pi-session-compact/config.json`；默认 main，不内置 smallModel；`summaryTokens` 只读兼容且不控制容量。具体语法、重试和存储合同见下方文档。
 
 `<agent-dir>` 由 Pi 公开 `getAgentDir()` 提供，遵守 `PI_CODING_AGENT_DIR`。
@@ -34,5 +36,6 @@ npm run check:host -w pi-session-compact
 
 ## 文档
 
+- [配置](docs/configuration.md)：配置来源、字段、默认值与生效方式。
 - [docs/compaction.md](docs/compaction.md)：压缩、原话、容量、检索和故障合同。
 - [docs/provider-activity.md](docs/provider-activity.md)：provider 活动 DTO 与压缩时钟。

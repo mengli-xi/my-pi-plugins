@@ -1,6 +1,18 @@
-# Settings 合同
+# 配置
 
 [返回包入口](../README.md)。文件路径通过 Pi 公开 `getAgentDir()` 解析，为 `<agent-dir>/pi-goal.json`；不自行拼接 home，不读项目级 Goal 设置，也没有 Goal 专用环境变量覆盖层。只有内置默认值 → 有效用户文件 → 显式菜单/命令保存这条路径。
+
+## 配置示例
+
+```json
+{
+  "toolVisibility": "always",
+  "experimental": { "goals": false },
+  "rpc": { "enabled": false },
+  "continuationLimits": { "automaticTurns": 25, "noProgressTurns": 3 },
+  "backgroundWaitCheckInMs": 1200000
+}
+```
 
 ## 字段与默认值
 
