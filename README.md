@@ -120,6 +120,21 @@ pi
 
 相对路径以该 settings 文件所在目录为基准。Pi 只加载配置中的包，不会启用整个仓库。
 
+批量安装可用[统一安装脚本](scripts/install-plugins.mjs)，先预览再执行：
+
+```sh
+npm run plugins:install -- --all --dry-run
+npm run plugins:install -- --all
+# 包含开发/示例插件：
+npm run plugins:install -- --all --include-dev
+# 只安装指定插件（支持包名、目录名或仓库相对目录）：
+npm run plugins:install -- pi-todo pi-goal
+```
+
+脚本要求 PATH 中的全局 Pi 与[根要求](#要求)版本一致，查找时排除本仓 `node_modules/.bin`，避免 `npm run` 注入的开发版遮住日常宿主；可用 `--pi /absolute/path/to/pi` 指定 CLI，相对 CLI 路径以仓库根解析。它先在根执行 `bun install --frozen-lockfile`，构建选中插件中声明了 `build` 的包，全部成功后逐个执行 `pi install`。`--dry-run` 不执行命令或写配置，运行时版本检查也只展示。
+
+安装写入个人配置，遵守 `PI_CODING_AGENT_DIR`；不安装共享库为插件，不升级 Pi 或拉取仓库。重复运行沿用 Pi 的路径去重及已有资源过滤，已禁用插件不会被强制启用；`--all` 不移除之前装过的开发插件。任一步失败立即停止，已经成功的安装保留，修复后可以重跑。更新仓库后可再次运行以重建并补装插件，最后启动新 Pi 进程。
+
 只想试一次，不保存配置：
 
 ```sh
